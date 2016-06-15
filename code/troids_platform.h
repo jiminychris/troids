@@ -27,6 +27,8 @@ typedef double r64;
 
 typedef int32_t b32;
 
+#define Assert(Expr) {if(!(Expr)) *((int *)0);}
+
 struct game_state
 {
     r32 tSin;

@@ -23,6 +23,24 @@ struct win32_backbuffer
 global_variable win32_backbuffer GlobalBackBuffer;
 global_variable b32 GlobalRunning;
 
+inline void
+CopyBackBufferToWindow(HDC DeviceContext, win32_backbuffer *BackBuffer)
+{
+    StretchDIBits(DeviceContext,
+                  0,
+                  0,
+                  GlobalBackBuffer.Width,
+                  GlobalBackBuffer.Height,
+                  0,
+                  0,
+                  GlobalBackBuffer.Width,
+                  GlobalBackBuffer.Height,
+                  GlobalBackBuffer.Memory,
+                  &GlobalBackBuffer.Info,
+                  DIB_RGB_COLORS,
+                  SRCCOPY);
+}
+
 LRESULT WindowProc(HWND Window,
                    UINT Message,
                    WPARAM WParam,
@@ -46,19 +64,7 @@ LRESULT WindowProc(HWND Window,
         {
             PAINTSTRUCT PaintStruct;
             HDC DeviceContext = BeginPaint(Window, &PaintStruct);
-            StretchDIBits(DeviceContext,
-                          0,
-                          0,
-                          GlobalBackBuffer.Width,
-                          GlobalBackBuffer.Height,
-                          0,
-                          0,
-                          GlobalBackBuffer.Width,
-                          GlobalBackBuffer.Height,
-                          GlobalBackBuffer.Memory,
-                          &GlobalBackBuffer.Info,
-                          DIB_RGB_COLORS,
-                          SRCCOPY);
+            CopyBackBufferToWindow(DeviceContext, &GlobalBackBuffer);
             EndPaint(Window, &PaintStruct);
         } break;
 
@@ -143,10 +149,14 @@ int WinMain(HINSTANCE Handle,
             GameBackBuffer.Pitch = GlobalBackBuffer.Pitch;
             GameBackBuffer.Memory = GlobalBackBuffer.Memory;
 
+            // TODO(chris): Initialize the audio system.
+
             game_update_and_render *GameUpdateAndRender = 0;
             // TODO(chris): Is MAX_PATH really correct?
             char CodePath[MAX_PATH];
             u32 CodePathLength = GetModuleFileName(0, CodePath, sizeof(CodePath));
+            u64 CodeWriteTime = 0;
+            HMODULE GameCode = 0;
             // TODO(chris): Check for truncated path
             if(CodePathLength)
             {
@@ -167,31 +177,115 @@ int WinMain(HINSTANCE Handle,
                     *Char++ = *DLLName++;
                 }
                 *Char = 0;
-                
-                HMODULE GameCode = LoadLibrary(CodePath);
-                GameUpdateAndRender =
-                    (game_update_and_render *)GetProcAddress(GameCode, "GameUpdateAndRender");
             }
             else
             {
                 // TODO(chris): Logging
             }
+
+            r64 ClocksToSeconds = 0.0;
+            LARGE_INTEGER Freq, LastCounter, Counter;
+            if(QueryPerformanceFrequency(&Freq))
+            {
+                ClocksToSeconds = 1.0 / Freq.QuadPart;
+            }
+            else
+            {
+                // TODO(chris): Logging
+            }
+
+            // TODO(chris): Allocate some memory for the game state.
             
+            b32 Recording = false;
             GlobalRunning = true;
+            QueryPerformanceCounter(&LastCounter);
             while(GlobalRunning)
             {
                 while(PeekMessageA(&Message, Window, 0, 0, PM_REMOVE))
                 {
-                    TranslateMessage(&Message);
-                    DispatchMessageA(&Message);
+                    switch(Message.message)
+                    {
+                        case WM_KEYDOWN:
+                        {
+                            if(!(Message.lParam & (1 << 30)))
+                            {
+                                switch(Message.wParam)
+                                {
+                                    case 'R':
+                                    {
+                                        Recording = !Recording;
+
+                                        // TODO(chris): Recording inputs and game state.
+                                    } break;
+                                }
+                            }
+                        } break;
+
+                        default:
+                        {
+                            TranslateMessage(&Message);
+                            DispatchMessageA(&Message);
+                        } break;
+                    }
+                }
+
+                WIN32_FILE_ATTRIBUTE_DATA FileInfo;
+                if(GetFileAttributesEx(CodePath, GetFileExInfoStandard, &FileInfo))
+                {
+                    u64 LastWriteTime = (((u64)FileInfo.ftLastWriteTime.dwHighDateTime << 32) |
+                                         (FileInfo.ftLastWriteTime.dwLowDateTime << 0));
+                    if(LastWriteTime > CodeWriteTime)
+                    {
+                        if(GameCode)
+                        {
+                            // TODO(chris): Is this necessary?
+                            FreeLibrary(GameCode);
+                        }
+                        CodeWriteTime = LastWriteTime;
+                        GameCode = LoadLibrary(CodePath);
+                        Assert(GameCode);
+                        GameUpdateAndRender =
+                            (game_update_and_render *)GetProcAddress(GameCode, "GameUpdateAndRender");
+                    }
                 }
 
                 if(GameUpdateAndRender)
                 {
                     GameUpdateAndRender(&GameState, &GameInput, &GameBackBuffer);
-                    InvalidateRect(Window, 0, FALSE);
-                    UpdateWindow(Window);
                 }
+
+                if(Recording)
+                {
+                    u32 RecordDotMargin = 10;
+                    u32 RecordDotRadius = 10;
+                    u8 *PixelRow = ((u8 *)GameBackBuffer.Memory +
+                                    GameBackBuffer.Pitch*(GameBackBuffer.Height -
+                                                          (RecordDotMargin + 1)));
+                    for(u32 Y = RecordDotMargin;
+                        Y < RecordDotMargin + RecordDotRadius*2;
+                        ++Y)
+                    {
+                        u32 *Pixel = (u32 *)PixelRow + RecordDotMargin;
+                        for(u32 X = RecordDotMargin;
+                            X < RecordDotMargin + RecordDotRadius*2;
+                            ++X)
+                        {
+                            *Pixel++ = 0xFFFF0000;
+                        }
+                        PixelRow -= GameBackBuffer.Pitch;
+                    }
+                }
+
+                HDC DeviceContext = GetDC(Window);
+                CopyBackBufferToWindow(DeviceContext, &GlobalBackBuffer);
+                ReleaseDC(Window, DeviceContext);
+                
+                QueryPerformanceCounter(&Counter);
+                char Text[256];
+                _snprintf_s(Text, sizeof(Text), "Update time: %fms\n",
+                            (Counter.QuadPart - LastCounter.QuadPart)*ClocksToSeconds*1000);
+                OutputDebugStringA(Text);
+                LastCounter = Counter;
             }
         }
         else
