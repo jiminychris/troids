@@ -8,6 +8,7 @@
 
 #include <windows.h>
 #include <stdio.h>
+#include <dsound.h>
 
 #include "troids_platform.h"
 
@@ -149,9 +150,55 @@ int WinMain(HINSTANCE Handle,
             GameBackBuffer.Pitch = GlobalBackBuffer.Pitch;
             GameBackBuffer.Memory = GlobalBackBuffer.Memory;
 
-            // TODO(chris): Initialize the audio system.
+            LPDIRECTSOUNDBUFFER SecondarySoundBuffer = 0;
+            LPDIRECTSOUND DirectSound;
+            WAVEFORMATEX WaveFormat;
+            WaveFormat.wFormatTag = WAVE_FORMAT_PCM;
+            WaveFormat.nChannels = 2;
+            WaveFormat.nSamplesPerSec = 44100;
+            WaveFormat.wBitsPerSample = 16;
+            WaveFormat.nBlockAlign = (WaveFormat.nChannels*WaveFormat.wBitsPerSample) / 8;
+            WaveFormat.nAvgBytesPerSec = WaveFormat.nSamplesPerSec*WaveFormat.nBlockAlign;
+            WaveFormat.cbSize = 0;
+            DSBUFFERDESC BufferDescription;
+            BufferDescription.dwSize = sizeof(BufferDescription); 
+            BufferDescription.dwFlags = 0;
+            // NOTE(chris): Secondary sound buffer is 10s long.
+            BufferDescription.dwBufferBytes = WaveFormat.nAvgBytesPerSec*10;
+            BufferDescription.lpwfxFormat = &WaveFormat;
+
+            game_sound_buffer GameSoundBuffer;
+            if(DS_OK == DirectSoundCreate(0, &DirectSound, 0))
+            {
+                if(DS_OK == DirectSound->SetCooperativeLevel(Window, DSSCL_PRIORITY))
+                {
+                    // TODO(chris): Fails with E_INVALIDARG :(
+                    HRESULT Result = DirectSound->CreateSoundBuffer(&BufferDescription, &SecondarySoundBuffer, 0);
+                    if(DS_OK == Result)
+                    {
+                        // TODO(chris): Primary buffer allocation?
+
+                        GameSoundBuffer.SamplesPerSecond = WaveFormat.nSamplesPerSec;
+                        GameSoundBuffer.Channels = WaveFormat.nChannels;
+                        GameSoundBuffer.BitsPerSample = WaveFormat.wBitsPerSample;
+                    }
+                    else
+                    {
+                        // TODO(chris): Logging
+                    }
+                }
+                else
+                {
+                    // TODO(chris): Logging
+                }
+            }
+            else
+            {
+                // TODO(chris): Logging
+            }
 
             game_update_and_render *GameUpdateAndRender = 0;
+            game_get_sound_samples *GameGetSoundSamples = 0;
             // TODO(chris): Is MAX_PATH really correct?
             char CodePath[MAX_PATH];
             u32 CodePathLength = GetModuleFileName(0, CodePath, sizeof(CodePath));
@@ -246,12 +293,25 @@ int WinMain(HINSTANCE Handle,
                         Assert(GameCode);
                         GameUpdateAndRender =
                             (game_update_and_render *)GetProcAddress(GameCode, "GameUpdateAndRender");
+                        GameGetSoundSamples =
+                            (game_get_sound_samples *)GetProcAddress(GameCode, "GameGetSoundSamples");
                     }
                 }
 
                 if(GameUpdateAndRender)
                 {
                     GameUpdateAndRender(&GameState, &GameInput, &GameBackBuffer);
+                }
+                if(GameGetSoundSamples && SecondarySoundBuffer)
+                {
+                    SecondarySoundBuffer->Lock(0, WaveFormat.nAvgBytesPerSec,
+                                               &GameSoundBuffer.Memory1, (LPDWORD)&GameSoundBuffer.Memory1Size,
+                                               &GameSoundBuffer.Memory2, (LPDWORD)&GameSoundBuffer.Memory2Size,
+                                               DSBLOCK_FROMWRITECURSOR);
+                    GameGetSoundSamples(&GameState, &GameInput, &GameSoundBuffer);
+                    SecondarySoundBuffer->Unlock(&GameSoundBuffer.Memory1, GameSoundBuffer.Memory1Size,
+                                                 &GameSoundBuffer.Memory2, GameSoundBuffer.Memory2Size);
+                    SecondarySoundBuffer->Play(0, 0, 0);
                 }
 
                 if(Recording)

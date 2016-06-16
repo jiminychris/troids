@@ -47,8 +47,22 @@ struct game_backbuffer
     void *Memory;
 };
 
+struct game_sound_buffer
+{
+    u32 SamplesPerSecond;
+    u16 Channels;
+    u16 BitsPerSample;
+    u32 Memory1Size;
+    u32 Memory2Size;
+    void *Memory1;
+    void *Memory2;
+};
+
 #define GAME_UPDATE_AND_RENDER(Name) void Name(game_state *State, game_input *Input, game_backbuffer *BackBuffer)
 typedef GAME_UPDATE_AND_RENDER(game_update_and_render);
+
+#define GAME_GET_SOUND_SAMPLES(Name) void Name(game_state *State, game_input *Input, game_sound_buffer *SoundBuffer)
+typedef GAME_GET_SOUND_SAMPLES(game_get_sound_samples);
 
 #define TROIDS_PLATFORM_H
 #endif

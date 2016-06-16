@@ -46,3 +46,33 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     State->tSin += Input->dtForFrame;
 }
+
+extern "C" GAME_GET_SOUND_SAMPLES(GameGetSoundSamples)
+{
+    // NOTE(chris): Assumes sample size
+    s16 Amplitude = (s16)((400.0f*Sin(State->tSin)) + 0.5f);
+    u16 *Memory1End = (u16 *)((u8 *)SoundBuffer->Memory1 + SoundBuffer->Memory1Size);
+    u16 *Memory2End = (u16 *)((u8 *)SoundBuffer->Memory2 + SoundBuffer->Memory2Size);
+    for(u16 *Sample = (u16 *)SoundBuffer->Memory1;
+        Sample != Memory1End;
+        )
+    {
+        for(u8 Channel = 0;
+            Channel < SoundBuffer->Channels;
+            ++Channel)
+        {
+            *Sample++ = Amplitude;
+        }
+    }
+    for(u16 *Sample = (u16 *)SoundBuffer->Memory2;
+        Sample != Memory2End;
+        )
+    {
+        for(u8 Channel = 0;
+            Channel < SoundBuffer->Channels;
+            ++Channel)
+        {
+            *Sample++ = Amplitude;
+        }
+    }
+}
