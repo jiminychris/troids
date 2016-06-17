@@ -29,9 +29,22 @@ typedef int32_t b32;
 
 #define Assert(Expr) {if(!(Expr)) *((int *)0);}
 
+u32 Min(u32 A, u32 B)
+{
+    u32 Result = B;
+    
+    if(A < B)
+    {
+        Result = A;
+    }
+
+    return(Result);
+}
+
 struct game_state
 {
     r32 tSin;
+    r32 tSample;
 };
 
 struct game_input
@@ -52,10 +65,12 @@ struct game_sound_buffer
     u32 SamplesPerSecond;
     u16 Channels;
     u16 BitsPerSample;
-    u32 Memory1Size;
-    u32 Memory2Size;
-    void *Memory1;
-    void *Memory2;
+    u32 Size;
+    u32 RunningSampleCount;
+    u32 Region1Size;
+    u32 Region2Size;
+    void *Region1;
+    void *Region2;
 };
 
 #define GAME_UPDATE_AND_RENDER(Name) void Name(game_state *State, game_input *Input, game_backbuffer *BackBuffer)

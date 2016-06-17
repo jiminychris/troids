@@ -150,37 +150,48 @@ int WinMain(HINSTANCE Handle,
             GameBackBuffer.Pitch = GlobalBackBuffer.Pitch;
             GameBackBuffer.Memory = GlobalBackBuffer.Memory;
 
-            LPDIRECTSOUNDBUFFER SecondarySoundBuffer = 0;
             LPDIRECTSOUND DirectSound;
-            WAVEFORMATEX WaveFormat;
-            WaveFormat.wFormatTag = WAVE_FORMAT_PCM;
-            WaveFormat.nChannels = 2;
-            WaveFormat.nSamplesPerSec = 44100;
-            WaveFormat.wBitsPerSample = 16;
-            WaveFormat.nBlockAlign = (WaveFormat.nChannels*WaveFormat.wBitsPerSample) / 8;
-            WaveFormat.nAvgBytesPerSec = WaveFormat.nSamplesPerSec*WaveFormat.nBlockAlign;
-            WaveFormat.cbSize = 0;
-            DSBUFFERDESC BufferDescription;
-            BufferDescription.dwSize = sizeof(BufferDescription); 
-            BufferDescription.dwFlags = 0;
-            // NOTE(chris): Secondary sound buffer is 10s long.
-            BufferDescription.dwBufferBytes = WaveFormat.nAvgBytesPerSec*10;
-            BufferDescription.lpwfxFormat = &WaveFormat;
-
-            game_sound_buffer GameSoundBuffer;
-            if(DS_OK == DirectSoundCreate(0, &DirectSound, 0))
+            LPDIRECTSOUNDBUFFER PrimarySoundBuffer = 0;
+            LPDIRECTSOUNDBUFFER SecondarySoundBuffer = 0;
+            game_sound_buffer GameSoundBuffer = {};
+            if(SUCCEEDED(DirectSoundCreate(0, &DirectSound, 0)))
             {
                 if(DS_OK == DirectSound->SetCooperativeLevel(Window, DSSCL_PRIORITY))
                 {
-                    // TODO(chris): Fails with E_INVALIDARG :(
-                    HRESULT Result = DirectSound->CreateSoundBuffer(&BufferDescription, &SecondarySoundBuffer, 0);
-                    if(DS_OK == Result)
+                    // NOTE(chris): Primary and secondary buffer need the same format
+                    WAVEFORMATEX WaveFormat = {};
+                    WaveFormat.wFormatTag = WAVE_FORMAT_PCM;
+                    WaveFormat.nChannels = 2;
+                    WaveFormat.nSamplesPerSec = 44100;
+                    WaveFormat.wBitsPerSample = 16;
+                    WaveFormat.nBlockAlign = (WaveFormat.nChannels*WaveFormat.wBitsPerSample) / 8;
+                    WaveFormat.nAvgBytesPerSec = WaveFormat.nSamplesPerSec*WaveFormat.nBlockAlign;
+                    DSBUFFERDESC PrimaryBufferDescription = {};
+                    PrimaryBufferDescription.dwSize = sizeof(PrimaryBufferDescription); 
+                    PrimaryBufferDescription.dwFlags = DSBCAPS_PRIMARYBUFFER;
+                    if(SUCCEEDED(DirectSound->CreateSoundBuffer(&PrimaryBufferDescription, &PrimarySoundBuffer, 0)))
                     {
-                        // TODO(chris): Primary buffer allocation?
-
+                        // NOTE(chris): Set the primary buffer format.
+                        PrimarySoundBuffer->SetFormat(&WaveFormat);
+                    }
+                    else
+                    {
+                        // TODO(chris): Logging
+                    }
+                
+                    DSBUFFERDESC SecondaryBufferDescription = {};
+                    SecondaryBufferDescription.dwSize = sizeof(SecondaryBufferDescription); 
+                    SecondaryBufferDescription.dwFlags = DSBCAPS_GETCURRENTPOSITION2;
+                    // NOTE(chris): Secondary sound buffer is 2s long.
+                    SecondaryBufferDescription.dwBufferBytes = WaveFormat.nAvgBytesPerSec*2;
+                    SecondaryBufferDescription.lpwfxFormat = &WaveFormat;
+                    if(SUCCEEDED(DirectSound->CreateSoundBuffer(&SecondaryBufferDescription, &SecondarySoundBuffer, 0)))
+                    {
                         GameSoundBuffer.SamplesPerSecond = WaveFormat.nSamplesPerSec;
                         GameSoundBuffer.Channels = WaveFormat.nChannels;
                         GameSoundBuffer.BitsPerSample = WaveFormat.wBitsPerSample;
+                        GameSoundBuffer.Size = SecondaryBufferDescription.dwBufferBytes;
+                        Assert(SUCCEEDED(SecondarySoundBuffer->Play(0, 0, DSBPLAY_LOOPING)));
                     }
                     else
                     {
@@ -304,14 +315,45 @@ int WinMain(HINSTANCE Handle,
                 }
                 if(GameGetSoundSamples && SecondarySoundBuffer)
                 {
-                    SecondarySoundBuffer->Lock(0, WaveFormat.nAvgBytesPerSec,
-                                               &GameSoundBuffer.Memory1, (LPDWORD)&GameSoundBuffer.Memory1Size,
-                                               &GameSoundBuffer.Memory2, (LPDWORD)&GameSoundBuffer.Memory2Size,
-                                               DSBLOCK_FROMWRITECURSOR);
+                    DWORD PlayCursor;
+                    DWORD WriteCursor;
+                    SecondarySoundBuffer->GetCurrentPosition(&PlayCursor, &WriteCursor);
+                    DWORD BytesToWrite;
+                    u32 SampleSize = GameSoundBuffer.Channels*GameSoundBuffer.BitsPerSample / 8;
+#if 1
+                    DWORD ByteToLock = GameSoundBuffer.RunningSampleCount*SampleSize;
+                    if(PlayCursor > ByteToLock)
+                    {
+                        BytesToWrite = PlayCursor - ByteToLock;
+                    }
+                    else
+                    {
+                        BytesToWrite = GameSoundBuffer.Size - ByteToLock;
+                        BytesToWrite += PlayCursor;
+                    }
+                    BytesToWrite = Min(8192, BytesToWrite);
+#else
+                    DWORD ByteToLock = WriteCursor*SampleSize;
+                    if(PlayCursor > WriteCursor)
+                    {
+                        BytesToWrite = PlayCursor - WriteCursor;
+                    }
+                    else
+                    {
+                        BytesToWrite = GameSoundBuffer.Size - WriteCursor;
+                        BytesToWrite += PlayCursor;
+                    }
+                    BytesToWrite = 6400;
+#endif
+                    // TODO(chris): Fails forever with E_INVALIDARG once ByteToLock + BytesToWrite
+                    // is greater than the buffer size. WHYYYYYYYY???!?!?
+                    HRESULT LockResult = SecondarySoundBuffer->Lock(ByteToLock, BytesToWrite,
+                                                                    &GameSoundBuffer.Region1, (LPDWORD)&GameSoundBuffer.Region1Size,
+                                                                    &GameSoundBuffer.Region2, (LPDWORD)&GameSoundBuffer.Region2Size,
+                                                                    0);
                     GameGetSoundSamples(&GameState, &GameInput, &GameSoundBuffer);
-                    SecondarySoundBuffer->Unlock(&GameSoundBuffer.Memory1, GameSoundBuffer.Memory1Size,
-                                                 &GameSoundBuffer.Memory2, GameSoundBuffer.Memory2Size);
-                    SecondarySoundBuffer->Play(0, 0, 0);
+                    Assert(SUCCEEDED(SecondarySoundBuffer->Unlock(&GameSoundBuffer.Region1, GameSoundBuffer.Region1Size,
+                                                                  &GameSoundBuffer.Region2, GameSoundBuffer.Region2Size)));
                 }
 
                 if(Recording)

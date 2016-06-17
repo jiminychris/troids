@@ -49,30 +49,44 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
 extern "C" GAME_GET_SOUND_SAMPLES(GameGetSoundSamples)
 {
+    r32 tSample = State->tSample;
+    u32 SampleSize = SoundBuffer->Channels*SoundBuffer->BitsPerSample / 8;
+    r32 SecondsPerSample = 1.0f / SoundBuffer->SamplesPerSecond;
+    u32 TotalSampleCount = SoundBuffer->Size / SampleSize;
+
     // NOTE(chris): Assumes sample size
-    s16 Amplitude = (s16)((400.0f*Sin(State->tSin)) + 0.5f);
-    u16 *Memory1End = (u16 *)((u8 *)SoundBuffer->Memory1 + SoundBuffer->Memory1Size);
-    u16 *Memory2End = (u16 *)((u8 *)SoundBuffer->Memory2 + SoundBuffer->Memory2Size);
-    for(u16 *Sample = (u16 *)SoundBuffer->Memory1;
-        Sample != Memory1End;
-        )
+    u16 *Sample = (u16 *)SoundBuffer->Region1;
+    for(u32 SampleIndex = 0;
+        SampleIndex < SoundBuffer->Region1Size;
+        SampleIndex += SampleSize)
     {
+        s16 Value = (s16)((400.0f*Sin(Tau*440.0f*tSample)) + 0.5f);
+        tSample += SecondsPerSample;
         for(u8 Channel = 0;
             Channel < SoundBuffer->Channels;
             ++Channel)
         {
-            *Sample++ = Amplitude;
+            *Sample++ = Value;
         }
+        ++SoundBuffer->RunningSampleCount;
     }
-    for(u16 *Sample = (u16 *)SoundBuffer->Memory2;
-        Sample != Memory2End;
-        )
+    Sample = (u16 *)SoundBuffer->Region2;
+    for(u32 SampleIndex = 0;
+        SampleIndex < SoundBuffer->Region2Size;
+        SampleIndex += SampleSize)
     {
+        s16 Value = (s16)((400.0f*Sin(Tau*440.0f*tSample)) + 0.5f);
+        tSample += SecondsPerSample;
         for(u8 Channel = 0;
             Channel < SoundBuffer->Channels;
             ++Channel)
         {
-            *Sample++ = Amplitude;
+            *Sample++ = Value;
         }
+        ++SoundBuffer->RunningSampleCount;
+    }
+    if(SoundBuffer->RunningSampleCount >= TotalSampleCount)
+    {
+        SoundBuffer->RunningSampleCount -= TotalSampleCount;
     }
 }
