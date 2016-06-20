@@ -13,15 +13,46 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 {
     u8 *PixelRow = (u8 *)BackBuffer->Memory;
     r32 BlendMultiplier = 1.0f / (r32)(BackBuffer->Width - 1);
-#if 1
-    r32 RBase = (Sin(3*State->tSin) + 1.0f)*127.5f;
-    r32 GBase = (Sin(7 + 2*State->tSin) + 1.0f)*127.5f;
-    r32 BBase = (Sin(5 + State->tSin) + 1.0f)*127.5f;
-#else
-    r32 RBase = (Sin(State->tSin) + 1.0f)*127.5f;
-    r32 GBase = (Sin(State->tSin) + 1.0f)*127.5f;
-    r32 BBase = (Sin(State->tSin) + 1.0f)*127.5f;
-#endif
+
+    if(Input->MoveRight.EndedDown)
+    {
+        State->RBase += Input->dtForFrame;
+    }
+    if(Input->MoveLeft.EndedDown)
+    {
+        State->RBase -= Input->dtForFrame;
+    }
+    if(Input->MoveUp.EndedDown)
+    {
+        State->BBase += Input->dtForFrame;
+    }
+    if(Input->MoveDown.EndedDown)
+    {
+        State->BBase -= Input->dtForFrame;
+    }
+
+    // TODO(chris): Clamp function
+    if(State->RBase < 0.0f)
+    {
+        State->RBase = 0.0f;
+    }
+    if(State->RBase > 1.0f)
+    {
+        State->RBase = 1.0f;
+    }
+    if(State->BBase < 0.0f)
+    {
+        State->BBase = 0.0f;
+    }
+    if(State->BBase > 1.0f)
+    {
+        State->BBase = 1.0f;
+    }
+
+    u8 R = (u8)(State->RBase*255.0f + 0.5f);
+    u8 G = (u8)(State->GBase*255.0f + 0.5f);
+    u8 B = (u8)(State->BBase*255.0f + 0.5f);
+
     for(s32 Y = 0;
         Y < BackBuffer->Height;
         ++Y)
@@ -31,10 +62,6 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             ++X)
         {
             u32 *Pixel = ((u32 *)PixelRow) + X;
-            r32 Blend = (r32)X*BlendMultiplier;
-            u8 R = (u8)(RBase*Blend + 0.5f);
-            u8 G = (u8)(GBase*Blend + 0.5f);
-            u8 B = (u8)(BBase*Blend + 0.5f);
             *Pixel = ((0xFF << 24) | // A
                       (R    << 16) | // R
                       (G    << 8)  | // G
@@ -43,8 +70,6 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         }
         PixelRow += BackBuffer->Pitch;
     }
-
-    State->tSin += Input->dtForFrame;
 }
 
 extern "C" GAME_GET_SOUND_SAMPLES(GameGetSoundSamples)

@@ -28,6 +28,7 @@ typedef double r64;
 typedef int32_t b32;
 
 #define Assert(Expr) {if(!(Expr)) int A = *((int *)0);}
+#define ArrayCount(Array) (sizeof(Array) / sizeof(Array[0]))
 
 u32 Min(u32 A, u32 B)
 {
@@ -43,13 +44,33 @@ u32 Min(u32 A, u32 B)
 
 struct game_state
 {
-    r32 tSin;
+    r32 RBase;
+    r32 GBase;
+    r32 BBase;
     u32 RunningSampleCount;
+};
+
+struct game_button
+{
+    b32 EndedDown;
+    u32 HalfTransitionCount;
 };
 
 struct game_input
 {
     r32 dtForFrame;
+
+    union
+    {
+        game_button Buttons[4];
+        struct
+        {
+            game_button MoveUp;
+            game_button MoveLeft;
+            game_button MoveDown;
+            game_button MoveRight;
+        };
+    };
 };
 
 struct game_backbuffer

@@ -81,6 +81,13 @@ LRESULT WindowProc(HWND Window,
     return(Result);
 }
 
+enum recording_state
+{
+    RecordingState_None,
+    RecordingState_Recording,
+    RecordingState_PlayingRecord,
+};
+
 int WinMain(HINSTANCE Handle,
             HINSTANCE PrevInstance,
             LPSTR     CommandLine,
@@ -141,11 +148,13 @@ int WinMain(HINSTANCE Handle,
                              &GlobalBackBuffer.Memory, 0, 0);
 
             game_state GameState;
-            GameState.tSin = 0.0f;
+            GameState.RBase = 0.0f;
+            GameState.GBase = 0.0f;
+            GameState.BBase = 0.0f;
+            GameState.RunningSampleCount = 0;
             
-            game_input GameInput;
             // TODO(chris): Query monitor refresh rate
-            GameInput.dtForFrame = 1.0f / 60.0f;
+            r32 dtForFrame = 1.0f / 60.0f;
             
             game_backbuffer GameBackBuffer;
             GameBackBuffer.Width = GlobalBackBuffer.Width;
@@ -266,12 +275,33 @@ int WinMain(HINSTANCE Handle,
 
             // TODO(chris): Allocate some memory for the game state.
             
-            b32 Recording = false;
+            recording_state RecordingState = RecordingState_None;
+            // TODO(chris): Memory-map file? What happens when game state gets huge?
+            HANDLE RecordFile = CreateFile("record.trc",
+                                           GENERIC_READ|GENERIC_WRITE,
+                                           0, 0,
+                                           CREATE_ALWAYS,
+                                           FILE_ATTRIBUTE_NORMAL, 0);
             DWORD ByteToLock = 0;
             GlobalRunning = true;
+            game_input GameInput[2] = {};
+            game_input *OldInput = GameInput;
+            game_input *NewInput = GameInput + 1;
             QueryPerformanceCounter(&LastCounter);
             while(GlobalRunning)
             {
+                game_input *Temp = NewInput;
+                NewInput = OldInput;
+                OldInput = Temp;
+                for(u32 ButtonIndex = 0;
+                    ButtonIndex < ArrayCount(NewInput->Buttons);
+                    ++ButtonIndex)
+                {
+                    game_button *NewButton = NewInput->Buttons + ButtonIndex;
+                    game_button *OldButton = OldInput->Buttons + ButtonIndex;
+                    NewButton->EndedDown = OldButton->EndedDown;
+                }
+                NewInput->dtForFrame = dtForFrame;
                 while(PeekMessageA(&Message, Window, 0, 0, PM_REMOVE))
                 {
                     switch(Message.message)
@@ -284,8 +314,6 @@ int WinMain(HINSTANCE Handle,
                                 {
                                     case 'R':
                                     {
-                                        Recording = !Recording;
-
                                         // TODO(chris): Recording inputs and game state.
                                         // 1. Dump out all game state to file
                                         // 2. Record game input every frame to same file
@@ -296,6 +324,100 @@ int WinMain(HINSTANCE Handle,
                                         //     game_input *GameInputs;
                                         // }
                                         // Loop around once game_input * reaches EOF
+                                        switch(RecordingState)
+                                        {
+                                            case RecordingState_None:
+                                            {
+                                                RecordingState = RecordingState_Recording;
+                                                if(RecordFile)
+                                                {
+                                                    DWORD BytesWritten;
+                                                    OVERLAPPED Overlapped = {};
+                                                    BOOL Result = WriteFile(RecordFile, &GameState,
+                                                                            sizeof(GameState),
+                                                                            &BytesWritten, &Overlapped);
+                                                    Assert(Result && (BytesWritten == sizeof(GameState)));
+                                                }
+                                            } break;
+
+                                            case RecordingState_Recording:
+                                            {
+                                                RecordingState = RecordingState_PlayingRecord;
+                                                if(RecordFile)
+                                                {
+                                                    DWORD BytesRead;
+                                                    OVERLAPPED Overlapped = {};
+                                                    BOOL Result = ReadFile(RecordFile, &GameState,
+                                                                           sizeof(GameState),
+                                                                           &BytesRead, &Overlapped);
+                                                    Assert(Result && (BytesRead == sizeof(GameState)));
+                                                }
+                                            } break;
+
+                                            case RecordingState_PlayingRecord:
+                                            {
+                                                RecordingState = RecordingState_None;
+                                            } break;
+                                        }
+                                    } break;
+
+                                    // TODO(chris): Clean up
+                                    case 'W':
+                                    {
+                                        ++NewInput->MoveUp.HalfTransitionCount;
+                                        NewInput->MoveUp.EndedDown = true;
+                                    } break;
+
+                                    case 'A':
+                                    {
+                                        ++NewInput->MoveLeft.HalfTransitionCount;
+                                        NewInput->MoveLeft.EndedDown = true;
+                                    } break;
+
+                                    case 'S':
+                                    {
+                                        ++NewInput->MoveDown.HalfTransitionCount;
+                                        NewInput->MoveDown.EndedDown = true;
+                                    } break;
+
+                                    case 'D':
+                                    {
+                                        ++NewInput->MoveRight.HalfTransitionCount;
+                                        NewInput->MoveRight.EndedDown = true;
+                                    } break;
+                                }
+                            }
+                        } break;
+                        
+                        case WM_KEYUP:
+                        {
+                            if((Message.lParam & (1 << 30)))
+                            {
+                                switch(Message.wParam)
+                                {
+                                    // TODO(chris): Clean up
+                                    case 'W':
+                                    {
+                                        ++NewInput->MoveUp.HalfTransitionCount;
+                                        NewInput->MoveUp.EndedDown = false;
+                                    } break;
+
+                                    case 'A':
+                                    {
+                                        ++NewInput->MoveLeft.HalfTransitionCount;
+                                        NewInput->MoveLeft.EndedDown = false;
+                                    } break;
+
+                                    case 'S':
+                                    {
+                                        ++NewInput->MoveDown.HalfTransitionCount;
+                                        NewInput->MoveDown.EndedDown = false;
+                                    } break;
+
+                                    case 'D':
+                                    {
+                                        ++NewInput->MoveRight.HalfTransitionCount;
+                                        NewInput->MoveRight.EndedDown = false;
                                     } break;
                                 }
                             }
@@ -309,6 +431,40 @@ int WinMain(HINSTANCE Handle,
                     }
                 }
 
+                switch(RecordingState)
+                {
+                    case RecordingState_Recording:
+                    {
+                        DWORD BytesWritten;
+                        BOOL Result = WriteFile(RecordFile, NewInput,
+                                                sizeof(*NewInput),
+                                                &BytesWritten, 0);
+                        Assert(Result && (BytesWritten == sizeof(*NewInput)));
+                    } break;
+                    
+                    case RecordingState_PlayingRecord:
+                    {
+                        DWORD BytesRead;
+                        BOOL Result = ReadFile(RecordFile, NewInput,
+                                               sizeof(*NewInput),
+                                               &BytesRead, 0);
+                        if(Result && (BytesRead == 0))
+                        {
+                            OVERLAPPED Overlapped = {};
+                            Result = ReadFile(RecordFile, &GameState,
+                                              sizeof(GameState),
+                                              &BytesRead, &Overlapped);
+                            Assert(Result && (BytesRead == sizeof(GameState)));
+                            Result = ReadFile(RecordFile, NewInput,
+                                              sizeof(*NewInput),
+                                              &BytesRead, 0);
+                        }
+                        Assert(Result && (BytesRead == sizeof(*NewInput)));
+                    } break;
+                }
+                
+                LARGE_INTEGER InputCounter;
+                QueryPerformanceCounter(&InputCounter);
                 WIN32_FILE_ATTRIBUTE_DATA FileInfo;
                 if(GetFileAttributesEx(CodePath, GetFileExInfoStandard, &FileInfo))
                 {
@@ -321,19 +477,26 @@ int WinMain(HINSTANCE Handle,
                             // TODO(chris): Is this necessary?
                             FreeLibrary(GameCode);
                         }
-                        CodeWriteTime = LastWriteTime;
                         GameCode = LoadLibrary(CodePath);
-                        Assert(GameCode);
-                        GameUpdateAndRender =
-                            (game_update_and_render *)GetProcAddress(GameCode, "GameUpdateAndRender");
-                        GameGetSoundSamples =
-                            (game_get_sound_samples *)GetProcAddress(GameCode, "GameGetSoundSamples");
+                        if(GameCode)
+                        {
+                            CodeWriteTime = LastWriteTime;
+                            GameUpdateAndRender =
+                                (game_update_and_render *)GetProcAddress(GameCode, "GameUpdateAndRender");
+                            GameGetSoundSamples =
+                                (game_get_sound_samples *)GetProcAddress(GameCode, "GameGetSoundSamples");
+                        }
+                        else
+                        {
+                            GameUpdateAndRender = 0;
+                            GameGetSoundSamples = 0;
+                        }
                     }
                 }
 
                 if(GameUpdateAndRender)
                 {
-                    GameUpdateAndRender(&GameState, &GameInput, &GameBackBuffer);
+                    GameUpdateAndRender(&GameState, NewInput, &GameBackBuffer);
                 }
                 if(GameGetSoundSamples && SecondarySoundBuffer)
                 {
@@ -356,7 +519,7 @@ int WinMain(HINSTANCE Handle,
                                                                 &GameSoundBuffer.Region1, (LPDWORD)&GameSoundBuffer.Region1Size,
                                                                 &GameSoundBuffer.Region2, (LPDWORD)&GameSoundBuffer.Region2Size,
                                                                 0)));
-                    GameGetSoundSamples(&GameState, &GameInput, &GameSoundBuffer);
+                    GameGetSoundSamples(&GameState, GameInput, &GameSoundBuffer);
                     Assert(SUCCEEDED(SecondarySoundBuffer->Unlock(GameSoundBuffer.Region1, GameSoundBuffer.Region1Size,
                                                                   GameSoundBuffer.Region2, GameSoundBuffer.Region2Size)));
                     ByteToLock += BytesToWrite;
@@ -366,26 +529,65 @@ int WinMain(HINSTANCE Handle,
                     }
                 }
 
-                if(Recording)
+                u32 RecordIconMargin = 10;
+                u32 RecordIconRadius = 10;
+                switch(RecordingState)
                 {
-                    u32 RecordDotMargin = 10;
-                    u32 RecordDotRadius = 10;
-                    u8 *PixelRow = ((u8 *)GameBackBuffer.Memory +
-                                    GameBackBuffer.Pitch*(GameBackBuffer.Height -
-                                                          (RecordDotMargin + 1)));
-                    for(u32 Y = RecordDotMargin;
-                        Y < RecordDotMargin + RecordDotRadius*2;
-                        ++Y)
+                    case RecordingState_Recording:
                     {
-                        u32 *Pixel = (u32 *)PixelRow + RecordDotMargin;
-                        for(u32 X = RecordDotMargin;
-                            X < RecordDotMargin + RecordDotRadius*2;
-                            ++X)
+                        u32 RecordIconRadius = 10;
+                        u8 *PixelRow = ((u8 *)GameBackBuffer.Memory +
+                                        GameBackBuffer.Pitch*(GameBackBuffer.Height -
+                                                              (RecordIconMargin + 1)));
+                        for(u32 Y = RecordIconMargin;
+                            Y < RecordIconMargin + RecordIconRadius*2;
+                            ++Y)
                         {
-                            *Pixel++ = 0xFFFF0000;
+                            u32 *Pixel = (u32 *)PixelRow + RecordIconMargin;
+                            for(u32 X = RecordIconMargin;
+                                X < RecordIconMargin + RecordIconRadius*2;
+                                ++X)
+                            {
+                                *Pixel++ = 0xFFFF0000;
+                            }
+                            PixelRow -= GameBackBuffer.Pitch;
                         }
-                        PixelRow -= GameBackBuffer.Pitch;
-                    }
+                    } break;
+
+                    case RecordingState_PlayingRecord:
+                    {
+                        u8 *PixelRow = ((u8 *)GameBackBuffer.Memory +
+                                        GameBackBuffer.Pitch*(GameBackBuffer.Height -
+                                                              (RecordIconMargin + 1)));
+                        for(u32 Y = RecordIconMargin;
+                            Y < RecordIconMargin + RecordIconRadius;
+                            ++Y)
+                        {
+                            u32 *Pixel = (u32 *)PixelRow + RecordIconMargin;
+                            u32 Width = (Y - RecordIconMargin)*2;
+                            for(u32 X = RecordIconMargin;
+                                X < RecordIconMargin + Width;
+                                ++X)
+                            {
+                                *Pixel++ = 0xFFFFFFFF;
+                            }
+                            PixelRow -= GameBackBuffer.Pitch;
+                        }
+                        for(u32 Y = RecordIconMargin + RecordIconRadius;
+                            Y < RecordIconMargin + 2*RecordIconRadius;
+                            ++Y)
+                        {
+                            u32 *Pixel = (u32 *)PixelRow + RecordIconMargin;
+                            u32 Width = (RecordIconMargin + 2*RecordIconRadius - Y)*2;
+                            for(u32 X = RecordIconMargin;
+                                X < RecordIconMargin + Width;
+                                ++X)
+                            {
+                                *Pixel++ = 0xFFFFFFFF;
+                            }
+                            PixelRow -= GameBackBuffer.Pitch;
+                        }
+                    } break;
                 }
 
                 HDC DeviceContext = GetDC(Window);
@@ -394,7 +596,10 @@ int WinMain(HINSTANCE Handle,
                 
                 QueryPerformanceCounter(&Counter);
                 char Text[256];
-                _snprintf_s(Text, sizeof(Text), "Update time: %fms\n",
+                _snprintf_s(Text, sizeof(Text), "Input time: %fms\n",
+                            (InputCounter.QuadPart - LastCounter.QuadPart)*ClocksToSeconds*1000);
+                OutputDebugStringA(Text);
+                _snprintf_s(Text, sizeof(Text), "Frame time: %fms\n",
                             (Counter.QuadPart - LastCounter.QuadPart)*ClocksToSeconds*1000);
                 OutputDebugStringA(Text);
                 LastCounter = Counter;
