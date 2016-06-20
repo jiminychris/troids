@@ -24,6 +24,9 @@ struct win32_backbuffer
 global_variable win32_backbuffer GlobalBackBuffer;
 global_variable b32 GlobalRunning;
 
+#define DIRECT_SOUND_CREATE(Name) HRESULT WINAPI Name(LPCGUID pcGuidDevice, LPDIRECTSOUND *ppDS, LPUNKNOWN pUnkOuter);
+typedef DIRECT_SOUND_CREATE(direct_sound_create);
+
 inline void
 CopyBackBufferToWindow(HDC DeviceContext, win32_backbuffer *BackBuffer)
 {
@@ -154,9 +157,18 @@ int WinMain(HINSTANCE Handle,
             LPDIRECTSOUNDBUFFER PrimarySoundBuffer = 0;
             LPDIRECTSOUNDBUFFER SecondarySoundBuffer = 0;
             game_sound_buffer GameSoundBuffer = {};
-            if(SUCCEEDED(DirectSoundCreate(0, &DirectSound, 0)))
+
+            HMODULE DSoundCode = LoadLibrary("dsound.dll");
+            direct_sound_create *DirectSoundCreate = 0;
+            if(DSoundCode)
             {
-                if(DS_OK == DirectSound->SetCooperativeLevel(Window, DSSCL_PRIORITY))
+                DirectSoundCreate =
+                    (direct_sound_create *)GetProcAddress(DSoundCode, "DirectSoundCreate");
+            }
+            
+            if(DirectSoundCreate && SUCCEEDED(DirectSoundCreate(0, &DirectSound, 0)))
+            {
+                if(SUCCEEDED(DirectSound->SetCooperativeLevel(Window, DSSCL_PRIORITY)))
                 {
                     // NOTE(chris): Primary and secondary buffer need the same format
                     WAVEFORMATEX WaveFormat = {};
@@ -255,6 +267,7 @@ int WinMain(HINSTANCE Handle,
             // TODO(chris): Allocate some memory for the game state.
             
             b32 Recording = false;
+            DWORD ByteToLock = 0;
             GlobalRunning = true;
             QueryPerformanceCounter(&LastCounter);
             while(GlobalRunning)
@@ -274,6 +287,15 @@ int WinMain(HINSTANCE Handle,
                                         Recording = !Recording;
 
                                         // TODO(chris): Recording inputs and game state.
+                                        // 1. Dump out all game state to file
+                                        // 2. Record game input every frame to same file
+                                        // File format will be
+                                        // struct
+                                        // {
+                                        //     game_state State;
+                                        //     game_input *GameInputs;
+                                        // }
+                                        // Loop around once game_input * reaches EOF
                                     } break;
                                 }
                             }
@@ -320,8 +342,6 @@ int WinMain(HINSTANCE Handle,
                     SecondarySoundBuffer->GetCurrentPosition(&PlayCursor, &WriteCursor);
                     DWORD BytesToWrite;
                     u32 SampleSize = GameSoundBuffer.Channels*GameSoundBuffer.BitsPerSample / 8;
-#if 1
-                    DWORD ByteToLock = GameSoundBuffer.RunningSampleCount*SampleSize;
                     if(PlayCursor > ByteToLock)
                     {
                         BytesToWrite = PlayCursor - ByteToLock;
@@ -332,28 +352,18 @@ int WinMain(HINSTANCE Handle,
                         BytesToWrite += PlayCursor;
                     }
                     BytesToWrite = Min(8192, BytesToWrite);
-#else
-                    DWORD ByteToLock = WriteCursor*SampleSize;
-                    if(PlayCursor > WriteCursor)
-                    {
-                        BytesToWrite = PlayCursor - WriteCursor;
-                    }
-                    else
-                    {
-                        BytesToWrite = GameSoundBuffer.Size - WriteCursor;
-                        BytesToWrite += PlayCursor;
-                    }
-                    BytesToWrite = 6400;
-#endif
-                    // TODO(chris): Fails forever with E_INVALIDARG once ByteToLock + BytesToWrite
-                    // is greater than the buffer size. WHYYYYYYYY???!?!?
-                    HRESULT LockResult = SecondarySoundBuffer->Lock(ByteToLock, BytesToWrite,
-                                                                    &GameSoundBuffer.Region1, (LPDWORD)&GameSoundBuffer.Region1Size,
-                                                                    &GameSoundBuffer.Region2, (LPDWORD)&GameSoundBuffer.Region2Size,
-                                                                    0);
+                    Assert(SUCCEEDED(SecondarySoundBuffer->Lock(ByteToLock, BytesToWrite,
+                                                                &GameSoundBuffer.Region1, (LPDWORD)&GameSoundBuffer.Region1Size,
+                                                                &GameSoundBuffer.Region2, (LPDWORD)&GameSoundBuffer.Region2Size,
+                                                                0)));
                     GameGetSoundSamples(&GameState, &GameInput, &GameSoundBuffer);
-                    Assert(SUCCEEDED(SecondarySoundBuffer->Unlock(&GameSoundBuffer.Region1, GameSoundBuffer.Region1Size,
-                                                                  &GameSoundBuffer.Region2, GameSoundBuffer.Region2Size)));
+                    Assert(SUCCEEDED(SecondarySoundBuffer->Unlock(GameSoundBuffer.Region1, GameSoundBuffer.Region1Size,
+                                                                  GameSoundBuffer.Region2, GameSoundBuffer.Region2Size)));
+                    ByteToLock += BytesToWrite;
+                    if(ByteToLock >= GameSoundBuffer.Size)
+                    {
+                        ByteToLock -= GameSoundBuffer.Size;
+                    }
                 }
 
                 if(Recording)

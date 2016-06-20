@@ -49,44 +49,48 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
 extern "C" GAME_GET_SOUND_SAMPLES(GameGetSoundSamples)
 {
-    r32 tSample = State->tSample;
+#if 0
+    r32 Frequency = 440.0f;
+    u32 SamplesPerPeriod = (u32)((r32)SoundBuffer->SamplesPerSecond / Frequency + 0.5f);
+    r32 HalfSamplesPerPeriod = 0.5f*SamplesPerPeriod;
     u32 SampleSize = SoundBuffer->Channels*SoundBuffer->BitsPerSample / 8;
-    r32 SecondsPerSample = 1.0f / SoundBuffer->SamplesPerSecond;
-    u32 TotalSampleCount = SoundBuffer->Size / SampleSize;
+    u32 BufferSizeInSamples = SoundBuffer->Size/SampleSize;
 
     // NOTE(chris): Assumes sample size
-    u16 *Sample = (u16 *)SoundBuffer->Region1;
+    s16 Amplitude = 400;
+    s16 *Sample = (s16 *)SoundBuffer->Region1;
     for(u32 SampleIndex = 0;
         SampleIndex < SoundBuffer->Region1Size;
         SampleIndex += SampleSize)
     {
-        s16 Value = (s16)((400.0f*Sin(Tau*440.0f*tSample)) + 0.5f);
-        tSample += SecondsPerSample;
+        s16 Value = (State->RunningSampleCount++ < HalfSamplesPerPeriod) ? Amplitude : -Amplitude;
+        if(State->RunningSampleCount == SamplesPerPeriod)
+        {
+            State->RunningSampleCount = 0;
+        }
         for(u8 Channel = 0;
             Channel < SoundBuffer->Channels;
             ++Channel)
         {
             *Sample++ = Value;
         }
-        ++SoundBuffer->RunningSampleCount;
     }
-    Sample = (u16 *)SoundBuffer->Region2;
+    Sample = (s16 *)SoundBuffer->Region2;
     for(u32 SampleIndex = 0;
         SampleIndex < SoundBuffer->Region2Size;
         SampleIndex += SampleSize)
     {
-        s16 Value = (s16)((400.0f*Sin(Tau*440.0f*tSample)) + 0.5f);
-        tSample += SecondsPerSample;
+        s16 Value = (State->RunningSampleCount++ < HalfSamplesPerPeriod) ? Amplitude : -Amplitude;
+        if(State->RunningSampleCount == SamplesPerPeriod)
+        {
+            State->RunningSampleCount = 0;
+        }
         for(u8 Channel = 0;
             Channel < SoundBuffer->Channels;
             ++Channel)
         {
             *Sample++ = Value;
         }
-        ++SoundBuffer->RunningSampleCount;
     }
-    if(SoundBuffer->RunningSampleCount >= TotalSampleCount)
-    {
-        SoundBuffer->RunningSampleCount -= TotalSampleCount;
-    }
+#endif
 }

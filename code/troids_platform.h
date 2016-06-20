@@ -27,7 +27,7 @@ typedef double r64;
 
 typedef int32_t b32;
 
-#define Assert(Expr) {if(!(Expr)) *((int *)0);}
+#define Assert(Expr) {if(!(Expr)) int A = *((int *)0);}
 
 u32 Min(u32 A, u32 B)
 {
@@ -44,7 +44,7 @@ u32 Min(u32 A, u32 B)
 struct game_state
 {
     r32 tSin;
-    r32 tSample;
+    u32 RunningSampleCount;
 };
 
 struct game_input
@@ -66,7 +66,6 @@ struct game_sound_buffer
     u16 Channels;
     u16 BitsPerSample;
     u32 Size;
-    u32 RunningSampleCount;
     u32 Region1Size;
     u32 Region2Size;
     void *Region1;
