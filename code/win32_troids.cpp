@@ -8,7 +8,7 @@
 
 #include <windows.h>
 #include <stdio.h>
-#include <dsound.h>
+#include <stddef.h>
 
 #include "troids_platform.h"
 
@@ -24,8 +24,28 @@ struct win32_backbuffer
 global_variable win32_backbuffer GlobalBackBuffer;
 global_variable b32 GlobalRunning;
 
+#include <dsound.h>
 #define DIRECT_SOUND_CREATE(Name) HRESULT WINAPI Name(LPCGUID pcGuidDevice, LPDIRECTSOUND *ppDS, LPUNKNOWN pUnkOuter);
 typedef DIRECT_SOUND_CREATE(direct_sound_create);
+
+#if 1
+#define DIRECTINPUT_VERSION 0x0800
+#include <dinput.h>
+const GUID IID_IDirectInput8A = {3212410928, 18490, 19874, {170, 153, 93, 100, 237, 54, 151, 0}};
+#define DIRECT_INPUT_CREATE(Name) HRESULT Name(HINSTANCE hinst, DWORD dwVersion, REFIID riidltf, LPVOID * ppvOut, LPUNKNOWN punkOuter);
+typedef DIRECT_INPUT_CREATE(direct_input_create);
+#else
+#include <hidsdi.h>
+#define GET_HID_GUID(Name) void Name(LPGUID HIDGUID);
+typedef GET_HID_GUID(get_hid_guid);
+#include <setupapi.h>
+#define GET_CLASS_DEVS(Name) HDEVINFO Name(GUID *ClassGuid, PCTSTR Enumerator, HWND hwndParent, DWORD Flags);
+typedef GET_CLASS_DEVS(get_class_devs);
+#define ENUM_DEVICE_INTERFACES(Name) BOOL Name(HDEVINFO DeviceInfoSet, PSP_DEVINFO_DATA DeviceInfoData, GUID *InterfaceClassGuid, DWORD MemberIndex, PSP_DEVICE_INTERFACE_DATA DeviceInterfaceData);
+typedef ENUM_DEVICE_INTERFACES(enum_device_interfaces);
+#define GET_DEVICE_INTERFACE_DETAIL(Name) BOOL Name(HDEVINFO DeviceInfoSet, PSP_DEVICE_INTERFACE_DATA DeviceInterfaceData, PSP_DEVICE_INTERFACE_DETAIL_DATA DeviceInterfaceDetailData, DWORD DeviceInterfaceDetailDataSize, PDWORD RequiredSize, PSP_DEVINFO_DATA DeviceInfoData);
+typedef GET_DEVICE_INTERFACE_DETAIL(get_device_interface_detail);
+#endif
 
 inline void
 CopyBackBufferToWindow(HDC DeviceContext, win32_backbuffer *BackBuffer)
@@ -88,7 +108,7 @@ enum recording_state
     RecordingState_PlayingRecord,
 };
 
-int WinMain(HINSTANCE Handle,
+int WinMain(HINSTANCE Instance,
             HINSTANCE PrevInstance,
             LPSTR     CommandLine,
             int       Show)
@@ -103,7 +123,7 @@ int WinMain(HINSTANCE Handle,
     WindowClass.lpfnWndProc = WindowProc;
     WindowClass.cbClsExtra = 0;
     WindowClass.cbWndExtra = 0;
-    WindowClass.hInstance = Handle;
+    WindowClass.hInstance = Instance;
     WindowClass.hIcon = 0;
     WindowClass.hCursor = 0;
     WindowClass.hbrBackground = 0;
@@ -124,7 +144,7 @@ int WinMain(HINSTANCE Handle,
                                       WindowHeight,
                                       0,
                                       0,
-                                      Handle,
+                                      Instance,
                                       0);
         if(Window)
         {
@@ -228,6 +248,75 @@ int WinMain(HINSTANCE Handle,
             {
                 // TODO(chris): Logging
             }
+
+#if 0
+            get_hid_guid *GetHIDGUID = 0;
+            get_class_devs *GetClassDevs = 0;
+            enum_device_interfaces *EnumDeviceInterfaces = 0;
+            get_device_interface_detail *GetDeviceInterfaceDetail = 0;
+
+            HMODULE HIDCode = LoadLibrary("hid.dll");
+            HMODULE SetupCode = LoadLibrary("setupapi.dll");
+
+            if(HIDCode)
+            {
+                GetHIDGUID = (get_hid_guid *)GetProcAddress(HIDCode, "HidD_GetHidGuid");
+            }
+            if(SetupCode)
+            {
+                GetClassDevs = (get_class_devs *)GetProcAddress(SetupCode, "SetupDiGetClassDevsA");
+                EnumDeviceInterfaces = (enum_device_interfaces *)GetProcAddress(SetupCode, "SetupDiEnumDeviceInterfaces");
+                GetDeviceInterfaceDetail = (get_device_interface_detail *)GetProcAddress(SetupCode, "SetupDiGetDeviceInterfaceDetailA");
+            }
+            if(GetHIDGUID && GetClassDevs && EnumDeviceInterfaces)
+            {
+                GUID HIDGUID;
+                GetHIDGUID(&HIDGUID);
+                HDEVINFO DeviceInfo = GetClassDevs(&HIDGUID, 0, 0, DIGCF_PRESENT|DIGCF_DEVICEINTERFACE);
+                DWORD InterfaceIndex = 0;
+                SP_DEVICE_INTERFACE_DATA DeviceInterfaceData = {};
+                DeviceInterfaceData.cbSize = sizeof(DeviceInterfaceData);
+                while(EnumDeviceInterfaces(DeviceInfo, 0, &HIDGUID,
+                                           InterfaceIndex++, &DeviceInterfaceData))
+                {
+                    DWORD BufferSize;
+                    GetDeviceInterfaceDetail(DeviceInfo, &DeviceInterfaceData, 0, 0, &BufferSize, 0);
+                    DWORD TotalBufferSize = sizeof(u32) + BufferSize;
+                    SP_DEVICE_INTERFACE_DETAIL_DATA *DeviceInterfaceDetailData =
+                        (SP_DEVICE_INTERFACE_DETAIL_DATA *)VirtualAlloc(0, TotalBufferSize,
+                                                                        MEM_COMMIT|MEM_RESERVE,
+                                                                        PAGE_READWRITE);
+                    DeviceInterfaceDetailData->cbSize = sizeof(*DeviceInterfaceDetailData);
+                    if(GetDeviceInterfaceDetail(DeviceInfo, &DeviceInterfaceData,
+                                                DeviceInterfaceDetailData,
+                                                TotalBufferSize,
+                                                0, 0))
+                    {
+                        HANDLE Device = CreateFile(DeviceInterfaceDetailData->DevicePath,
+                                                   GENERIC_READ|GENERIC_WRITE,
+                                                   FILE_SHARE_READ|FILE_SHARE_WRITE,
+                                                   0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+                        int A = 0;
+                    }
+                }
+            }
+#else
+            direct_input_create *DirectInputCreate = 0;
+            HMODULE DInputCode = LoadLibrary("dinput8.dll");
+            if(DInputCode)
+            {
+                DirectInputCreate = (direct_input_create *)GetProcAddress(DInputCode, "DirectInput8Create");
+            }
+            if(DirectInputCreate)
+            {
+                LPDIRECTINPUT8 DirectInput;
+                HRESULT DInputCreateResult = DirectInputCreate(Instance, DIRECTINPUT_VERSION,
+                                                               IID_IDirectInput8A,
+                                                               (void **)&DirectInput, 0);
+                int A = 0;
+
+            }
+#endif
 
             game_update_and_render *GameUpdateAndRender = 0;
             game_get_sound_samples *GameGetSoundSamples = 0;
