@@ -29,6 +29,7 @@ typedef int32_t b32;
 
 #define Assert(Expr) {if(!(Expr)) int A = *((int *)0);}
 #define ArrayCount(Array) (sizeof(Array) / sizeof(Array[0]))
+#define OffsetOf(type, Member) ((size_t)&(((type *)0)->Member))
 
 u32 Min(u32 A, u32 B)
 {
@@ -60,15 +61,19 @@ struct game_input
 {
     r32 dtForFrame;
 
+    r32 LeftStickX;
+    r32 LeftStickY;
+    r32 RightStickX;
+    r32 RightStickY;
     union
     {
         game_button Buttons[4];
         struct
         {
-            game_button MoveUp;
-            game_button MoveLeft;
-            game_button MoveDown;
-            game_button MoveRight;
+            game_button ActionUp;
+            game_button ActionLeft;
+            game_button ActionDown;
+            game_button ActionRight;
         };
     };
 };

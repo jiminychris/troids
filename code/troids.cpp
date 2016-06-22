@@ -14,22 +14,8 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     u8 *PixelRow = (u8 *)BackBuffer->Memory;
     r32 BlendMultiplier = 1.0f / (r32)(BackBuffer->Width - 1);
 
-    if(Input->MoveRight.EndedDown)
-    {
-        State->RBase += Input->dtForFrame;
-    }
-    if(Input->MoveLeft.EndedDown)
-    {
-        State->RBase -= Input->dtForFrame;
-    }
-    if(Input->MoveUp.EndedDown)
-    {
-        State->BBase += Input->dtForFrame;
-    }
-    if(Input->MoveDown.EndedDown)
-    {
-        State->BBase -= Input->dtForFrame;
-    }
+    State->RBase += Input->dtForFrame*Input->LeftStickX*0.1f;
+    State->BBase += Input->dtForFrame*Input->LeftStickY*0.1f;
 
     // TODO(chris): Clamp function
     if(State->RBase < 0.0f)

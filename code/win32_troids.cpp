@@ -9,6 +9,7 @@
 #include <windows.h>
 #include <stdio.h>
 #include <stddef.h>
+#include <guiddef.h>
 
 #include "troids_platform.h"
 
@@ -28,10 +29,16 @@ global_variable b32 GlobalRunning;
 #define DIRECT_SOUND_CREATE(Name) HRESULT WINAPI Name(LPCGUID pcGuidDevice, LPDIRECTSOUND *ppDS, LPUNKNOWN pUnkOuter);
 typedef DIRECT_SOUND_CREATE(direct_sound_create);
 
+#define CREATE_GUID(Name, x, y, z, a, b, c, d, e, f, g, h) const GUID Name = {x, y, z, {a, b, c, d, e, f, g, h}}
 #if 1
 #define DIRECTINPUT_VERSION 0x0800
 #include <dinput.h>
-const GUID IID_IDirectInput8A = {3212410928, 18490, 19874, {170, 153, 93, 100, 237, 54, 151, 0}};
+CREATE_GUID(Dualshock4GUID, 0x05c4054c,0x0,0x0,0x0,0x0,0x50,0x49,0x44,0x56,0x49,0x44);
+CREATE_GUID(IID_IDirectInput8A, 0xBF798030,0x483A,0x4DA2,0xAA,0x99,0x5D,0x64,0xED,0x36,0x97,0x00);
+CREATE_GUID(GUID_Joystick, 0x6F1D2B70,0xD5A0,0x11CF,0xBF,0xC7,0x44,0x45,0x53,0x54,0x00,0x00);
+CREATE_GUID(GUID_XAxis, 0xA36D02E0,0xC9F3,0x11CF,0xBF,0xC7,0x44,0x45,0x53,0x54,0x00,0x00);
+CREATE_GUID(GUID_YAxis, 0xA36D02E1,0xC9F3,0x11CF,0xBF,0xC7,0x44,0x45,0x53,0x54,0x00,0x00);
+CREATE_GUID(GUID_ZAxis, 0xA36D02E2,0xC9F3,0x11CF,0xBF,0xC7,0x44,0x45,0x53,0x54,0x00,0x00);
 #define DIRECT_INPUT_CREATE(Name) HRESULT Name(HINSTANCE hinst, DWORD dwVersion, REFIID riidltf, LPVOID * ppvOut, LPUNKNOWN punkOuter);
 typedef DIRECT_INPUT_CREATE(direct_input_create);
 #else
@@ -106,6 +113,18 @@ enum recording_state
     RecordingState_None,
     RecordingState_Recording,
     RecordingState_PlayingRecord,
+};
+
+struct dualshock_4_data
+{
+    s16 LeftStickX;
+    s16 LeftStickY;
+    s16 RightStickX;
+    s16 RightStickY;
+    s16 LeftTrigger;
+    s16 RightTrigger;
+    u32 DPad[4];
+    u8 Buttons[14];
 };
 
 int WinMain(HINSTANCE Instance,
@@ -303,6 +322,7 @@ int WinMain(HINSTANCE Instance,
 #else
             direct_input_create *DirectInputCreate = 0;
             HMODULE DInputCode = LoadLibrary("dinput8.dll");
+            LPDIRECTINPUTDEVICE8A Controller = 0;
             if(DInputCode)
             {
                 DirectInputCreate = (direct_input_create *)GetProcAddress(DInputCode, "DirectInput8Create");
@@ -310,10 +330,44 @@ int WinMain(HINSTANCE Instance,
             if(DirectInputCreate)
             {
                 LPDIRECTINPUT8 DirectInput;
-                HRESULT DInputCreateResult = DirectInputCreate(Instance, DIRECTINPUT_VERSION,
-                                                               IID_IDirectInput8A,
-                                                               (void **)&DirectInput, 0);
-                int A = 0;
+                if(SUCCEEDED(DirectInputCreate(Instance, DIRECTINPUT_VERSION,
+                                               IID_IDirectInput8A,
+                                               (void **)&DirectInput, 0)))
+                {
+                    LPDIRECTINPUTDEVICE8A Device;
+                    if(SUCCEEDED(DirectInput->CreateDevice(GUID_Joystick, &Device, 0)))
+                    {
+                        DIDEVICEINSTANCE DeviceInfo;
+                        DeviceInfo.dwSize = sizeof(DeviceInfo);
+                        if(SUCCEEDED(Device->GetDeviceInfo(&DeviceInfo)))
+                        {
+                            if(IsEqualGUID(Dualshock4GUID, DeviceInfo.guidProduct))
+                            {
+                                DIOBJECTDATAFORMAT Dualshock4ObjectDataFormat[] =
+                                    {{&GUID_XAxis, OffsetOf(dualshock_4_data, LeftStickX), DIDFT_AXIS|DIDFT_ANYINSTANCE, 0},
+//                                     {&GUID_YAxis, OffsetOf(dualshock_4_data, LeftStickY), DIDFT_AXIS|DIDFT_ANYINSTANCE, 0},
+//                                     {&GUID_ZAxis, OffsetOf(dualshock_4_data, RightStickX), DIDFT_AXIS|DIDFT_ANYINSTANCE, 0},
+                                    };
+                                DIDATAFORMAT Dualshock4DataFormat;
+                                Dualshock4DataFormat.dwSize = sizeof(DIDATAFORMAT);
+                                Dualshock4DataFormat.dwObjSize = sizeof(DIOBJECTDATAFORMAT);
+                                Dualshock4DataFormat.dwFlags = DIDF_ABSAXIS;
+                                Dualshock4DataFormat.dwDataSize = sizeof(dualshock_4_data);
+                                Dualshock4DataFormat.dwNumObjs = ArrayCount(Dualshock4ObjectDataFormat);
+                                Dualshock4DataFormat.rgodf = Dualshock4ObjectDataFormat;
+                                HRESULT DataFormatResult = Device->SetDataFormat(&Dualshock4DataFormat);
+                                if(SUCCEEDED(DataFormatResult))
+                                {
+                                    HRESULT Result = Device->Acquire();
+                                    if(SUCCEEDED(Result))
+                                    {
+                                        Controller = Device;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
 
             }
 #endif
@@ -391,6 +445,42 @@ int WinMain(HINSTANCE Instance,
                     NewButton->EndedDown = OldButton->EndedDown;
                 }
                 NewInput->dtForFrame = dtForFrame;
+
+                if(Controller)
+                {
+                    dualshock_4_data Dualshock4Data;
+                    HRESULT DataFetchResult = Controller->GetDeviceState(sizeof(Dualshock4Data), &Dualshock4Data);
+                    if(SUCCEEDED(DataFetchResult))
+                    {
+                        Dualshock4Data.LeftStickY = 0xFFFF - Dualshock4Data.LeftStickY;
+                        r32 Center = 0xFFFF / 2.0f;
+                        s32 Deadzone = 1500;
+                        NewInput->LeftStickX = 0.0f;
+                        if(Dualshock4Data.LeftStickX < (Center - Deadzone))
+                        {
+                            NewInput->LeftStickX = (r32)(-(Center - Deadzone) + Dualshock4Data.LeftStickX) / (r32)(Center - Deadzone);
+                        }
+                        else if(Dualshock4Data.LeftStickX > (Center + Deadzone))
+                        {
+                            NewInput->LeftStickX = (r32)(Dualshock4Data.LeftStickX - Center - Deadzone) / (r32)(Center - Deadzone);
+                        }
+
+                        NewInput->LeftStickY = 0.0f;
+                        if(Dualshock4Data.LeftStickY < (Center - Deadzone))
+                        {
+                            NewInput->LeftStickY = (r32)(-(Center - Deadzone) + Dualshock4Data.LeftStickY) / (r32)(Center - Deadzone);
+                        }
+                        else if(Dualshock4Data.LeftStickY > (Center + Deadzone))
+                        {
+                            NewInput->LeftStickY = (r32)(Dualshock4Data.LeftStickY - Center - Deadzone) / (r32)(Center - Deadzone);
+                        }
+
+//                        Assert(NewInput->LeftStickX >= -1.0f);
+//                        Assert(NewInput->LeftStickX <= 1.0f);
+//                        Assert(NewInput->LeftStickY >= -1.0f);
+//                        Assert(NewInput->LeftStickY <= 1.0f);
+                    }
+                }
                 while(PeekMessageA(&Message, Window, 0, 0, PM_REMOVE))
                 {
                     switch(Message.message)
@@ -451,29 +541,51 @@ int WinMain(HINSTANCE Instance,
                                     } break;
 
                                     // TODO(chris): Clean up
+                                    case VK_UP:
+                                    {
+                                        ++NewInput->ActionUp.HalfTransitionCount;
+                                        NewInput->ActionUp.EndedDown = true;
+                                    } break;
+
+                                    case VK_LEFT:
+                                    {
+                                        ++NewInput->ActionLeft.HalfTransitionCount;
+                                        NewInput->ActionLeft.EndedDown = true;
+                                    } break;
+
+                                    case VK_DOWN:
+                                    {
+                                        ++NewInput->ActionDown.HalfTransitionCount;
+                                        NewInput->ActionDown.EndedDown = true;
+                                    } break;
+
+                                    case VK_RIGHT:
+                                    {
+                                        ++NewInput->ActionRight.HalfTransitionCount;
+                                        NewInput->ActionRight.EndedDown = true;
+                                    } break;
+
+#if 0
                                     case 'W':
                                     {
-                                        ++NewInput->MoveUp.HalfTransitionCount;
-                                        NewInput->MoveUp.EndedDown = true;
+                                        NewInput->LeftStickY += 1.0f;
                                     } break;
 
                                     case 'A':
                                     {
-                                        ++NewInput->MoveLeft.HalfTransitionCount;
-                                        NewInput->MoveLeft.EndedDown = true;
+                                        NewInput->LeftStickX -= 1.0f;
                                     } break;
 
                                     case 'S':
                                     {
-                                        ++NewInput->MoveDown.HalfTransitionCount;
-                                        NewInput->MoveDown.EndedDown = true;
+                                        NewInput->LeftStickY -= 1.0f;
                                     } break;
 
                                     case 'D':
                                     {
-                                        ++NewInput->MoveRight.HalfTransitionCount;
-                                        NewInput->MoveRight.EndedDown = true;
+                                        NewInput->LeftStickX += 1.0f;
                                     } break;
+#endif
                                 }
                             }
                         } break;
@@ -485,28 +597,28 @@ int WinMain(HINSTANCE Instance,
                                 switch(Message.wParam)
                                 {
                                     // TODO(chris): Clean up
-                                    case 'W':
+                                    case VK_UP:
                                     {
-                                        ++NewInput->MoveUp.HalfTransitionCount;
-                                        NewInput->MoveUp.EndedDown = false;
+                                        ++NewInput->ActionUp.HalfTransitionCount;
+                                        NewInput->ActionUp.EndedDown = false;
                                     } break;
 
-                                    case 'A':
+                                    case VK_LEFT:
                                     {
-                                        ++NewInput->MoveLeft.HalfTransitionCount;
-                                        NewInput->MoveLeft.EndedDown = false;
+                                        ++NewInput->ActionLeft.HalfTransitionCount;
+                                        NewInput->ActionLeft.EndedDown = false;
                                     } break;
 
-                                    case 'S':
+                                    case VK_DOWN:
                                     {
-                                        ++NewInput->MoveDown.HalfTransitionCount;
-                                        NewInput->MoveDown.EndedDown = false;
+                                        ++NewInput->ActionDown.HalfTransitionCount;
+                                        NewInput->ActionDown.EndedDown = false;
                                     } break;
 
-                                    case 'D':
+                                    case VK_RIGHT:
                                     {
-                                        ++NewInput->MoveRight.HalfTransitionCount;
-                                        NewInput->MoveRight.EndedDown = false;
+                                        ++NewInput->ActionRight.HalfTransitionCount;
+                                        NewInput->ActionRight.EndedDown = false;
                                     } break;
                                 }
                             }
