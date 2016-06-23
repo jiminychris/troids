@@ -28,6 +28,7 @@ typedef double r64;
 typedef int32_t b32;
 
 #define Assert(Expr) {if(!(Expr)) int A = *((int *)0);}
+#define InvalidDefaultCase default: Assert(!"Invalid default case"); break;
 #define ArrayCount(Array) (sizeof(Array) / sizeof(Array[0]))
 #define OffsetOf(type, Member) ((size_t)&(((type *)0)->Member))
 
@@ -57,25 +58,43 @@ struct game_button
     u32 HalfTransitionCount;
 };
 
-struct game_input
+struct game_controller
 {
-    r32 dtForFrame;
-
     r32 LeftStickX;
     r32 LeftStickY;
     r32 RightStickX;
     r32 RightStickY;
+    r32 LeftTrigger;
+    r32 RightTrigger;
     union
     {
-        game_button Buttons[4];
+        game_button Buttons[14];
         struct
         {
             game_button ActionUp;
             game_button ActionLeft;
             game_button ActionDown;
             game_button ActionRight;
+            game_button LeftShoulder1;
+            game_button RightShoulder1;
+            game_button LeftShoulder2;
+            game_button RightShoulder2;
+            game_button Select;
+            game_button Start;
+            game_button LeftClick;
+            game_button RightClick;
+            game_button Power;
+            game_button CenterClick;
         };
     };
+};
+
+struct game_input
+{
+    r32 dtForFrame;
+
+    game_controller Keyboard;
+    game_controller Controllers[4];
 };
 
 struct game_backbuffer

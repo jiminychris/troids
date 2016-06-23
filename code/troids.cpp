@@ -14,26 +14,39 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     u8 *PixelRow = (u8 *)BackBuffer->Memory;
     r32 BlendMultiplier = 1.0f / (r32)(BackBuffer->Width - 1);
 
-    State->RBase += Input->dtForFrame*Input->LeftStickX*0.1f;
-    State->BBase += Input->dtForFrame*Input->LeftStickY*0.1f;
+#if 1
+    game_controller *Controller = Input->Controllers + 0;
+    game_controller *Keyboard = &Input->Keyboard;
+#else
+    game_controller *Controller = &Input->Keyboard;
+#endif
 
-    // TODO(chris): Clamp function
-    if(State->RBase < 0.0f)
+    r32 LeftStickX;
+    r32 LeftStickY;
+    if(Keyboard->LeftStickX)
     {
-        State->RBase = 0.0f;
+        LeftStickX = Keyboard->LeftStickX;
     }
-    if(State->RBase > 1.0f)
+    else
     {
-        State->RBase = 1.0f;
+        LeftStickX = Controller->LeftStickX;
     }
-    if(State->BBase < 0.0f)
+    if(Keyboard->LeftStickY)
     {
-        State->BBase = 0.0f;
+        LeftStickY = Keyboard->LeftStickY;
     }
-    if(State->BBase > 1.0f)
+    else
     {
-        State->BBase = 1.0f;
+        LeftStickY = Controller->LeftStickY;
     }
+    State->RBase += Input->dtForFrame*LeftStickX*0.1f;
+    State->GBase += Input->dtForFrame*LeftStickY*0.1f;
+    State->BBase -= Input->dtForFrame*Controller->LeftTrigger*0.1f;
+    State->BBase += Input->dtForFrame*Controller->RightTrigger*0.1f;
+
+    State->RBase = Clamp01(State->RBase);
+    State->GBase = Clamp01(State->GBase);
+    State->BBase = Clamp01(State->BBase);
 
     u8 R = (u8)(State->RBase*255.0f + 0.5f);
     u8 G = (u8)(State->GBase*255.0f + 0.5f);
