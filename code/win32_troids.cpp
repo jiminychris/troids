@@ -13,6 +13,16 @@
 
 #include "troids_platform.h"
 
+inline u32
+Minimum(u32 A, u32 B)
+{
+    if(B < A)
+    {
+        A = B;
+    }
+    return(A);
+}
+
 struct win32_backbuffer
 {
     s32 Width;
@@ -175,6 +185,37 @@ ProcessKeyboardMessage(r32 *AnalogInput, b32 WentDown, r32 Value)
     *AnalogInput += Value;
 }
 
+internal read_file_result
+Win32ReadFile(char *FileName)
+{
+    read_file_result Result = {};
+    
+    HANDLE File = CreateFile(FileName,
+                             GENERIC_READ,
+                             0, 0,
+                             OPEN_EXISTING,
+                             FILE_ATTRIBUTE_NORMAL, 0);
+    if(INVALID_HANDLE_VALUE == File)
+    {
+        // TODO(chris): Logging
+    }
+    else
+    {
+        Result.ContentsSize = GetFileSize(File, 0);
+        Result.Contents = VirtualAlloc(0, Result.ContentsSize,
+                                       MEM_COMMIT|MEM_RESERVE,
+                                       PAGE_READWRITE);
+        DWORD BytesRead;
+        BOOL ReadFileResult = ReadFile(File, Result.Contents,
+                                       (u32)Result.ContentsSize,
+                                       &BytesRead, 0);
+
+        Assert(ReadFileResult);
+    }
+
+    return(Result);
+}
+
 int WinMain(HINSTANCE Instance,
             HINSTANCE PrevInstance,
             LPSTR     CommandLine,
@@ -211,7 +252,7 @@ int WinMain(HINSTANCE Instance,
                                       WindowHeight,
                                       0,
                                       0,
-                                      Instance,
+                                      0,
                                       0);
         if(Window)
         {
@@ -234,11 +275,16 @@ int WinMain(HINSTANCE Instance,
             CreateDIBSection(DeviceContext, &GlobalBackBuffer.Info, DIB_RGB_COLORS,
                              &GlobalBackBuffer.Memory, 0, 0);
 
-            game_state GameState;
-            GameState.RBase = 0.0f;
-            GameState.GBase = 0.0f;
-            GameState.BBase = 0.0f;
-            GameState.RunningSampleCount = 0;
+            game_memory GameMemory;
+            GameMemory.PermanentMemorySize = Megabytes(256);
+            GameMemory.TemporaryMemorySize = Gigabytes(2);
+            u64 TotalMemorySize = GameMemory.PermanentMemorySize + GameMemory.TemporaryMemorySize;
+            GameMemory.PermanentMemory = VirtualAlloc(0, TotalMemorySize,
+                                                      MEM_COMMIT|MEM_RESERVE,
+                                                      PAGE_READWRITE);
+            GameMemory.TemporaryMemory = (u8 *)GameMemory.PermanentMemory + GameMemory.PermanentMemorySize;
+
+            GameMemory.PlatformReadFile = Win32ReadFile;
             
             // TODO(chris): Query monitor refresh rate
             r32 dtForFrame = 1.0f / 60.0f;
@@ -473,11 +519,24 @@ int WinMain(HINSTANCE Instance,
                 // TODO(chris): Logging
             }
 
-            r64 ClocksToSeconds = 0.0;
+            TIMECAPS TimeCaps;
+            timeGetDevCaps(&TimeCaps, sizeof(TimeCaps));
+            if(TimeCaps.wPeriodMin != 1)
+            {
+                Assert(!"Couldn't fix timer granularity");
+                // TODO(chris): Logging
+            }
+            if(TIMERR_NOCANDO == timeBeginPeriod(TimeCaps.wPeriodMin))
+            {
+                Assert(!"Couldn't fix timer granularity");
+                // TODO(chris): Logging
+            }
+
+            r32 ClocksToSeconds = 0.0f;
             LARGE_INTEGER Freq, LastCounter, Counter;
             if(QueryPerformanceFrequency(&Freq))
             {
-                ClocksToSeconds = 1.0 / Freq.QuadPart;
+                ClocksToSeconds = 1.0f / Freq.QuadPart;
             }
             else
             {
@@ -499,6 +558,7 @@ int WinMain(HINSTANCE Instance,
             game_input GameInput[3] = {};
             game_input *OldInput = GameInput;
             game_input *NewInput = GameInput + 1;
+
             QueryPerformanceCounter(&LastCounter);
             while(GlobalRunning)
             {
@@ -591,10 +651,10 @@ int WinMain(HINSTANCE Instance,
                                                     {
                                                         DWORD BytesWritten;
                                                         OVERLAPPED Overlapped = {};
-                                                        BOOL Result = WriteFile(RecordFile, &GameState,
-                                                                                sizeof(GameState),
+                                                        BOOL Result = WriteFile(RecordFile, &GameMemory,
+                                                                                sizeof(GameMemory),
                                                                                 &BytesWritten, &Overlapped);
-                                                        Assert(Result && (BytesWritten == sizeof(GameState)));
+                                                        Assert(Result && (BytesWritten == sizeof(GameMemory)));
                                                     }
                                                 } break;
 
@@ -605,10 +665,10 @@ int WinMain(HINSTANCE Instance,
                                                     {
                                                         DWORD BytesRead;
                                                         OVERLAPPED Overlapped = {};
-                                                        BOOL Result = ReadFile(RecordFile, &GameState,
-                                                                               sizeof(GameState),
+                                                        BOOL Result = ReadFile(RecordFile, &GameMemory,
+                                                                               sizeof(GameMemory),
                                                                                &BytesRead, &Overlapped);
-                                                        Assert(Result && (BytesRead == sizeof(GameState)));
+                                                        Assert(Result && (BytesRead == sizeof(GameMemory)));
                                                     }
                                                 } break;
 
@@ -815,10 +875,10 @@ int WinMain(HINSTANCE Instance,
                         if(Result && (BytesRead == 0))
                         {
                             OVERLAPPED Overlapped = {};
-                            Result = ReadFile(RecordFile, &GameState,
-                                              sizeof(GameState),
+                            Result = ReadFile(RecordFile, &GameMemory,
+                                              sizeof(GameMemory),
                                               &BytesRead, &Overlapped);
-                            Assert(Result && (BytesRead == sizeof(GameState)));
+                            Assert(Result && (BytesRead == sizeof(GameMemory)));
                             Result = ReadFile(RecordFile, NewInput,
                                               sizeof(*NewInput),
                                               &BytesRead, 0);
@@ -858,7 +918,7 @@ int WinMain(HINSTANCE Instance,
 
                 if(GameUpdateAndRender)
                 {
-                    GameUpdateAndRender(&GameState, NewInput, &GameBackBuffer);
+                    GameUpdateAndRender(&GameMemory, NewInput, &GameBackBuffer);
                 }
                 if(GameGetSoundSamples && SecondarySoundBuffer)
                 {
@@ -876,12 +936,12 @@ int WinMain(HINSTANCE Instance,
                         BytesToWrite = GameSoundBuffer.Size - ByteToLock;
                         BytesToWrite += PlayCursor;
                     }
-                    BytesToWrite = Min(8192, BytesToWrite);
+                    BytesToWrite = Minimum(8192, BytesToWrite);
                     Assert(SUCCEEDED(SecondarySoundBuffer->Lock(ByteToLock, BytesToWrite,
                                                                 &GameSoundBuffer.Region1, (LPDWORD)&GameSoundBuffer.Region1Size,
                                                                 &GameSoundBuffer.Region2, (LPDWORD)&GameSoundBuffer.Region2Size,
                                                                 0)));
-                    GameGetSoundSamples(&GameState, GameInput, &GameSoundBuffer);
+                    GameGetSoundSamples(&GameMemory, GameInput, &GameSoundBuffer);
                     Assert(SUCCEEDED(SecondarySoundBuffer->Unlock(GameSoundBuffer.Region1, GameSoundBuffer.Region1Size,
                                                                   GameSoundBuffer.Region2, GameSoundBuffer.Region2Size)));
                     ByteToLock += BytesToWrite;
@@ -955,14 +1015,36 @@ int WinMain(HINSTANCE Instance,
                 HDC DeviceContext = GetDC(Window);
                 CopyBackBufferToWindow(DeviceContext, &GlobalBackBuffer);
                 ReleaseDC(Window, DeviceContext);
-                
-                QueryPerformanceCounter(&Counter);
+
                 char Text[256];
+
+                QueryPerformanceCounter(&Counter);
+                r32 ElapsedSeconds = (Counter.QuadPart - LastCounter.QuadPart)*ClocksToSeconds;
+                if(ElapsedSeconds < dtForFrame)
+                {
+                    s32 MSToSleep  = (u32)((dtForFrame - ElapsedSeconds)*1000.0f) - 1;
+                    if(MSToSleep > 0)
+                    {
+                        Sleep(MSToSleep);
+                    }
+                    do
+                    {
+                        // TODO(chris): This can be way faster if I can get rdtsc to work.
+                        QueryPerformanceCounter(&Counter);
+                        ElapsedSeconds = (Counter.QuadPart - LastCounter.QuadPart)*ClocksToSeconds;
+                    } while (ElapsedSeconds < dtForFrame);
+                }
+                else if (ElapsedSeconds > dtForFrame)
+                {
+                    Assert(!"Missed framerate!");
+                }
+                
                 _snprintf_s(Text, sizeof(Text), "Frame time: %fms\n",
-                            (Counter.QuadPart - LastCounter.QuadPart)*ClocksToSeconds*1000);
+                            ElapsedSeconds*1000);
                 OutputDebugStringA(Text);
                 LastCounter = Counter;
             }
+            timeEndPeriod(TimeCaps.wPeriodMin);
         }
         else
         {

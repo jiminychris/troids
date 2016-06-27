@@ -9,8 +9,45 @@
 #include "troids_platform.h"
 #include "troids_math.h"
 
+platform_read_file *PlatformReadFile;
+
+internal loaded_bitmap
+LoadBitmap(char *FileName)
+{
+    loaded_bitmap Result = {};
+    read_file_result ReadResult = PlatformReadFile(FileName);
+    bitmap_header *BMPHeader = (bitmap_header *)ReadResult.Contents;
+
+    Assert(BMPHeader->FileType == (('B' << 0) | ('M' << 8)));
+    Assert(BMPHeader->FileSize == ReadResult.ContentsSize);
+    Assert(BMPHeader->Reserved1 == 0);
+    Assert(BMPHeader->Reserved2 == 0);
+    // TODO(chris): Left off here!
+
+    return(Result);
+}
+
 extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 {
+    game_state *State = (game_state *)GameMemory->PermanentMemory;
+    if(!State->IsInitialized)
+    {
+        PlatformReadFile = GameMemory->PlatformReadFile;
+        
+        State->RBase = 0.0f;
+        State->GBase = 0.0f;
+        State->BBase = 0.0f;
+        State->RunningSampleCount = 0;
+        State->IsInitialized = true;
+
+        State->Ship = LoadBitmap("ship.bmp");
+    }
+
+    transient_state *TranState = (transient_state *)GameMemory->PermanentMemory;
+    if(!TranState->IsInitialized)
+    {
+        TranState->IsInitialized = true;
+    }
     u8 *PixelRow = (u8 *)BackBuffer->Memory;
     r32 BlendMultiplier = 1.0f / (r32)(BackBuffer->Width - 1);
 
@@ -39,10 +76,10 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     {
         LeftStickY = Controller->LeftStickY;
     }
-    State->RBase += Input->dtForFrame*LeftStickX*0.1f;
-    State->GBase += Input->dtForFrame*LeftStickY*0.1f;
-    State->BBase -= Input->dtForFrame*Controller->LeftTrigger*0.1f;
-    State->BBase += Input->dtForFrame*Controller->RightTrigger*0.1f;
+    State->RBase += Input->dtForFrame*LeftStickX;
+    State->GBase += Input->dtForFrame*LeftStickY;
+    State->BBase -= Input->dtForFrame*Controller->LeftTrigger;
+    State->BBase += Input->dtForFrame*Controller->RightTrigger;
 
     State->RBase = Clamp01(State->RBase);
     State->GBase = Clamp01(State->GBase);

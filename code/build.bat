@@ -6,8 +6,7 @@ pushd w:\build
 set CommonCompilerFlags=/Od /Zi /fp:fast /W4 /WX /nologo /wd4100 /wd4065 /wd4189 /wd4201
 set CommonLinkerFlags=/DEBUG /WX /NOLOGO /OPT:REF
 
-cl %CommonCompilerFlags% w:\troids\code\win32_troids.cpp /link %CommonLinkerFlags% user32.lib gdi32.lib
-REM dxguid.lib dinput8.lib
+cl %CommonCompilerFlags% w:\troids\code\win32_troids.cpp /link %CommonLinkerFlags% user32.lib gdi32.lib winmm.lib
 if exist troids.dll move troids.dll temp.dll 1> nul
 cl %CommonCompilerFlags% /LD w:\troids\code\troids.cpp /link %CommonLinkerFlags% /EXPORT:GameUpdateAndRender /EXPORT:GameGetSoundSamples /PDB:troids_%RANDOM%.pdb
 

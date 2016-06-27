@@ -32,24 +32,65 @@ typedef int32_t b32;
 #define ArrayCount(Array) (sizeof(Array) / sizeof(Array[0]))
 #define OffsetOf(type, Member) ((size_t)&(((type *)0)->Member))
 
-u32 Min(u32 A, u32 B)
-{
-    u32 Result = B;
-    
-    if(A < B)
-    {
-        Result = A;
-    }
+#define Kilobytes(Value) ((u64)(Value)*1024)
+#define Megabytes(Value) (Kilobytes(Value)*1024)
+#define Gigabytes(Value) (Megabytes(Value)*1024)
+#define Terabytes(Value) (Gigabytes(Value)*1024)
 
-    return(Result);
-}
+struct read_file_result
+{
+    u64 ContentsSize;
+    void *Contents;
+};
+#define PLATFORM_READ_FILE(Name) read_file_result Name(char *FileName)
+typedef PLATFORM_READ_FILE(platform_read_file);
+
+struct game_memory
+{
+    u64 PermanentMemorySize;
+    void *PermanentMemory;
+
+    u64 TemporaryMemorySize;
+    void *TemporaryMemory;
+
+    platform_read_file *PlatformReadFile;
+};
+
+#pragma pack(push, 1)
+struct bitmap_header
+{
+    u16 FileType;     /* File type, always 4D42h ("BM") */
+    u32 FileSize;     /* Size of the file in bytes */
+    u16 Reserved1;    /* Always 0 */
+    u16 Reserved2;    /* Always 0 */
+    u32 BitmapOffset; /* Starting position of image data in bytes */
+};
+#pragma pack(pop)
+
+struct loaded_bitmap
+{
+    s32 Height;
+    r32 WidthOverHeight;
+    r32 Align;
+    s32 Pitch;
+    void *Memory;
+};
 
 struct game_state
 {
+    b32 IsInitialized;
+    
     r32 RBase;
     r32 GBase;
     r32 BBase;
     u32 RunningSampleCount;
+
+    loaded_bitmap Ship;
+};
+
+struct transient_state
+{
+    b32 IsInitialized;
 };
 
 struct game_button
@@ -117,10 +158,10 @@ struct game_sound_buffer
     void *Region2;
 };
 
-#define GAME_UPDATE_AND_RENDER(Name) void Name(game_state *State, game_input *Input, game_backbuffer *BackBuffer)
+#define GAME_UPDATE_AND_RENDER(Name) void Name(game_memory *GameMemory, game_input *Input, game_backbuffer *BackBuffer)
 typedef GAME_UPDATE_AND_RENDER(game_update_and_render);
 
-#define GAME_GET_SOUND_SAMPLES(Name) void Name(game_state *State, game_input *Input, game_sound_buffer *SoundBuffer)
+#define GAME_GET_SOUND_SAMPLES(Name) void Name(game_memory *GameMemory, game_input *Input, game_sound_buffer *SoundBuffer)
 typedef GAME_GET_SOUND_SAMPLES(game_get_sound_samples);
 
 #define TROIDS_PLATFORM_H
