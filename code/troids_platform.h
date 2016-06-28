@@ -27,6 +27,42 @@ typedef double r64;
 
 typedef int32_t b32;
 
+struct v2i
+{
+    s32 x;
+    s32 y;
+};
+
+struct v2
+{
+    r32 x;
+    r32 y;
+};
+
+union v4
+{
+    struct
+    {
+        r32 x;
+        r32 y;
+        r32 z;
+        r32 w;
+    };
+    struct
+    {
+        r32 r;
+        r32 g;
+        r32 b;
+        r32 a;
+    };
+};
+
+struct rectangle2i
+{
+    v2i Min;
+    v2i Max;
+};
+
 #define Assert(Expr) {if(!(Expr)) int A = *((int *)0);}
 #define InvalidDefaultCase default: Assert(!"Invalid default case"); break;
 #define ArrayCount(Array) (sizeof(Array) / sizeof(Array[0]))
@@ -64,33 +100,33 @@ struct bitmap_header
     u16 Reserved1;    /* Always 0 */
     u16 Reserved2;    /* Always 0 */
     u32 BitmapOffset; /* Starting position of image data in bytes */
+
+    u32 Size;            /* Size of this header in bytes */
+	s32 Width;           /* Image width in pixels */
+	s32 Height;          /* Image height in pixels */
+	u16 Planes;          /* Number of color planes */
+	u16 BitsPerPixel;    /* Number of bits per pixel */
+	u32 Compression;     /* Compression methods used */
+	u32 SizeOfBitmap;    /* Size of bitmap in bytes */
+	s32 HorzResolution;  /* Horizontal resolution in pixels per meter */
+	s32 VertResolution;  /* Vertical resolution in pixels per meter */
+	u32 ColorsUsed;      /* Number of colors in the image */
+	u32 ColorsImportant; /* Minimum number of important colors */
+    
+    u32 RedMask;       /* Mask identifying bits of red component */
+	u32 GreenMask;     /* Mask identifying bits of green component */
+	u32 BlueMask;      /* Mask identifying bits of blue component */
+	u32 AlphaMask;      /* Mask identifying bits of blue component */
 };
 #pragma pack(pop)
 
 struct loaded_bitmap
 {
     s32 Height;
-    r32 WidthOverHeight;
-    r32 Align;
+    s32 Width;
+    v2 Align;
     s32 Pitch;
     void *Memory;
-};
-
-struct game_state
-{
-    b32 IsInitialized;
-    
-    r32 RBase;
-    r32 GBase;
-    r32 BBase;
-    u32 RunningSampleCount;
-
-    loaded_bitmap Ship;
-};
-
-struct transient_state
-{
-    b32 IsInitialized;
 };
 
 struct game_button

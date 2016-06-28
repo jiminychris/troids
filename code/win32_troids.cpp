@@ -1036,7 +1036,7 @@ int WinMain(HINSTANCE Instance,
                 }
                 else if (ElapsedSeconds > dtForFrame)
                 {
-                    Assert(!"Missed framerate!");
+                    OutputDebugStringA("Missed framerate!\n");
                 }
                 
                 _snprintf_s(Text, sizeof(Text), "Frame time: %fms\n",
