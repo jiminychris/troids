@@ -57,6 +57,12 @@ union v4
     };
 };
 
+struct rectangle2
+{
+    v2 Min;
+    v2 Max;
+};
+
 struct rectangle2i
 {
     v2i Min;

@@ -13,6 +13,8 @@
 
 #include "troids_platform.h"
 
+#define RAW_HID 1
+
 inline u32
 Minimum(u32 A, u32 B)
 {
@@ -40,7 +42,24 @@ global_variable b32 GlobalRunning;
 typedef DIRECT_SOUND_CREATE(direct_sound_create);
 
 #define CREATE_GUID(Name, x, y, z, a, b, c, d, e, f, g, h) const GUID Name = {x, y, z, {a, b, c, d, e, f, g, h}}
-#if 1
+#if RAW_HID
+#include <hidsdi.h>
+#define GET_HID_GUID(Name) void Name(LPGUID HIDGUID);
+typedef GET_HID_GUID(get_hid_guid);
+#define GET_DEVICE_ATTRIBUTES(Name) BOOLEAN Name(HANDLE HidDeviceObject, PHIDD_ATTRIBUTES Attributes);
+typedef GET_DEVICE_ATTRIBUTES(get_device_attributes);
+#define GET_INPUT_REPORT(Name) BOOLEAN Name(HANDLE HidDeviceObject, PVOID ReportBuffer, ULONG ReportBufferLength);
+typedef GET_INPUT_REPORT(get_input_report);
+#define SET_OUTPUT_REPORT(Name) BOOLEAN Name(HANDLE HidDeviceObject, PVOID ReportBuffer, ULONG ReportBufferLength);
+typedef SET_OUTPUT_REPORT(set_output_report);
+#include <setupapi.h>
+#define GET_CLASS_DEVS(Name) HDEVINFO Name(GUID *ClassGuid, PCTSTR Enumerator, HWND hwndParent, DWORD Flags);
+typedef GET_CLASS_DEVS(get_class_devs);
+#define ENUM_DEVICE_INTERFACES(Name) BOOL Name(HDEVINFO DeviceInfoSet, PSP_DEVINFO_DATA DeviceInfoData, GUID *InterfaceClassGuid, DWORD MemberIndex, PSP_DEVICE_INTERFACE_DATA DeviceInterfaceData);
+typedef ENUM_DEVICE_INTERFACES(enum_device_interfaces);
+#define GET_DEVICE_INTERFACE_DETAIL(Name) BOOL Name(HDEVINFO DeviceInfoSet, PSP_DEVICE_INTERFACE_DATA DeviceInterfaceData, PSP_DEVICE_INTERFACE_DETAIL_DATA DeviceInterfaceDetailData, DWORD DeviceInterfaceDetailDataSize, PDWORD RequiredSize, PSP_DEVINFO_DATA DeviceInfoData);
+typedef GET_DEVICE_INTERFACE_DETAIL(get_device_interface_detail);
+#else
 #define DIRECTINPUT_VERSION 0x0800
 #include <dinput.h>
 CREATE_GUID(Dualshock4GUID, 0x05c4054c,0x0,0x0,0x0,0x0,0x50,0x49,0x44,0x56,0x49,0x44);
@@ -54,17 +73,6 @@ CREATE_GUID(GUID_RyAxis, 0xA36D02F5,0xC9F3,0x11CF,0xBF,0xC7,0x44,0x45,0x53,0x54,
 CREATE_GUID(GUID_RzAxis, 0xA36D02E3,0xC9F3,0x11CF,0xBF,0xC7,0x44,0x45,0x53,0x54,0x00,0x00);
 #define DIRECT_INPUT_CREATE(Name) HRESULT Name(HINSTANCE hinst, DWORD dwVersion, REFIID riidltf, LPVOID * ppvOut, LPUNKNOWN punkOuter);
 typedef DIRECT_INPUT_CREATE(direct_input_create);
-#else
-#include <hidsdi.h>
-#define GET_HID_GUID(Name) void Name(LPGUID HIDGUID);
-typedef GET_HID_GUID(get_hid_guid);
-#include <setupapi.h>
-#define GET_CLASS_DEVS(Name) HDEVINFO Name(GUID *ClassGuid, PCTSTR Enumerator, HWND hwndParent, DWORD Flags);
-typedef GET_CLASS_DEVS(get_class_devs);
-#define ENUM_DEVICE_INTERFACES(Name) BOOL Name(HDEVINFO DeviceInfoSet, PSP_DEVINFO_DATA DeviceInfoData, GUID *InterfaceClassGuid, DWORD MemberIndex, PSP_DEVICE_INTERFACE_DATA DeviceInterfaceData);
-typedef ENUM_DEVICE_INTERFACES(enum_device_interfaces);
-#define GET_DEVICE_INTERFACE_DETAIL(Name) BOOL Name(HDEVINFO DeviceInfoSet, PSP_DEVICE_INTERFACE_DATA DeviceInterfaceData, PSP_DEVICE_INTERFACE_DETAIL_DATA DeviceInterfaceDetailData, DWORD DeviceInterfaceDetailDataSize, PDWORD RequiredSize, PSP_DEVINFO_DATA DeviceInfoData);
-typedef GET_DEVICE_INTERFACE_DETAIL(get_device_interface_detail);
 #endif
 
 inline void
@@ -128,6 +136,22 @@ enum recording_state
     RecordingState_PlayingRecord,
 };
 
+#if RAW_HID
+struct dualshock_4_data
+{
+    u8 ReportID;
+    u8 LeftStickX;
+    u8 LeftStickY;
+    u8 RightStickX;
+    u8 RightStickY;
+    u8 ActionAndDPad;
+    u8 ShouldersOptAndShare;
+    u8 CounterTouchAndPS;
+    u8 LeftTrigger;
+    u8 RightTrigger;
+    u8 Padding[54];
+};
+#else
 struct dualshock_4_data
 {
     s32 LeftStickX;
@@ -160,6 +184,7 @@ struct dualshock_4_data
     };
     u8 Padding[2];
 };
+#endif
 
 inline void
 ProcessDualshock4Button(game_button *Button, u8 State)
@@ -287,7 +312,7 @@ int WinMain(HINSTANCE Instance,
             GameMemory.PlatformReadFile = Win32ReadFile;
             
             // TODO(chris): Query monitor refresh rate
-            r32 dtForFrame = 1.0f / 60.0f;
+            r32 dtForFrame = 1.0f / 30.0f;
             
             game_backbuffer GameBackBuffer;
             GameBackBuffer.Width = GlobalBackBuffer.Width;
@@ -363,8 +388,20 @@ int WinMain(HINSTANCE Instance,
             }
 
             // NOTE(chris): Maybe use this if we need to get battery info, set LED color?
-#if 0
+#if RAW_HID
+            HANDLE Dualshock4Controllers[4] =
+            {
+                INVALID_HANDLE_VALUE,
+                INVALID_HANDLE_VALUE,
+                INVALID_HANDLE_VALUE,
+                INVALID_HANDLE_VALUE,
+            };
+            
             get_hid_guid *GetHIDGUID = 0;
+            get_device_attributes *GetDeviceAttributes = 0;
+            get_input_report *GetInputReport = 0;
+            set_output_report *SetOutputReport = 0;
+            
             get_class_devs *GetClassDevs = 0;
             enum_device_interfaces *EnumDeviceInterfaces = 0;
             get_device_interface_detail *GetDeviceInterfaceDetail = 0;
@@ -375,6 +412,9 @@ int WinMain(HINSTANCE Instance,
             if(HIDCode)
             {
                 GetHIDGUID = (get_hid_guid *)GetProcAddress(HIDCode, "HidD_GetHidGuid");
+                GetDeviceAttributes = (get_device_attributes *)GetProcAddress(HIDCode, "HidD_GetAttributes");
+                GetInputReport = (get_input_report *)GetProcAddress(HIDCode, "HidD_GetInputReport");
+                SetOutputReport = (set_output_report *)GetProcAddress(HIDCode, "HidD_SetOutputReport");
             }
             if(SetupCode)
             {
@@ -382,7 +422,9 @@ int WinMain(HINSTANCE Instance,
                 EnumDeviceInterfaces = (enum_device_interfaces *)GetProcAddress(SetupCode, "SetupDiEnumDeviceInterfaces");
                 GetDeviceInterfaceDetail = (get_device_interface_detail *)GetProcAddress(SetupCode, "SetupDiGetDeviceInterfaceDetailA");
             }
-            if(GetHIDGUID && GetClassDevs && EnumDeviceInterfaces)
+
+            if(GetHIDGUID && GetDeviceAttributes && GetClassDevs && EnumDeviceInterfaces &&
+               GetDeviceInterfaceDetail)
             {
                 GUID HIDGUID;
                 GetHIDGUID(&HIDGUID);
@@ -393,6 +435,14 @@ int WinMain(HINSTANCE Instance,
                 while(EnumDeviceInterfaces(DeviceInfo, 0, &HIDGUID,
                                            InterfaceIndex++, &DeviceInterfaceData))
                 {
+#if 1
+                    // NOTE(chris): This shouldn't be a problem. The biggest I saw was 103.
+                    u8 Buffer[512];
+                    DWORD TotalBufferSize = sizeof(Buffer);
+                    SP_DEVICE_INTERFACE_DETAIL_DATA *DeviceInterfaceDetailData =
+                        (SP_DEVICE_INTERFACE_DETAIL_DATA *)Buffer;
+#else
+                    // TODO(chris): If I end up using this path, I need to free this memory.
                     DWORD BufferSize;
                     GetDeviceInterfaceDetail(DeviceInfo, &DeviceInterfaceData, 0, 0, &BufferSize, 0);
                     DWORD TotalBufferSize = sizeof(u32) + BufferSize;
@@ -400,6 +450,7 @@ int WinMain(HINSTANCE Instance,
                         (SP_DEVICE_INTERFACE_DETAIL_DATA *)VirtualAlloc(0, TotalBufferSize,
                                                                         MEM_COMMIT|MEM_RESERVE,
                                                                         PAGE_READWRITE);
+#endif
                     DeviceInterfaceDetailData->cbSize = sizeof(*DeviceInterfaceDetailData);
                     if(GetDeviceInterfaceDetail(DeviceInfo, &DeviceInterfaceData,
                                                 DeviceInterfaceDetailData,
@@ -410,7 +461,21 @@ int WinMain(HINSTANCE Instance,
                                                    GENERIC_READ|GENERIC_WRITE,
                                                    FILE_SHARE_READ|FILE_SHARE_WRITE,
                                                    0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
-                        int A = 0;
+                        if(Device != INVALID_HANDLE_VALUE)
+                        {
+                            HIDD_ATTRIBUTES Attributes;
+                            Attributes.Size = sizeof(Attributes);
+                            BOOL AttributesResult = GetDeviceAttributes(Device, &Attributes);
+                            if(AttributesResult &&
+                               Attributes.VendorID == 0x054C && Attributes.ProductID == 0x05C4)
+                            {
+                                Dualshock4Controllers[0] = Device;
+                            }
+                            else
+                            {
+                                CloseHandle(Device);
+                            }
+                        }
                     }
                 }
             }
@@ -698,11 +763,179 @@ int WinMain(HINSTANCE Instance,
                     ++ControllerIndex)
                 {
                     game_controller *Controller = NewInput->Controllers + ControllerIndex;
+#if RAW_HID
+                    HANDLE Dualshock4Controller = Dualshock4Controllers[ControllerIndex];
+                    if(Dualshock4Controller != INVALID_HANDLE_VALUE && GetInputReport)
+                    {
+                        dualshock_4_data Dualshock4Reports[32];
 
+#if 0
+                        BOOL GetReportResult = GetInputReport(Dualshock4Controller,
+                                                              Report, sizeof(Report));
+#else
+                        DWORD BytesRead;
+                        BOOL GetReportResult = ReadFile(Dualshock4Controller,
+                                                        &Dualshock4Reports, sizeof(Dualshock4Reports),
+                                                        &BytesRead, 0);
+#endif
+                        if(GetReportResult)
+                        {
+                            // TODO(chris): Average all received inputs?
+                            dualshock_4_data *Dualshock4Data = Dualshock4Reports + 0;
+                            // NOTE(chris): Analog sticks
+                            {
+                                Dualshock4Data->LeftStickY = 0xFF - Dualshock4Data->LeftStickY;
+                                Dualshock4Data->RightStickY = 0xFF - Dualshock4Data->RightStickY;
+                                r32 Center = 0xFF / 2.0f;
+                                s32 Deadzone = 4;
+                        
+                                Controller->LeftStickX = 0.0f;
+                                if(Dualshock4Data->LeftStickX < (Center - Deadzone))
+                                {
+                                    Controller->LeftStickX = (r32)(-(Center - Deadzone) + Dualshock4Data->LeftStickX) / (r32)(Center - Deadzone);
+                                }
+                                else if(Dualshock4Data->LeftStickX > (Center + Deadzone))
+                                {
+                                    Controller->LeftStickX = (r32)(Dualshock4Data->LeftStickX - Center - Deadzone) / (r32)(Center - Deadzone);
+                                }
+
+                                Controller->LeftStickY = 0.0f;
+                                if(Dualshock4Data->LeftStickY < (Center - Deadzone))
+                                {
+                                    Controller->LeftStickY = (r32)(-(Center - Deadzone) + Dualshock4Data->LeftStickY) / (r32)(Center - Deadzone);
+                                }
+                                else if(Dualshock4Data->LeftStickY > (Center + Deadzone))
+                                {
+                                    Controller->LeftStickY = (r32)(Dualshock4Data->LeftStickY - Center - Deadzone) / (r32)(Center - Deadzone);
+                                }
+
+                                Controller->RightStickX = 0.0f;
+                                if(Dualshock4Data->RightStickX < (Center - Deadzone))
+                                {
+                                    Controller->RightStickX = (r32)(-(Center - Deadzone) + Dualshock4Data->RightStickX) / (r32)(Center - Deadzone);
+                                }
+                                else if(Dualshock4Data->RightStickX > (Center + Deadzone))
+                                {
+                                    Controller->RightStickX = (r32)(Dualshock4Data->RightStickX - Center - Deadzone) / (r32)(Center - Deadzone);
+                                }
+
+                                Controller->RightStickY = 0.0f;
+                                if(Dualshock4Data->RightStickY < (Center - Deadzone))
+                                {
+                                    Controller->RightStickY = (r32)(-(Center - Deadzone) + Dualshock4Data->RightStickY) / (r32)(Center - Deadzone);
+                                }
+                                else if(Dualshock4Data->RightStickY > (Center + Deadzone))
+                                {
+                                    Controller->RightStickY = (r32)(Dualshock4Data->RightStickY - Center - Deadzone) / (r32)(Center - Deadzone);
+                                }
+                            }
+                            
+                            // NOTE(chris): Triggers
+                            {
+                                Controller->LeftTrigger = (r32)Dualshock4Data->LeftTrigger / 0xFF;
+                                Controller->RightTrigger = (r32)Dualshock4Data->RightTrigger / 0xFF;
+                            }
+// TODO(chris): Left off here!!! Make these actually work
+#if 0
+                            // NOTE(chris): Buttons
+                            {
+                                ProcessDualshock4Button(&Controller->ActionLeft, Dualshock4Data.Square);
+                                ProcessDualshock4Button(&Controller->ActionDown, Dualshock4Data.Cross);
+                                ProcessDualshock4Button(&Controller->ActionRight, Dualshock4Data.Circle);
+                                ProcessDualshock4Button(&Controller->ActionUp, Dualshock4Data.Triangle);
+                                ProcessDualshock4Button(&Controller->LeftShoulder1, Dualshock4Data.L1);
+                                ProcessDualshock4Button(&Controller->RightShoulder1, Dualshock4Data.R1);
+                                ProcessDualshock4Button(&Controller->LeftShoulder2, Dualshock4Data.L2);
+                                ProcessDualshock4Button(&Controller->RightShoulder2, Dualshock4Data.R2);
+                                ProcessDualshock4Button(&Controller->Select, Dualshock4Data.Share);
+                                ProcessDualshock4Button(&Controller->Start, Dualshock4Data.Options);
+                                ProcessDualshock4Button(&Controller->LeftClick, Dualshock4Data.L3);
+                                ProcessDualshock4Button(&Controller->RightClick, Dualshock4Data.R3);
+                                ProcessDualshock4Button(&Controller->Power, Dualshock4Data.PS);
+                                ProcessDualshock4Button(&Controller->CenterClick, Dualshock4Data.Touchpad);
+                            }
+
+                            // NOTE(chris): DPad
+                            {
+                                switch(Dualshock4Data.DPad)
+                                {
+                                    case 0xFFFFFFFF:
+                                    {
+                                        // NOTE(chris): Centered. Don't interfere with analog sticks.
+                                    } break;
+
+                                    case 0:
+                                    {
+                                        Controller->LeftStickX = 0.0f;
+                                        Controller->LeftStickY = 1.0f;
+                                    } break;
+
+                                    case 4500:
+                                    {
+                                        Controller->LeftStickX = 1.0f;
+                                        Controller->LeftStickY = 1.0f;
+                                    } break;
+
+                                    case 9000:
+                                    {
+                                        Controller->LeftStickX = 1.0f;
+                                        Controller->LeftStickY = 0.0f;
+                                    } break;
+
+                                    case 13500:
+                                    {
+                                        Controller->LeftStickX = 1.0f;
+                                        Controller->LeftStickY = -1.0f;
+                                    } break;
+
+                                    case 18000:
+                                    {
+                                        Controller->LeftStickX = 0.0f;
+                                        Controller->LeftStickY = -1.0f;
+                                    } break;
+
+                                    case 22500:
+                                    {
+                                        Controller->LeftStickX = -1.0f;
+                                        Controller->LeftStickY = -1.0f;
+                                    } break;
+
+                                    case 27000:
+                                    {
+                                        Controller->LeftStickX = -1.0f;
+                                        Controller->LeftStickY = 0.0f;
+                                    } break;
+
+                                    case 31500:
+                                    {
+                                        Controller->LeftStickX = -1.0f;
+                                        Controller->LeftStickY = 1.0f;
+                                    } break;
+
+                                    InvalidDefaultCase;
+                                }
+                            }
+#endif
+                            
+                            Assert(Controller->LeftStickX >= -1.0f);
+                            Assert(Controller->LeftStickX <= 1.0f);
+                            Assert(Controller->LeftStickY >= -1.0f);
+                            Assert(Controller->LeftStickY <= 1.0f);
+                            Assert(Controller->RightStickX >= -1.0f);
+                            Assert(Controller->RightStickX <= 1.0f);
+                            Assert(Controller->RightStickY >= -1.0f);
+                            Assert(Controller->RightStickY <= 1.0f);
+                            Assert(Controller->LeftTrigger >= 0.0f);
+                            Assert(Controller->LeftTrigger <= 1.0f);
+                            Assert(Controller->RightTrigger >= 0.0f);
+                            Assert(Controller->RightTrigger <= 1.0f);
+                        }
+                    }
+#else
                     LPDIRECTINPUTDEVICE8A Dualshock4Controller = Dualshock4Controllers[ControllerIndex];
                     if(Dualshock4Controller)
                     {
-                        dualshock_4_data Dualshock4Data;
+                        dualshock_4_data Dualshock4Data = {};
                         HRESULT DataFetchResult = Dualshock4Controller->GetDeviceState(sizeof(Dualshock4Data), &Dualshock4Data);
                         if(SUCCEEDED(DataFetchResult))
                         {
@@ -853,6 +1086,7 @@ int WinMain(HINSTANCE Instance,
                             Assert(Controller->RightTrigger <= 1.0f);
                         }
                     }
+#endif
                 }
 
                 switch(RecordingState)

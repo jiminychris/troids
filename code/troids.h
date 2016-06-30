@@ -13,6 +13,9 @@ struct game_state
     
     u32 RunningSampleCount;
     v2 P;
+    r32 Yaw;
+    r32 Pitch;
+    r32 Roll;
 
     loaded_bitmap Ship;
 };
