@@ -80,7 +80,7 @@ LoadBitmap(char *FileName)
 
 internal void
 RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap Bitmap, v2 Origin, v2 XAxis, v2 YAxis,
-             r32 Scale, v4 Color)
+             r32 Scale, v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f))
 {
     XAxis *= Scale;
     YAxis *= Scale;
@@ -304,6 +304,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
         State->P = V2(BackBuffer->Width / 2, BackBuffer->Height / 2);
         State->Ship = LoadBitmap("ship.bmp");
+        State->Bullet = LoadBitmap("bullet.bmp");
     }
 
     transient_state *TranState = (transient_state *)GameMemory->PermanentMemory;
@@ -320,35 +321,69 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         State->P = V2(BackBuffer->Width / 2, BackBuffer->Height / 2);
     }
 
+    r32 ShipScale = 100.0f;
+    r32 BulletScale = 30.0f;
     r32 LeftStickX = Controller->LeftStickX;
     if(Keyboard->LeftStickX)
     {
         LeftStickX = Keyboard->LeftStickX;
     }
-    r32 LeftStickY = Controller->LeftStickY;
+    r32 Throttle = Controller->RightTrigger;
     if(Keyboard->LeftStickY)
     {
-        LeftStickY = Keyboard->LeftStickY;
+        Throttle = Keyboard->LeftStickY;
     }
-    v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f);
-    if(Controller->RightShoulder2.EndedDown)
+    State->Yaw += 4.0f*Input->dtForFrame*-LeftStickX;
+    v2 Facing = V2(Cos(State->Yaw), Sin(State->Yaw));
+    if(WentDown(Controller->RightShoulder1) &&
+       State->LiveBulletCount < ArrayCount(State->LiveBullets))
     {
-        Color = V4(1.0f, 0.0f, 0.0f, 1.0f);
+        if(State->Cooldown <= 0.0f)
+        {
+            live_bullet *LiveBullet = State->LiveBullets + State->LiveBulletCount++;
+            LiveBullet->P = State->P + 0.5f*Facing*(ShipScale + BulletScale);
+            LiveBullet->Direction = State->Yaw;
+            LiveBullet->Timer = 2.0f;
+            State->Cooldown = 0.1f;
+        }
     }
 
     r32 MetersPerPixel = 0.00027211314f;
     r32 PixelsPerMeter = 1.0f/MetersPerPixel;
 
-    State->Yaw += 4.0f*Input->dtForFrame*-LeftStickX;
-    v2 Facing = V2(Cos(State->Yaw), Sin(State->Yaw));
-    State->P += Facing*0.075f*PixelsPerMeter*Input->dtForFrame*Clamp01(LeftStickY);
+    State->P += Facing*0.075f*PixelsPerMeter*Input->dtForFrame*Clamp01(Throttle);
+    if(State->Cooldown > 0.0f)
+    {
+        State->Cooldown -= Input->dtForFrame;
+    }
 
     Clear(BackBuffer, V4(0.1f, 0.1f, 0.1f, 1.0f));
 
-    v2 YAxis = Facing;
-    v2 XAxis = -Perp(YAxis);
-    r32 Scale = 100.0f;
-    RenderBitmap(BackBuffer, State->Ship, State->P, XAxis, YAxis, Scale, Color);
+    {
+        v2 YAxis = Facing;
+        v2 XAxis = -Perp(YAxis);
+        RenderBitmap(BackBuffer, State->Ship, State->P, XAxis, YAxis, ShipScale);
+    }
+
+    live_bullet *LiveBullet = State->LiveBullets;
+    live_bullet *End = State->LiveBullets + State->LiveBulletCount;
+    while(LiveBullet != End)
+    {
+        if(LiveBullet->Timer <= 0.0f)
+        {
+            *LiveBullet = State->LiveBullets[--State->LiveBulletCount];
+            --End;
+        }
+        else
+        {
+            v2 YAxis = V2(Cos(LiveBullet->Direction), Sin(LiveBullet->Direction));
+            v2 XAxis = -0.5f*Perp(YAxis);
+            LiveBullet->P += YAxis*Input->dtForFrame*PixelsPerMeter*0.1f;
+            RenderBitmap(BackBuffer, State->Bullet, LiveBullet->P, XAxis, YAxis, BulletScale);
+            LiveBullet->Timer -= Input->dtForFrame;
+            ++LiveBullet;
+        }
+    }
 }
 
 extern "C" GAME_GET_SOUND_SAMPLES(GameGetSoundSamples)

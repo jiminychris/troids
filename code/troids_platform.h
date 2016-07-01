@@ -116,6 +116,7 @@ static unsigned int stbiw__crc32(unsigned char *buffer, int len)
 }
 
 #define Assert(Expr) {if(!(Expr)) int A = *((int *)0);}
+#define InvalidCodePath Assert(!"Invalid code path");
 #define InvalidDefaultCase default: Assert(!"Invalid default case"); break;
 #define ArrayCount(Array) (sizeof(Array) / sizeof(Array[0]))
 #define OffsetOf(type, Member) ((size_t)&(((type *)0)->Member))
@@ -225,6 +226,14 @@ struct game_input
     game_controller Keyboard;
     game_controller Controllers[4];
 };
+
+inline b32
+WentDown(game_button Button)
+{
+    b32 Result = Button.EndedDown && (Button.HalfTransitionCount > 0);
+
+    return(Result);
+}
 
 struct game_backbuffer
 {

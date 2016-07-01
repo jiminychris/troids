@@ -8,8 +8,7 @@
 
 #include <windows.h>
 #include <stdio.h>
-#include <stddef.h>
-#include <guiddef.h>
+#include <gl/gl.h>
 
 #include "troids_platform.h"
 
@@ -82,6 +81,7 @@ typedef DIRECT_INPUT_CREATE(direct_input_create);
 inline void
 CopyBackBufferToWindow(HDC DeviceContext, win32_backbuffer *BackBuffer)
 {
+#if 0
     StretchDIBits(DeviceContext,
                   0,
                   0,
@@ -95,6 +95,14 @@ CopyBackBufferToWindow(HDC DeviceContext, win32_backbuffer *BackBuffer)
                   &GlobalBackBuffer.Info,
                   DIB_RGB_COLORS,
                   SRCCOPY);
+#else
+    
+//    glClearColor(1.0f, 0.0f, 1.0f, 0.0f);
+//    glClear(GL_COLOR_BUFFER_BIT);
+    glDrawPixels(BackBuffer->Width, BackBuffer->Height, GL_BGRA_EXT, GL_UNSIGNED_BYTE,
+                 BackBuffer->Memory);
+    SwapBuffers(DeviceContext);
+#endif
 }
 
 LRESULT WindowProc(HWND Window,
@@ -208,10 +216,10 @@ struct dualshock_4_input
 #endif
 
 inline void
-ProcessDualshock4Button(game_button *Button, u8 State)
+ProcessDualshock4Button(game_button *OldButton, game_button *NewButton, u8 State)
 {
-    Button->EndedDown = State;
-    Button->HalfTransitionCount = Button->EndedDown ? 1 : 0;
+    NewButton->EndedDown = State;
+    NewButton->HalfTransitionCount = (OldButton->EndedDown == NewButton->EndedDown) ? 0 : 1;
 }
 
 inline void
@@ -320,6 +328,31 @@ int WinMain(HINSTANCE Instance,
             HDC DeviceContext = GetDC(Window);
             CreateDIBSection(DeviceContext, &GlobalBackBuffer.Info, DIB_RGB_COLORS,
                              &GlobalBackBuffer.Memory, 0, 0);
+
+            PIXELFORMATDESCRIPTOR PixelFormat = {};
+            PixelFormat.nSize = sizeof(PixelFormat);
+            PixelFormat.nVersion = 1;
+            PixelFormat.dwFlags = PFD_DRAW_TO_WINDOW|PFD_SUPPORT_OPENGL|PFD_DOUBLEBUFFER;
+            PixelFormat.iPixelType = PFD_TYPE_RGBA;
+            BYTE  cColorBits = 24;
+            BYTE  cAlphaBits = 8;
+            BYTE  iLayerType = PFD_MAIN_PLANE;
+            int SuggestedPixelFormatIndex = ChoosePixelFormat(DeviceContext, &PixelFormat);
+            PIXELFORMATDESCRIPTOR SuggestedPixelFormat;
+            DescribePixelFormat(DeviceContext, SuggestedPixelFormatIndex,
+                                sizeof(SuggestedPixelFormat), &SuggestedPixelFormat);
+            SetPixelFormat(DeviceContext, SuggestedPixelFormatIndex, &SuggestedPixelFormat);
+            HGLRC OpenGLRC = wglCreateContext(DeviceContext);
+            if(wglMakeCurrent(DeviceContext, OpenGLRC))
+            {
+            }
+            else
+            {
+                InvalidCodePath;
+                // TODO(chris): Diagnostic
+            }
+            
+            ReleaseDC(Window, DeviceContext);
 
             game_memory GameMemory;
             GameMemory.PermanentMemorySize = Megabytes(256);
@@ -811,7 +844,8 @@ int WinMain(HINSTANCE Instance,
                     ControllerIndex < ArrayCount(NewInput->Controllers);
                     ++ControllerIndex)
                 {
-                    game_controller *Controller = NewInput->Controllers + ControllerIndex;
+                    game_controller *NewController = NewInput->Controllers + ControllerIndex;
+                    game_controller *OldController = OldInput->Controllers + ControllerIndex;
 #if DUALSHOCK_RAW_HID
                     HANDLE Dualshock4Controller = Dualshock4Controllers[ControllerIndex];
                     if(Dualshock4Controller != INVALID_HANDLE_VALUE && GetInputReport)
@@ -995,69 +1029,69 @@ int WinMain(HINSTANCE Instance,
                                 r32 Center = 0xFFFF / 2.0f;
                                 s32 Deadzone = 1500;
                         
-                                Controller->LeftStickX = 0.0f;
+                                NewController->LeftStickX = 0.0f;
                                 if(Dualshock4Data.LeftStickX < (Center - Deadzone))
                                 {
-                                    Controller->LeftStickX = (r32)(-(Center - Deadzone) + Dualshock4Data.LeftStickX) / (r32)(Center - Deadzone);
+                                    NewController->LeftStickX = (r32)(-(Center - Deadzone) + Dualshock4Data.LeftStickX) / (r32)(Center - Deadzone);
                                 }
                                 else if(Dualshock4Data.LeftStickX > (Center + Deadzone))
                                 {
-                                    Controller->LeftStickX = (r32)(Dualshock4Data.LeftStickX - Center - Deadzone) / (r32)(Center - Deadzone);
+                                    NewController->LeftStickX = (r32)(Dualshock4Data.LeftStickX - Center - Deadzone) / (r32)(Center - Deadzone);
                                 }
 
-                                Controller->LeftStickY = 0.0f;
+                                NewController->LeftStickY = 0.0f;
                                 if(Dualshock4Data.LeftStickY < (Center - Deadzone))
                                 {
-                                    Controller->LeftStickY = (r32)(-(Center - Deadzone) + Dualshock4Data.LeftStickY) / (r32)(Center - Deadzone);
+                                    NewController->LeftStickY = (r32)(-(Center - Deadzone) + Dualshock4Data.LeftStickY) / (r32)(Center - Deadzone);
                                 }
                                 else if(Dualshock4Data.LeftStickY > (Center + Deadzone))
                                 {
-                                    Controller->LeftStickY = (r32)(Dualshock4Data.LeftStickY - Center - Deadzone) / (r32)(Center - Deadzone);
+                                    NewController->LeftStickY = (r32)(Dualshock4Data.LeftStickY - Center - Deadzone) / (r32)(Center - Deadzone);
                                 }
 
-                                Controller->RightStickX = 0.0f;
+                                NewController->RightStickX = 0.0f;
                                 if(Dualshock4Data.RightStickX < (Center - Deadzone))
                                 {
-                                    Controller->RightStickX = (r32)(-(Center - Deadzone) + Dualshock4Data.RightStickX) / (r32)(Center - Deadzone);
+                                    NewController->RightStickX = (r32)(-(Center - Deadzone) + Dualshock4Data.RightStickX) / (r32)(Center - Deadzone);
                                 }
                                 else if(Dualshock4Data.RightStickX > (Center + Deadzone))
                                 {
-                                    Controller->RightStickX = (r32)(Dualshock4Data.RightStickX - Center - Deadzone) / (r32)(Center - Deadzone);
+                                    NewController->RightStickX = (r32)(Dualshock4Data.RightStickX - Center - Deadzone) / (r32)(Center - Deadzone);
                                 }
 
-                                Controller->RightStickY = 0.0f;
+                                NewController->RightStickY = 0.0f;
                                 if(Dualshock4Data.RightStickY < (Center - Deadzone))
                                 {
-                                    Controller->RightStickY = (r32)(-(Center - Deadzone) + Dualshock4Data.RightStickY) / (r32)(Center - Deadzone);
+                                    NewController->RightStickY = (r32)(-(Center - Deadzone) + Dualshock4Data.RightStickY) / (r32)(Center - Deadzone);
                                 }
                                 else if(Dualshock4Data.RightStickY > (Center + Deadzone))
                                 {
-                                    Controller->RightStickY = (r32)(Dualshock4Data.RightStickY - Center - Deadzone) / (r32)(Center - Deadzone);
+                                    NewController->RightStickY = (r32)(Dualshock4Data.RightStickY - Center - Deadzone) / (r32)(Center - Deadzone);
                                 }
                             }
 
                             // NOTE(chris): Triggers
                             {
-                                Controller->LeftTrigger = (r32)Dualshock4Data.LeftTrigger / 0xFFFF;
-                                Controller->RightTrigger = (r32)Dualshock4Data.RightTrigger / 0xFFFF;
+                                NewController->LeftTrigger = (r32)Dualshock4Data.LeftTrigger / 0xFFFF;
+                                NewController->RightTrigger = (r32)Dualshock4Data.RightTrigger / 0xFFFF;
                             }
 
                             // NOTE(chris): Buttons
                             {
-                                ProcessDualshock4Button(&Controller->ActionLeft, Dualshock4Data.Square);
-                                ProcessDualshock4Button(&Controller->ActionDown, Dualshock4Data.Cross);
-                                ProcessDualshock4Button(&Controller->ActionRight, Dualshock4Data.Circle);
-                                ProcessDualshock4Button(&Controller->ActionUp, Dualshock4Data.Triangle);
-                                ProcessDualshock4Button(&Controller->LeftShoulder1, Dualshock4Data.L1);
-                                ProcessDualshock4Button(&Controller->RightShoulder1, Dualshock4Data.R1);
-                                ProcessDualshock4Button(&Controller->LeftShoulder2, Dualshock4Data.L2);
-                                ProcessDualshock4Button(&Controller->RightShoulder2, Dualshock4Data.R2);
-                                ProcessDualshock4Button(&Controller->Select, Dualshock4Data.Share);
-                                ProcessDualshock4Button(&Controller->Start, Dualshock4Data.Options);
-                                ProcessDualshock4Button(&Controller->LeftClick, Dualshock4Data.L3);
-                                ProcessDualshock4Button(&Controller->RightClick, Dualshock4Data.R3);
-                                ProcessDualshock4Button(&Controller->Power, Dualshock4Data.PS);
-                                ProcessDualshock4Button(&Controller->CenterClick, Dualshock4Data.Touchpad);
+                                ProcessDualshock4Button(&OldController->ActionLeft, &NewController->ActionLeft, Dualshock4Data.Square);
+                                ProcessDualshock4Button(&OldController->ActionDown, &NewController->ActionDown, Dualshock4Data.Cross);
+                                ProcessDualshock4Button(&OldController->ActionRight, &NewController->ActionRight, Dualshock4Data.Circle);
+                                ProcessDualshock4Button(&OldController->ActionUp, &NewController->ActionUp, Dualshock4Data.Triangle);
+                                ProcessDualshock4Button(&OldController->LeftShoulder1, &NewController->LeftShoulder1, Dualshock4Data.L1);
+                                ProcessDualshock4Button(&OldController->RightShoulder1, &NewController->RightShoulder1, Dualshock4Data.R1);
+                                ProcessDualshock4Button(&OldController->LeftShoulder2, &NewController->LeftShoulder2, Dualshock4Data.L2);
+                                ProcessDualshock4Button(&OldController->RightShoulder2, &NewController->RightShoulder2, Dualshock4Data.R2);
+                                ProcessDualshock4Button(&OldController->Select, &NewController->Select, Dualshock4Data.Share);
+                                ProcessDualshock4Button(&OldController->Start, &NewController->Start, Dualshock4Data.Options);
+                                ProcessDualshock4Button(&OldController->LeftClick, &NewController->LeftClick, Dualshock4Data.L3);
+                                ProcessDualshock4Button(&OldController->RightClick, &NewController->RightClick, Dualshock4Data.R3);
+                                ProcessDualshock4Button(&OldController->Power, &NewController->Power, Dualshock4Data.PS);
+                                ProcessDualshock4Button(&OldController->CenterClick, &NewController->CenterClick, Dualshock4Data.Touchpad);
                             }
 
                             // NOTE(chris): DPad
@@ -1071,68 +1105,68 @@ int WinMain(HINSTANCE Instance,
 
                                     case 0:
                                     {
-                                        Controller->LeftStickX = 0.0f;
-                                        Controller->LeftStickY = 1.0f;
+                                        NewController->LeftStickX = 0.0f;
+                                        NewController->LeftStickY = 1.0f;
                                     } break;
 
                                     case 4500:
                                     {
-                                        Controller->LeftStickX = 1.0f;
-                                        Controller->LeftStickY = 1.0f;
+                                        NewController->LeftStickX = 1.0f;
+                                        NewController->LeftStickY = 1.0f;
                                     } break;
 
                                     case 9000:
                                     {
-                                        Controller->LeftStickX = 1.0f;
-                                        Controller->LeftStickY = 0.0f;
+                                        NewController->LeftStickX = 1.0f;
+                                        NewController->LeftStickY = 0.0f;
                                     } break;
 
                                     case 13500:
                                     {
-                                        Controller->LeftStickX = 1.0f;
-                                        Controller->LeftStickY = -1.0f;
+                                        NewController->LeftStickX = 1.0f;
+                                        NewController->LeftStickY = -1.0f;
                                     } break;
 
                                     case 18000:
                                     {
-                                        Controller->LeftStickX = 0.0f;
-                                        Controller->LeftStickY = -1.0f;
+                                        NewController->LeftStickX = 0.0f;
+                                        NewController->LeftStickY = -1.0f;
                                     } break;
 
                                     case 22500:
                                     {
-                                        Controller->LeftStickX = -1.0f;
-                                        Controller->LeftStickY = -1.0f;
+                                        NewController->LeftStickX = -1.0f;
+                                        NewController->LeftStickY = -1.0f;
                                     } break;
 
                                     case 27000:
                                     {
-                                        Controller->LeftStickX = -1.0f;
-                                        Controller->LeftStickY = 0.0f;
+                                        NewController->LeftStickX = -1.0f;
+                                        NewController->LeftStickY = 0.0f;
                                     } break;
 
                                     case 31500:
                                     {
-                                        Controller->LeftStickX = -1.0f;
-                                        Controller->LeftStickY = 1.0f;
+                                        NewController->LeftStickX = -1.0f;
+                                        NewController->LeftStickY = 1.0f;
                                     } break;
 
                                     InvalidDefaultCase;
                                 }
                             }
 
-                            Assert(Controller->LeftStickX >= -1.0f);
-                            Assert(Controller->LeftStickX <= 1.0f);
-                            Assert(Controller->LeftStickY >= -1.0f);
-                            Assert(Controller->LeftStickY <= 1.0f);
-                            Assert(Controller->RightStickX >= -1.0f);
-                            Assert(Controller->RightStickX <= 1.0f);
-                            Assert(Controller->RightStickY >= -1.0f);
-                            Assert(Controller->RightStickY <= 1.0f);
-                            Assert(Controller->LeftTrigger >= 0.0f);
-                            Assert(Controller->LeftTrigger <= 1.0f);
-                            Assert(Controller->RightTrigger >= 0.0f);
-                            Assert(Controller->RightTrigger <= 1.0f);
+                            Assert(NewController->LeftStickX >= -1.0f);
+                            Assert(NewController->LeftStickX <= 1.0f);
+                            Assert(NewController->LeftStickY >= -1.0f);
+                            Assert(NewController->LeftStickY <= 1.0f);
+                            Assert(NewController->RightStickX >= -1.0f);
+                            Assert(NewController->RightStickX <= 1.0f);
+                            Assert(NewController->RightStickY >= -1.0f);
+                            Assert(NewController->RightStickY <= 1.0f);
+                            Assert(NewController->LeftTrigger >= 0.0f);
+                            Assert(NewController->LeftTrigger <= 1.0f);
+                            Assert(NewController->RightTrigger >= 0.0f);
+                            Assert(NewController->RightTrigger <= 1.0f);
                         }
                     }
 #endif
@@ -1295,14 +1329,11 @@ int WinMain(HINSTANCE Instance,
                     } break;
                 }
 
-                HDC DeviceContext = GetDC(Window);
-                CopyBackBufferToWindow(DeviceContext, &GlobalBackBuffer);
-                ReleaseDC(Window, DeviceContext);
-
                 char Text[256];
 
                 QueryPerformanceCounter(&Counter);
-                r32 ElapsedSeconds = (Counter.QuadPart - LastCounter.QuadPart)*ClocksToSeconds;
+                r32 FrameSeconds = (Counter.QuadPart - LastCounter.QuadPart)*ClocksToSeconds;
+                r32 ElapsedSeconds = FrameSeconds;
                 if(ElapsedSeconds < dtForFrame)
                 {
                     s32 MSToSleep  = (u32)((dtForFrame - ElapsedSeconds)*1000.0f) - 1;
@@ -1322,8 +1353,12 @@ int WinMain(HINSTANCE Instance,
                     OutputDebugStringA("Missed framerate!\n");
                 }
                 
+                HDC DeviceContext = GetDC(Window);
+                CopyBackBufferToWindow(DeviceContext, &GlobalBackBuffer);
+                ReleaseDC(Window, DeviceContext);
+                
                 _snprintf_s(Text, sizeof(Text), "Frame time: %fms\n",
-                            ElapsedSeconds*1000);
+                            FrameSeconds*1000);
                 OutputDebugStringA(Text);
                 LastCounter = Counter;
             }
