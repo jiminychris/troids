@@ -13,7 +13,10 @@
 
 #include "troids_platform.h"
 
-#define RAW_HID 1
+// NOTE(chris): This has become a matter of reverse-engineering. It seems like this will only be good
+// for input via DirectInput, as DirectInput can't handle output and the HID output is poorly
+// documented, and it may even be illegal for me to do this without licensing it.
+#define DUALSHOCK_RAW_HID 0
 
 inline u32
 Minimum(u32 A, u32 B)
@@ -42,7 +45,7 @@ global_variable b32 GlobalRunning;
 typedef DIRECT_SOUND_CREATE(direct_sound_create);
 
 #define CREATE_GUID(Name, x, y, z, a, b, c, d, e, f, g, h) const GUID Name = {x, y, z, {a, b, c, d, e, f, g, h}}
-#if RAW_HID
+#if DUALSHOCK_RAW_HID
 #include <hidsdi.h>
 #define GET_HID_GUID(Name) void Name(LPGUID HIDGUID);
 typedef GET_HID_GUID(get_hid_guid);
@@ -71,6 +74,7 @@ CREATE_GUID(GUID_ZAxis, 0xA36D02E2,0xC9F3,0x11CF,0xBF,0xC7,0x44,0x45,0x53,0x54,0
 CREATE_GUID(GUID_RxAxis, 0xA36D02F4,0xC9F3,0x11CF,0xBF,0xC7,0x44,0x45,0x53,0x54,0x00,0x00);
 CREATE_GUID(GUID_RyAxis, 0xA36D02F5,0xC9F3,0x11CF,0xBF,0xC7,0x44,0x45,0x53,0x54,0x00,0x00);
 CREATE_GUID(GUID_RzAxis, 0xA36D02E3,0xC9F3,0x11CF,0xBF,0xC7,0x44,0x45,0x53,0x54,0x00,0x00);
+CREATE_GUID(GUID_ConstantForce, 0x13541C20,0x8E33,0x11D0,0x9A,0xD0,0x00,0xA0,0xC9,0xA0,0x6E,0x35);
 #define DIRECT_INPUT_CREATE(Name) HRESULT Name(HINSTANCE hinst, DWORD dwVersion, REFIID riidltf, LPVOID * ppvOut, LPUNKNOWN punkOuter);
 typedef DIRECT_INPUT_CREATE(direct_input_create);
 #endif
@@ -136,8 +140,8 @@ enum recording_state
     RecordingState_PlayingRecord,
 };
 
-#if RAW_HID
-struct dualshock_4_data
+#if DUALSHOCK_RAW_HID
+struct dualshock_4_input
 {
     u8 ReportID;
     u8 LeftStickX;
@@ -151,8 +155,25 @@ struct dualshock_4_data
     u8 RightTrigger;
     u8 Padding[54];
 };
+#pragma pack(push, 1)
+struct dualshock_4_output
+{
+    u8 TransactionAndReportType;
+    u8 ProtocolCode;
+    u8 Unknown0[2];
+    u8 RumbleEnabled;
+    u8 Unknown1[2];
+    u8 RumbleRightWeak;
+    u8 RumbleLeftStrong;
+    u8 R;
+    u8 G;
+    u8 B;
+    u8 Unknown2[63];
+    u32 CRC;
+};
+#pragma pack(pop)
 #else
-struct dualshock_4_data
+struct dualshock_4_input
 {
     s32 LeftStickX;
     s32 LeftStickY;
@@ -312,7 +333,7 @@ int WinMain(HINSTANCE Instance,
             GameMemory.PlatformReadFile = Win32ReadFile;
             
             // TODO(chris): Query monitor refresh rate
-            r32 dtForFrame = 1.0f / 30.0f;
+            r32 dtForFrame = 1.0f / 60.0f;
             
             game_backbuffer GameBackBuffer;
             GameBackBuffer.Width = GlobalBackBuffer.Width;
@@ -388,7 +409,7 @@ int WinMain(HINSTANCE Instance,
             }
 
             // NOTE(chris): Maybe use this if we need to get battery info, set LED color?
-#if RAW_HID
+#if DUALSHOCK_RAW_HID
             HANDLE Dualshock4Controllers[4] =
             {
                 INVALID_HANDLE_VALUE,
@@ -470,6 +491,34 @@ int WinMain(HINSTANCE Instance,
                                Attributes.VendorID == 0x054C && Attributes.ProductID == 0x05C4)
                             {
                                 Dualshock4Controllers[0] = Device;
+
+                                dualshock_4_output Output = {};
+#if 1
+                                Output.TransactionAndReportType = 0xa2;
+                                Output.ProtocolCode = 0x11;
+                                Output.R = 0;
+                                Output.G = 0;
+                                Output.B = 0xFF;
+#else
+                                Output = {0xa2, 0x11, 0xc0, 0x20, 0xf0, 0x04, 0x00, 0x00,
+                                          0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                          0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x43, 0x43,
+                                          0x00, 0x4d, 0x85, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                          0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                          0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                          0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                          0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                          0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                          0x00, 0x00, 0x00};
+#endif
+                                Output.CRC = stbiw__crc32((u8 *)&Output, sizeof(Output) - 4);
+                                DWORD BytesWritten;
+                                BOOL OutputResult = WriteFile(Device, &Output, sizeof(Output),
+                                                              &BytesWritten, 0);
+                                if(OutputResult)
+                                {
+                                    int A = 0;
+                                }
                             }
                             else
                             {
@@ -506,33 +555,33 @@ int WinMain(HINSTANCE Instance,
                             if(IsEqualGUID(Dualshock4GUID, DeviceInfo.guidProduct))
                             {
                                 DIOBJECTDATAFORMAT Dualshock4ObjectDataFormat[] =
-                                    {{&GUID_XAxis, OffsetOf(dualshock_4_data, LeftStickX), DIDFT_AXIS|DIDFT_ANYINSTANCE, 0},
-                                     {&GUID_YAxis, OffsetOf(dualshock_4_data, LeftStickY), DIDFT_AXIS|DIDFT_ANYINSTANCE, 0},
-                                     {&GUID_ZAxis, OffsetOf(dualshock_4_data, RightStickX), DIDFT_AXIS|DIDFT_ANYINSTANCE, 0},
-                                     {&GUID_RxAxis, OffsetOf(dualshock_4_data, LeftTrigger), DIDFT_AXIS|DIDFT_ANYINSTANCE, 0},
-                                     {&GUID_RyAxis, OffsetOf(dualshock_4_data, RightTrigger), DIDFT_AXIS|DIDFT_ANYINSTANCE, 0},
-                                     {&GUID_RzAxis, OffsetOf(dualshock_4_data, RightStickY), DIDFT_AXIS|DIDFT_ANYINSTANCE, 0},
-                                     {0, OffsetOf(dualshock_4_data, Square), DIDFT_BUTTON|DIDFT_MAKEINSTANCE(0), 0},
-                                     {0, OffsetOf(dualshock_4_data, Cross), DIDFT_BUTTON|DIDFT_MAKEINSTANCE(1), 0},
-                                     {0, OffsetOf(dualshock_4_data, Circle), DIDFT_BUTTON|DIDFT_MAKEINSTANCE(2), 0},
-                                     {0, OffsetOf(dualshock_4_data, Triangle), DIDFT_BUTTON|DIDFT_MAKEINSTANCE(3), 0},
-                                     {0, OffsetOf(dualshock_4_data, L1), DIDFT_BUTTON|DIDFT_MAKEINSTANCE(4), 0},
-                                     {0, OffsetOf(dualshock_4_data, R1), DIDFT_BUTTON|DIDFT_MAKEINSTANCE(5), 0},
-                                     {0, OffsetOf(dualshock_4_data, L2), DIDFT_BUTTON|DIDFT_MAKEINSTANCE(6), 0},
-                                     {0, OffsetOf(dualshock_4_data, R2), DIDFT_BUTTON|DIDFT_MAKEINSTANCE(7), 0},
-                                     {0, OffsetOf(dualshock_4_data, Share), DIDFT_BUTTON|DIDFT_MAKEINSTANCE(8), 0},
-                                     {0, OffsetOf(dualshock_4_data, Options), DIDFT_BUTTON|DIDFT_MAKEINSTANCE(9), 0},
-                                     {0, OffsetOf(dualshock_4_data, L3), DIDFT_BUTTON|DIDFT_MAKEINSTANCE(10), 0},
-                                     {0, OffsetOf(dualshock_4_data, R3), DIDFT_BUTTON|DIDFT_MAKEINSTANCE(11), 0},
-                                     {0, OffsetOf(dualshock_4_data, PS), DIDFT_BUTTON|DIDFT_MAKEINSTANCE(12), 0},
-                                     {0, OffsetOf(dualshock_4_data, Touchpad), DIDFT_BUTTON|DIDFT_MAKEINSTANCE(13), 0},
-                                     {0, OffsetOf(dualshock_4_data, DPad), DIDFT_POV|DIDFT_ANYINSTANCE, 0},
+                                    {{&GUID_XAxis, OffsetOf(dualshock_4_input, LeftStickX), DIDFT_AXIS|DIDFT_ANYINSTANCE, 0},
+                                     {&GUID_YAxis, OffsetOf(dualshock_4_input, LeftStickY), DIDFT_AXIS|DIDFT_ANYINSTANCE, 0},
+                                     {&GUID_ZAxis, OffsetOf(dualshock_4_input, RightStickX), DIDFT_AXIS|DIDFT_ANYINSTANCE, 0},
+                                     {&GUID_RxAxis, OffsetOf(dualshock_4_input, LeftTrigger), DIDFT_AXIS|DIDFT_ANYINSTANCE, 0},
+                                     {&GUID_RyAxis, OffsetOf(dualshock_4_input, RightTrigger), DIDFT_AXIS|DIDFT_ANYINSTANCE, 0},
+                                     {&GUID_RzAxis, OffsetOf(dualshock_4_input, RightStickY), DIDFT_AXIS|DIDFT_ANYINSTANCE, 0},
+                                     {0, OffsetOf(dualshock_4_input, Square), DIDFT_BUTTON|DIDFT_MAKEINSTANCE(0), 0},
+                                     {0, OffsetOf(dualshock_4_input, Cross), DIDFT_BUTTON|DIDFT_MAKEINSTANCE(1), 0},
+                                     {0, OffsetOf(dualshock_4_input, Circle), DIDFT_BUTTON|DIDFT_MAKEINSTANCE(2), 0},
+                                     {0, OffsetOf(dualshock_4_input, Triangle), DIDFT_BUTTON|DIDFT_MAKEINSTANCE(3), 0},
+                                     {0, OffsetOf(dualshock_4_input, L1), DIDFT_BUTTON|DIDFT_MAKEINSTANCE(4), 0},
+                                     {0, OffsetOf(dualshock_4_input, R1), DIDFT_BUTTON|DIDFT_MAKEINSTANCE(5), 0},
+                                     {0, OffsetOf(dualshock_4_input, L2), DIDFT_BUTTON|DIDFT_MAKEINSTANCE(6), 0},
+                                     {0, OffsetOf(dualshock_4_input, R2), DIDFT_BUTTON|DIDFT_MAKEINSTANCE(7), 0},
+                                     {0, OffsetOf(dualshock_4_input, Share), DIDFT_BUTTON|DIDFT_MAKEINSTANCE(8), 0},
+                                     {0, OffsetOf(dualshock_4_input, Options), DIDFT_BUTTON|DIDFT_MAKEINSTANCE(9), 0},
+                                     {0, OffsetOf(dualshock_4_input, L3), DIDFT_BUTTON|DIDFT_MAKEINSTANCE(10), 0},
+                                     {0, OffsetOf(dualshock_4_input, R3), DIDFT_BUTTON|DIDFT_MAKEINSTANCE(11), 0},
+                                     {0, OffsetOf(dualshock_4_input, PS), DIDFT_BUTTON|DIDFT_MAKEINSTANCE(12), 0},
+                                     {0, OffsetOf(dualshock_4_input, Touchpad), DIDFT_BUTTON|DIDFT_MAKEINSTANCE(13), 0},
+                                     {0, OffsetOf(dualshock_4_input, DPad), DIDFT_POV|DIDFT_ANYINSTANCE, 0},
                                     };
                                 DIDATAFORMAT Dualshock4DataFormat;
                                 Dualshock4DataFormat.dwSize = sizeof(DIDATAFORMAT);
                                 Dualshock4DataFormat.dwObjSize = sizeof(DIOBJECTDATAFORMAT);
                                 Dualshock4DataFormat.dwFlags = DIDF_ABSAXIS;
-                                Dualshock4DataFormat.dwDataSize = sizeof(dualshock_4_data);
+                                Dualshock4DataFormat.dwDataSize = sizeof(dualshock_4_input);
                                 Dualshock4DataFormat.dwNumObjs = ArrayCount(Dualshock4ObjectDataFormat);
                                 Dualshock4DataFormat.rgodf = Dualshock4ObjectDataFormat;
                                 HRESULT DataFormatResult = Device->SetDataFormat(&Dualshock4DataFormat);
@@ -763,11 +812,11 @@ int WinMain(HINSTANCE Instance,
                     ++ControllerIndex)
                 {
                     game_controller *Controller = NewInput->Controllers + ControllerIndex;
-#if RAW_HID
+#if DUALSHOCK_RAW_HID
                     HANDLE Dualshock4Controller = Dualshock4Controllers[ControllerIndex];
                     if(Dualshock4Controller != INVALID_HANDLE_VALUE && GetInputReport)
                     {
-                        dualshock_4_data Dualshock4Reports[32];
+                        dualshock_4_input Dualshock4Reports[32];
 
 #if 0
                         BOOL GetReportResult = GetInputReport(Dualshock4Controller,
@@ -781,7 +830,7 @@ int WinMain(HINSTANCE Instance,
                         if(GetReportResult)
                         {
                             // TODO(chris): Average all received inputs?
-                            dualshock_4_data *Dualshock4Data = Dualshock4Reports + 0;
+                            dualshock_4_input *Dualshock4Data = Dualshock4Reports + 0;
                             // NOTE(chris): Analog sticks
                             {
                                 Dualshock4Data->LeftStickY = 0xFF - Dualshock4Data->LeftStickY;
@@ -935,7 +984,7 @@ int WinMain(HINSTANCE Instance,
                     LPDIRECTINPUTDEVICE8A Dualshock4Controller = Dualshock4Controllers[ControllerIndex];
                     if(Dualshock4Controller)
                     {
-                        dualshock_4_data Dualshock4Data = {};
+                        dualshock_4_input Dualshock4Data = {};
                         HRESULT DataFetchResult = Dualshock4Controller->GetDeviceState(sizeof(Dualshock4Data), &Dualshock4Data);
                         if(SUCCEEDED(DataFetchResult))
                         {
