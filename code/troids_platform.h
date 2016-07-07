@@ -27,6 +27,8 @@ typedef double r64;
 
 typedef int32_t b32;
 
+typedef size_t memory_size;
+
 struct v2i
 {
     s32 x;
@@ -37,6 +39,27 @@ struct v2
 {
     r32 x;
     r32 y;
+};
+
+union v3
+{
+    struct
+    {
+        r32 x;
+        r32 y;
+        r32 z;
+    };
+    struct
+    {
+        r32 r;
+        r32 g;
+        r32 b;
+    };
+    struct
+    {
+        v2 xy;
+        r32 z;
+    };
 };
 
 union v4
@@ -53,6 +76,11 @@ union v4
         r32 r;
         r32 g;
         r32 b;
+        r32 a;
+    };
+    struct
+    {
+        v3 rgb;
         r32 a;
     };
 };
@@ -142,8 +170,46 @@ struct game_memory
     u64 TemporaryMemorySize;
     void *TemporaryMemory;
 
+    u64 DebugMemorySize;
+    void *DebugMemory;
+
     platform_read_file *PlatformReadFile;
 };
+
+struct memory_arena
+{
+    memory_size Size;
+    memory_size Used;
+    void *Memory;
+};
+
+inline void
+InitializeArena(memory_arena *Arena, memory_size SizeInit, void *MemoryInit)
+{
+    Arena->Size = SizeInit;
+    Arena->Used = 0;
+    Arena->Memory = MemoryInit;
+}
+
+inline void *
+PushSize(memory_arena *Arena, memory_size Size)
+{
+    void *Result = 0;
+    if((Arena->Used + Size) > Arena->Size)
+    {
+        Assert(!"Allocated too much memory!");
+    }
+    else
+    {
+        Result = (u8 *)Arena->Memory + Arena->Used;
+        Arena->Used += Size;
+    }
+
+    return(Result);
+}
+
+#define PushStruct(Arena, type) (type *)PushSize(Arena, sizeof(type))
+#define PushArray(Arena, Count, type) (type *)PushSize(Arena, Count*sizeof(type))
 
 #pragma pack(push, 1)
 struct bitmap_header

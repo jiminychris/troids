@@ -230,6 +230,53 @@ LengthSq(v2 A)
     return(Result);
 }
 
+inline v3
+V3(r32 X, r32 Y, r32 Z)
+{
+    v3 Result;
+    Result.x = X;
+    Result.y = Y;
+    Result.z = Z;
+    return(Result);
+}
+
+inline v3
+operator+(v3 A, v3 B)
+{
+    v3 Result;
+    Result.x = A.x + B.x;
+    Result.y = A.y + B.y;
+    Result.z = A.z + B.z;
+    return(Result);
+}
+
+inline v3
+operator*(r32 C, v3 A)
+{
+    v3 Result;
+    Result.x = C*A.x;
+    Result.y = C*A.y;
+    Result.z = C*A.z;
+    return(Result);
+}
+
+inline v3
+operator*(v3 A, r32 C)
+{
+    v3 Result;
+    Result.x = C*A.x;
+    Result.y = C*A.y;
+    Result.z = C*A.z;
+    return(Result);
+}
+
+inline v3
+operator*=(v3 &A, r32 C)
+{
+    A = C*A;
+    return(A);
+}
+
 inline v4
 V4(r32 X, r32 Y, r32 Z, r32 W)
 {
@@ -282,6 +329,15 @@ operator*(v4 A, r32 C)
     Result.y = C*A.y;
     Result.z = C*A.z;
     Result.w = C*A.w;
+    return(Result);
+}
+
+inline r32
+Unlerp(r32 A, r32 X, r32 B)
+{
+    r32 Range = B - A;
+    r32 Result = (X - A) / (B - A);
+    Result = Clamp01(Result);
     return(Result);
 }
 

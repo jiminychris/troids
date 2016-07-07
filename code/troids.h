@@ -21,6 +21,8 @@ struct game_state
     u32 RunningSampleCount;
     
     v2 P;
+    v2 dP;
+    r32 dYaw;
     r32 Yaw;
     r32 Pitch;
     r32 Roll;

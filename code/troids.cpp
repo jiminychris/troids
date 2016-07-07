@@ -78,10 +78,12 @@ LoadBitmap(char *FileName)
     return(Result);
 }
 
+#pragma optimize("gts", on)
 internal void
 RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap Bitmap, v2 Origin, v2 XAxis, v2 YAxis,
              r32 Scale, v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f))
 {
+    Color.rgb *= Color.a;
     XAxis *= Scale;
     YAxis *= Scale;
     Origin -= Hadamard(Bitmap.Align, XAxis + YAxis);
@@ -110,24 +112,19 @@ RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap Bitmap, v2 Origin, v2 XA
         u32 *Pixel = (u32 *)PixelRow + XMin;
         for(s32 X = XMin;
             X < XMax;
-            ++X)
+            X += 1)
         {
+            // NOTE(chris): Test the next four pixels and mask the ones we're using
             v2 TestPoint = V2(X, Y) - Origin;
-            r32 EdgeTestA = Inner(TestPoint, Perp(XAxis));
-            r32 EdgeTestB = Inner(TestPoint - XAxis, Perp(YAxis));
-            r32 EdgeTestC = Inner(TestPoint - XAxis - YAxis, Perp(-XAxis));
-            r32 EdgeTestD = Inner(TestPoint - YAxis, Perp(-YAxis));
 
-#if 1
-            if(EdgeTestA > 0.0f &&
-               EdgeTestB > 0.0f &&
-               EdgeTestC > 0.0f &&
-               EdgeTestD > 0.0f)
+            r32 U = Inner(TestPoint, XAxis)*InvXAxisLengthSq;
+            r32 V = Inner(TestPoint, YAxis)*InvYAxisLengthSq;
+
+            if(U >= 0.0f &&
+               U <= 1.0f &&
+               V >= 0.0f &&
+               V <= 1.0f)
             {
-
-                r32 U = Clamp01(Inner(TestPoint, XAxis)*InvXAxisLengthSq);
-                r32 V = Clamp01(Inner(TestPoint, YAxis)*InvYAxisLengthSq);
-
                 r32 tX = U*(Bitmap.Width - 2) + 0.5f;
                 r32 tY = V*(Bitmap.Height - 2) + 0.5f;
 
@@ -156,7 +153,7 @@ RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap Bitmap, v2 Origin, v2 XA
                 r32 tV = 1.0f - (tY - (u32)tY);
                 v4 Texel = Lerp(Lerp(TexelA, tU, TexelB), tV, Lerp(TexelC, tU, TexelD));
 
-                r32 DA = 1.0f - (Inv255*Texel.a);
+                r32 DA = 1.0f - (Inv255*Texel.a*Color.a);
                 u32 DR = (*Pixel >> 16) & 0xFF;
                 u32 DG = (*Pixel >> 8) & 0xFF;
                 u32 DB = (*Pixel >> 0) & 0xFF;
@@ -165,92 +162,10 @@ RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap Bitmap, v2 Origin, v2 XA
                           ((RoundU32(Color.g*Texel.g + DA*DG)) << 8) |
                           ((RoundU32(Color.b*Texel.b + DA*DB)) << 0));
             }
-#else
-            *Pixel = 0xFF0000FF;
-
-#endif
-            *Pixel++;
+            Pixel += 1;
         }
         PixelRow += BackBuffer->Pitch;
     }
-
-#if 0
-    rectangle2i ClipRect;
-    v2 BitmapP = V2(P.x - Bitmap.Width*Bitmap.Align.x,
-                    P.y - Bitmap.Height*Bitmap.Align.y);
-    ClipRect.Min.x = Clamp(0, Floor(BitmapP.x), BackBuffer->Width);
-    ClipRect.Min.y = Clamp(0, Floor(BitmapP.y), BackBuffer->Height);
-    ClipRect.Max.x = Clamp(0, Ceiling(BitmapP.x + Bitmap.Width - 2.0f), BackBuffer->Width);
-    ClipRect.Max.y = Clamp(0, Ceiling(BitmapP.y + Bitmap.Height - 2.0f), BackBuffer->Height);
-    r32 U = BitmapP.x - Floor(BitmapP.x);
-    r32 V = BitmapP.y - Floor(BitmapP.y);
-    r32 InvU = 1.0f - U;
-    r32 InvV = 1.0f - V;
-    r32 Inv255 = 1.0f / 255.0f;
-    u8 *DestRow = (u8 *)BackBuffer->Memory + (BackBuffer->Pitch*ClipRect.Min.y);
-    u8 *SourceRow = (u8 *)Bitmap.Memory + (Bitmap.Pitch*(ClipRect.Min.y - Floor(BitmapP.y)));
-    for(s32 Y = ClipRect.Min.y;
-        Y < ClipRect.Max.y;
-        ++Y)
-    {
-        u32 *Dest = ((u32 *)DestRow) + ClipRect.Min.x;
-        u32 *Source = ((u32 *)SourceRow) + 1 + ClipRect.Min.x - Floor(BitmapP.x);
-        for(s32 X = ClipRect.Min.x;
-            X < ClipRect.Max.x;
-            ++X)
-        {
-            u32 *SourceW = Source;
-            u32 *SourceX = SourceW + 1;
-            u32 *SourceY = Source + Bitmap.Height;
-            u32 *SourceZ = SourceY + 1;
-            v4 SW = V4((r32)((*SourceW >> 16) & 0xFF),
-                       (r32)((*SourceW >> 8) & 0xFF),
-                       (r32)((*SourceW >> 0) & 0xFF),
-                       (r32)((*SourceW >> 24) & 0xFF));
-            v4 SX = V4((r32)((*SourceX >> 16) & 0xFF),
-                       (r32)((*SourceX >> 8) & 0xFF),
-                       (r32)((*SourceX >> 0) & 0xFF),
-                       (r32)((*SourceX >> 24) & 0xFF));
-            v4 SY = V4((r32)((*SourceY >> 16) & 0xFF),
-                       (r32)((*SourceY >> 8) & 0xFF),
-                       (r32)((*SourceY >> 0) & 0xFF),
-                       (r32)((*SourceY >> 24) & 0xFF));
-            v4 SZ = V4((r32)((*SourceZ >> 16) & 0xFF),
-                       (r32)((*SourceZ >> 8) & 0xFF),
-                       (r32)((*SourceZ >> 0) & 0xFF),
-                       (r32)((*SourceZ >> 24) & 0xFF));
-
-            // TODO(chris): Intuition says the Us and Vs should be swapped with Invs, but this works?
-            v4 SJ = U*SW + InvU*SX;
-            v4 SK = U*SY + InvU*SZ;
-
-            v4 S = V*SJ + InvV*SK;
-            u32 SA = (u32)(S.a + 0.5f);
-            u32 SR = (u32)(S.r + 0.5f);
-            u32 SG = (u32)(S.g + 0.5f);
-            u32 SB = (u32)(S.b + 0.5f);
-
-            r32 InvAlpha = 1.0f - (SA*Inv255);
-            r32 DRed = InvAlpha*((*Dest >> 16) & 0xFF);
-            r32 DGreen = InvAlpha*((*Dest >> 8) & 0xFF);
-            r32 DBlue = InvAlpha*((*Dest >> 0) & 0xFF);
-
-            u32 DR = SR + (u32)(DRed + 0.5f);
-            u32 DG = SG + (u32)(DGreen + 0.5f);
-            u32 DB = SB + (u32)(DBlue + 0.5f);
-
-            *Dest = ((0xFF << 24) | // A
-                     (DR   << 16) | // R
-                     (DG   << 8)  | // G
-                     (DB   << 0));  // B
-
-            ++Dest;
-            ++Source;
-        }
-        DestRow += BackBuffer->Pitch;
-        SourceRow += Bitmap.Pitch;
-    }
-#endif
 }
 
 internal void
@@ -261,6 +176,16 @@ DrawRectangle(game_backbuffer *BackBuffer, rectangle2 Rect, v4 Color)
     s32 XMax = Clamp(0, RoundS32(Rect.Max.x), BackBuffer->Width);
     s32 YMax = Clamp(0, RoundS32(Rect.Max.y), BackBuffer->Height);
     
+    u32 A = (u32)(Color.a*255.0f + 0.5f);
+    u32 R = (u32)(Color.r*255.0f + 0.5f);
+    u32 G = (u32)(Color.g*255.0f + 0.5f);
+    u32 B = (u32)(Color.b*255.0f + 0.5f);
+
+    u32 DestColor = ((A << 24) | // A
+                     (R << 16) | // R
+                     (G << 8)  | // G
+                     (B << 0));  // B
+
     u8 *PixelRow = (u8 *)BackBuffer->Memory;
     for(s32 Y = YMin;
         Y < YMax;
@@ -271,18 +196,12 @@ DrawRectangle(game_backbuffer *BackBuffer, rectangle2 Rect, v4 Color)
             X < XMax;
             ++X)
         {
-            u32 A = (u32)(Color.a*255.0f + 0.5f);
-            u32 R = (u32)(Color.r*255.0f + 0.5f);
-            u32 G = (u32)(Color.g*255.0f + 0.5f);
-            u32 B = (u32)(Color.b*255.0f + 0.5f);
-            *Dest++ = ((A << 24) | // A
-                       (R << 16) | // R
-                       (G << 8)  | // G
-                       (B << 0));  // B
+            *Dest++ = DestColor;
         }
         PixelRow += BackBuffer->Pitch;
     }
 }
+#pragma optimize("", on)
 
 inline void
 Clear(game_backbuffer *BackBuffer, v4 Color)
@@ -303,7 +222,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         State->IsInitialized = true;
 
         State->P = V2(BackBuffer->Width / 2, BackBuffer->Height / 2);
-        State->Ship = LoadBitmap("ship.bmp");
+        State->Ship = LoadBitmap("ship_opaque.bmp");
         State->Bullet = LoadBitmap("bullet.bmp");
     }
 
@@ -333,9 +252,14 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     {
         Throttle = Keyboard->LeftStickY;
     }
-    State->Yaw += 4.0f*Input->dtForFrame*-LeftStickX;
+    r32 Halfdt = Input->dtForFrame*0.5f;
+    r32 dYaw = State->dYaw + Input->dtForFrame*-LeftStickX;
+    State->Yaw += (dYaw + State->dYaw)*Halfdt;
+    State->dYaw = dYaw;
     v2 Facing = V2(Cos(State->Yaw), Sin(State->Yaw));
-    if(WentDown(Controller->RightShoulder1) &&
+
+    v2 Acceleration = {};
+    if((WentDown(Controller->RightShoulder1) || WentDown(Keyboard->RightShoulder1)) &&
        State->LiveBulletCount < ArrayCount(State->LiveBullets))
     {
         if(State->Cooldown <= 0.0f)
@@ -345,13 +269,17 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             LiveBullet->Direction = State->Yaw;
             LiveBullet->Timer = 2.0f;
             State->Cooldown = 0.1f;
+            Acceleration += -Facing*200.0f;
         }
     }
 
     r32 MetersPerPixel = 0.00027211314f;
     r32 PixelsPerMeter = 1.0f/MetersPerPixel;
 
-    State->P += Facing*0.075f*PixelsPerMeter*Input->dtForFrame*Clamp01(Throttle);
+    Acceleration += Facing*0.075f*PixelsPerMeter*Clamp01(Throttle);
+    v2 dP = State->dP + Acceleration*Input->dtForFrame;
+    State->P += (dP + State->dP)*Halfdt;
+    State->dP = dP;
     if(State->Cooldown > 0.0f)
     {
         State->Cooldown -= Input->dtForFrame;
@@ -379,7 +307,8 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             v2 YAxis = V2(Cos(LiveBullet->Direction), Sin(LiveBullet->Direction));
             v2 XAxis = -0.5f*Perp(YAxis);
             LiveBullet->P += YAxis*Input->dtForFrame*PixelsPerMeter*0.1f;
-            RenderBitmap(BackBuffer, State->Bullet, LiveBullet->P, XAxis, YAxis, BulletScale);
+            RenderBitmap(BackBuffer, State->Bullet, LiveBullet->P, XAxis, YAxis, BulletScale,
+                         V4(1.0f, 1.0f, 1.0f, Unlerp(0.0f, LiveBullet->Timer, 2.0f)));
             LiveBullet->Timer -= Input->dtForFrame;
             ++LiveBullet;
         }

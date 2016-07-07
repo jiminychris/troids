@@ -11,6 +11,8 @@
 #include <gl/gl.h>
 
 #include "troids_platform.h"
+#include "troids_intrinsics.h"
+#include "troids_debug.h"
 
 // NOTE(chris): This has become a matter of reverse-engineering. It seems like this will only be good
 // for input via DirectInput, as DirectInput can't handle output and the HID output is poorly
@@ -39,6 +41,8 @@ struct win32_backbuffer
 global_variable win32_backbuffer GlobalBackBuffer;
 global_variable b32 GlobalRunning;
 
+typedef BOOL WINAPI wgl_swap_interval_ext(int);
+    
 #include <dsound.h>
 #define DIRECT_SOUND_CREATE(Name) HRESULT WINAPI Name(LPCGUID pcGuidDevice, LPDIRECTSOUND *ppDS, LPUNKNOWN pUnkOuter);
 typedef DIRECT_SOUND_CREATE(direct_sound_create);
@@ -270,6 +274,29 @@ Win32ReadFile(char *FileName)
     return(Result);
 }
 
+internal void
+InitializeOpenGL(HDC DeviceContext)
+{
+    HGLRC OpenGLRC = wglCreateContext(DeviceContext);
+    if(wglMakeCurrent(DeviceContext, OpenGLRC))
+    {
+        wgl_swap_interval_ext *wglSwapIntervalEXT = (wgl_swap_interval_ext *)wglGetProcAddress("wglSwapIntervalEXT");
+        if(wglSwapIntervalEXT)
+        {
+            if(wglSwapIntervalEXT(1))
+            {
+                int A = 0;
+                // NOTE(chris): VSYNC!
+            }
+        }
+    }
+    else
+    {
+        InvalidCodePath;
+        // TODO(chris): Diagnostic
+    }
+}
+
 int WinMain(HINSTANCE Instance,
             HINSTANCE PrevInstance,
             LPSTR     CommandLine,
@@ -294,6 +321,8 @@ int WinMain(HINSTANCE Instance,
 
     if(RegisterClassA(&WindowClass))
     {
+        s32 BackBufferWidth = 1920;
+        s32 BackBufferHeight = 1080;
         s32 WindowWidth = 1920/2;
         s32 WindowHeight = 1080/2;
         HWND Window = CreateWindowExA(0,
@@ -310,8 +339,8 @@ int WinMain(HINSTANCE Instance,
                                       0);
         if(Window)
         {
-            GlobalBackBuffer.Width = WindowWidth;
-            GlobalBackBuffer.Height = WindowHeight;
+            GlobalBackBuffer.Width = BackBufferWidth;
+            GlobalBackBuffer.Height = BackBufferHeight;
             GlobalBackBuffer.Pitch = GlobalBackBuffer.Width*sizeof(u32);
             GlobalBackBuffer.Info.bmiHeader.biSize = sizeof(GlobalBackBuffer.Info.bmiHeader);
             GlobalBackBuffer.Info.bmiHeader.biWidth = GlobalBackBuffer.Width;
@@ -342,26 +371,27 @@ int WinMain(HINSTANCE Instance,
             DescribePixelFormat(DeviceContext, SuggestedPixelFormatIndex,
                                 sizeof(SuggestedPixelFormat), &SuggestedPixelFormat);
             SetPixelFormat(DeviceContext, SuggestedPixelFormatIndex, &SuggestedPixelFormat);
-            HGLRC OpenGLRC = wglCreateContext(DeviceContext);
-            if(wglMakeCurrent(DeviceContext, OpenGLRC))
-            {
-            }
-            else
-            {
-                InvalidCodePath;
-                // TODO(chris): Diagnostic
-            }
+
+            InitializeOpenGL(DeviceContext);
             
             ReleaseDC(Window, DeviceContext);
 
             game_memory GameMemory;
             GameMemory.PermanentMemorySize = Megabytes(256);
             GameMemory.TemporaryMemorySize = Gigabytes(2);
-            u64 TotalMemorySize = GameMemory.PermanentMemorySize + GameMemory.TemporaryMemorySize;
+            GameMemory.DebugMemorySize = Gigabytes(2);
+            u64 TotalMemorySize = (GameMemory.PermanentMemorySize +
+                                   GameMemory.TemporaryMemorySize +
+                                   GameMemory.DebugMemorySize);
             GameMemory.PermanentMemory = VirtualAlloc(0, TotalMemorySize,
                                                       MEM_COMMIT|MEM_RESERVE,
                                                       PAGE_READWRITE);
             GameMemory.TemporaryMemory = (u8 *)GameMemory.PermanentMemory + GameMemory.PermanentMemorySize;
+            GameMemory.DebugMemory = (u8 *)GameMemory.TemporaryMemory + GameMemory.TemporaryMemorySize;
+            GlobalDebugState = (debug_state *)GameMemory.DebugMemory;
+            InitializeArena(&GlobalDebugState->Arena,
+                            GameMemory.DebugMemorySize - sizeof(debug_state),
+                            (u8 *)GameMemory.DebugMemory + sizeof(debug_state));
 
             GameMemory.PlatformReadFile = Win32ReadFile;
             
@@ -444,12 +474,12 @@ int WinMain(HINSTANCE Instance,
             // NOTE(chris): Maybe use this if we need to get battery info, set LED color?
 #if DUALSHOCK_RAW_HID
             HANDLE Dualshock4Controllers[4] =
-            {
-                INVALID_HANDLE_VALUE,
-                INVALID_HANDLE_VALUE,
-                INVALID_HANDLE_VALUE,
-                INVALID_HANDLE_VALUE,
-            };
+                {
+                    INVALID_HANDLE_VALUE,
+                    INVALID_HANDLE_VALUE,
+                    INVALID_HANDLE_VALUE,
+                    INVALID_HANDLE_VALUE,
+                };
             
             get_hid_guid *GetHIDGUID = 0;
             get_device_attributes *GetDeviceAttributes = 0;
@@ -709,467 +739,477 @@ int WinMain(HINSTANCE Instance,
             QueryPerformanceCounter(&LastCounter);
             while(GlobalRunning)
             {
-                game_input *Temp = NewInput;
-                NewInput = OldInput;
-                OldInput = Temp;
-                *NewInput = {};
-                NewInput->dtForFrame = dtForFrame;
-
-                game_controller *NewKeyboard = &NewInput->Keyboard;
-                game_controller *OldKeyboard = &OldInput->Keyboard;
-                for(u32 ButtonIndex = 0;
-                    ButtonIndex < ArrayCount(NewKeyboard->Buttons);
-                    ++ButtonIndex)
+                
                 {
-                    game_button *NewButton = NewKeyboard->Buttons + ButtonIndex;
-                    game_button *OldButton = OldKeyboard->Buttons + ButtonIndex;
-                    NewButton->EndedDown = OldButton->EndedDown;
-                }
-                NewKeyboard->LeftStickX = OldKeyboard->LeftStickX;
-                NewKeyboard->LeftStickY = OldKeyboard->LeftStickY;
-                NewKeyboard->RightStickX = OldKeyboard->RightStickX;
-                NewKeyboard->RightStickY = OldKeyboard->RightStickY;
+                    TIMED_BLOCK(Input);
 
-                while(PeekMessageA(&Message, Window, 0, 0, PM_REMOVE))
-                {
-                    switch(Message.message)
+                    game_input *Temp = NewInput;
+                    NewInput = OldInput;
+                    OldInput = Temp;
+                    *NewInput = {};
+                    NewInput->dtForFrame = dtForFrame;
+
+                    game_controller *NewKeyboard = &NewInput->Keyboard;
+                    game_controller *OldKeyboard = &OldInput->Keyboard;
+                    for(u32 ButtonIndex = 0;
+                        ButtonIndex < ArrayCount(NewKeyboard->Buttons);
+                        ++ButtonIndex)
                     {
-                        case WM_KEYDOWN:
-                        case WM_KEYUP:
+                        game_button *NewButton = NewKeyboard->Buttons + ButtonIndex;
+                        game_button *OldButton = OldKeyboard->Buttons + ButtonIndex;
+                        NewButton->EndedDown = OldButton->EndedDown;
+                    }
+                    NewKeyboard->LeftStickX = OldKeyboard->LeftStickX;
+                    NewKeyboard->LeftStickY = OldKeyboard->LeftStickY;
+                    NewKeyboard->RightStickX = OldKeyboard->RightStickX;
+                    NewKeyboard->RightStickY = OldKeyboard->RightStickY;
+
+                    while(PeekMessageA(&Message, Window, 0, 0, PM_REMOVE))
+                    {
+                        switch(Message.message)
                         {
-                            b32 AlreadyDown = (Message.lParam & (1 << 30));
-                            b32 WentDown = !(Message.lParam & (1 << 31));
-                            if(!(AlreadyDown && WentDown))
+                            case WM_KEYDOWN:
+                            case WM_KEYUP:
                             {
-                                switch(Message.wParam)
-                                {
-                                    case VK_UP:
-                                    {
-                                        ProcessKeyboardMessage(&NewKeyboard->ActionUp);
-                                    } break;
-
-                                    case VK_LEFT:
-                                    {
-                                        ProcessKeyboardMessage(&NewKeyboard->ActionLeft);
-                                    } break;
-
-                                    case VK_DOWN:
-                                    {
-                                        ProcessKeyboardMessage(&NewKeyboard->ActionDown);
-                                    } break;
-
-                                    case VK_RIGHT:
-                                    {
-                                        ProcessKeyboardMessage(&NewKeyboard->ActionRight);
-                                    } break;
-
-                                    case 'W':
-                                    {
-                                        ProcessKeyboardMessage(&NewKeyboard->LeftStickY, WentDown, 1.0f);
-                                    } break;
-
-                                    case 'A':
-                                    {
-                                        ProcessKeyboardMessage(&NewKeyboard->LeftStickX, WentDown, -1.0f);
-                                    } break;
-
-                                    case 'S':
-                                    {
-                                        ProcessKeyboardMessage(&NewKeyboard->LeftStickY, WentDown, -1.0f);
-                                    } break;
-
-                                    case 'D':
-                                    {
-                                        ProcessKeyboardMessage(&NewKeyboard->LeftStickX, WentDown, 1.0f);
-                                    } break;
-                                }
-                                if(WentDown)
+                                b32 AlreadyDown = (Message.lParam & (1 << 30));
+                                b32 WentDown = !(Message.lParam & (1 << 31));
+                                if(!(AlreadyDown && WentDown))
                                 {
                                     switch(Message.wParam)
                                     {
-                                        case 'R':
+                                        case VK_UP:
                                         {
-                                            switch(RecordingState)
+                                            ProcessKeyboardMessage(&NewKeyboard->ActionUp);
+                                        } break;
+
+                                        case VK_LEFT:
+                                        {
+                                            ProcessKeyboardMessage(&NewKeyboard->ActionLeft);
+                                        } break;
+
+                                        case VK_DOWN:
+                                        {
+                                            ProcessKeyboardMessage(&NewKeyboard->ActionDown);
+                                        } break;
+
+                                        case VK_RIGHT:
+                                        {
+                                            ProcessKeyboardMessage(&NewKeyboard->ActionRight);
+                                        } break;
+
+                                        case VK_RETURN:
+                                        {
+                                            ProcessKeyboardMessage(&NewKeyboard->RightShoulder1);
+                                        } break;
+
+                                        case 'W':
+                                        {
+                                            ProcessKeyboardMessage(&NewKeyboard->LeftStickY, WentDown, 1.0f);
+                                        } break;
+
+                                        case 'A':
+                                        {
+                                            ProcessKeyboardMessage(&NewKeyboard->LeftStickX, WentDown, -1.0f);
+                                        } break;
+
+                                        case 'S':
+                                        {
+                                            ProcessKeyboardMessage(&NewKeyboard->LeftStickY, WentDown, -1.0f);
+                                        } break;
+
+                                        case 'D':
+                                        {
+                                            ProcessKeyboardMessage(&NewKeyboard->LeftStickX, WentDown, 1.0f);
+                                        } break;
+                                    }
+                                    if(WentDown)
+                                    {
+                                        switch(Message.wParam)
+                                        {
+                                            case 'R':
                                             {
-                                                case RecordingState_None:
+                                                switch(RecordingState)
                                                 {
-                                                    RecordingState = RecordingState_Recording;
-                                                    if(RecordFile)
+                                                    case RecordingState_None:
                                                     {
-                                                        DWORD BytesWritten;
-                                                        OVERLAPPED Overlapped = {};
-                                                        BOOL Result = WriteFile(RecordFile, &GameMemory,
-                                                                                sizeof(GameMemory),
-                                                                                &BytesWritten, &Overlapped);
-                                                        Assert(Result && (BytesWritten == sizeof(GameMemory)));
-                                                    }
-                                                } break;
+                                                        RecordingState = RecordingState_Recording;
+                                                        if(RecordFile)
+                                                        {
+                                                            DWORD BytesWritten;
+                                                            OVERLAPPED Overlapped = {};
+                                                            BOOL Result = WriteFile(RecordFile, &GameMemory,
+                                                                                    sizeof(GameMemory),
+                                                                                    &BytesWritten, &Overlapped);
+                                                            Assert(Result && (BytesWritten == sizeof(GameMemory)));
+                                                        }
+                                                    } break;
 
-                                                case RecordingState_Recording:
-                                                {
-                                                    RecordingState = RecordingState_PlayingRecord;
-                                                    if(RecordFile)
+                                                    case RecordingState_Recording:
                                                     {
-                                                        DWORD BytesRead;
-                                                        OVERLAPPED Overlapped = {};
-                                                        BOOL Result = ReadFile(RecordFile, &GameMemory,
-                                                                               sizeof(GameMemory),
-                                                                               &BytesRead, &Overlapped);
-                                                        Assert(Result && (BytesRead == sizeof(GameMemory)));
-                                                    }
-                                                } break;
+                                                        RecordingState = RecordingState_PlayingRecord;
+                                                        if(RecordFile)
+                                                        {
+                                                            DWORD BytesRead;
+                                                            OVERLAPPED Overlapped = {};
+                                                            BOOL Result = ReadFile(RecordFile, &GameMemory,
+                                                                                   sizeof(GameMemory),
+                                                                                   &BytesRead, &Overlapped);
+                                                            Assert(Result && (BytesRead == sizeof(GameMemory)));
+                                                        }
+                                                    } break;
 
-                                                case RecordingState_PlayingRecord:
-                                                {
-                                                    RecordingState = RecordingState_None;
-                                                    // TODO(chris): Do something to reset controller
-                                                    // state so we don't have errant inputs.
-                                                } break;
+                                                    case RecordingState_PlayingRecord:
+                                                    {
+                                                        RecordingState = RecordingState_None;
+                                                        // TODO(chris): Do something to reset controller
+                                                        // state so we don't have errant inputs.
+                                                    } break;
+                                                }
                                             }
                                         }
                                     }
                                 }
-                            }
-                        } break;
+                            } break;
 
-                        default:
-                        {
-                            TranslateMessage(&Message);
-                            DispatchMessageA(&Message);
-                        } break;
+                            default:
+                            {
+                                TranslateMessage(&Message);
+                                DispatchMessageA(&Message);
+                            } break;
+                        }
                     }
-                }
                 
-                for(u32 ControllerIndex = 0;
-                    ControllerIndex < ArrayCount(NewInput->Controllers);
-                    ++ControllerIndex)
-                {
-                    game_controller *NewController = NewInput->Controllers + ControllerIndex;
-                    game_controller *OldController = OldInput->Controllers + ControllerIndex;
-#if DUALSHOCK_RAW_HID
-                    HANDLE Dualshock4Controller = Dualshock4Controllers[ControllerIndex];
-                    if(Dualshock4Controller != INVALID_HANDLE_VALUE && GetInputReport)
+                    for(u32 ControllerIndex = 0;
+                        ControllerIndex < ArrayCount(NewInput->Controllers);
+                        ++ControllerIndex)
                     {
-                        dualshock_4_input Dualshock4Reports[32];
+                        game_controller *NewController = NewInput->Controllers + ControllerIndex;
+                        game_controller *OldController = OldInput->Controllers + ControllerIndex;
+#if DUALSHOCK_RAW_HID
+                        HANDLE Dualshock4Controller = Dualshock4Controllers[ControllerIndex];
+                        if(Dualshock4Controller != INVALID_HANDLE_VALUE && GetInputReport)
+                        {
+                            dualshock_4_input Dualshock4Reports[32];
 
 #if 0
-                        BOOL GetReportResult = GetInputReport(Dualshock4Controller,
-                                                              Report, sizeof(Report));
+                            BOOL GetReportResult = GetInputReport(Dualshock4Controller,
+                                                                  Report, sizeof(Report));
 #else
-                        DWORD BytesRead;
-                        BOOL GetReportResult = ReadFile(Dualshock4Controller,
-                                                        &Dualshock4Reports, sizeof(Dualshock4Reports),
-                                                        &BytesRead, 0);
+                            DWORD BytesRead;
+                            BOOL GetReportResult = ReadFile(Dualshock4Controller,
+                                                            &Dualshock4Reports, sizeof(Dualshock4Reports),
+                                                            &BytesRead, 0);
 #endif
-                        if(GetReportResult)
-                        {
-                            // TODO(chris): Average all received inputs?
-                            dualshock_4_input *Dualshock4Data = Dualshock4Reports + 0;
-                            // NOTE(chris): Analog sticks
+                            if(GetReportResult)
                             {
-                                Dualshock4Data->LeftStickY = 0xFF - Dualshock4Data->LeftStickY;
-                                Dualshock4Data->RightStickY = 0xFF - Dualshock4Data->RightStickY;
-                                r32 Center = 0xFF / 2.0f;
-                                s32 Deadzone = 4;
+                                // TODO(chris): Average all received inputs?
+                                dualshock_4_input *Dualshock4Data = Dualshock4Reports + 0;
+                                // NOTE(chris): Analog sticks
+                                {
+                                    Dualshock4Data->LeftStickY = 0xFF - Dualshock4Data->LeftStickY;
+                                    Dualshock4Data->RightStickY = 0xFF - Dualshock4Data->RightStickY;
+                                    r32 Center = 0xFF / 2.0f;
+                                    s32 Deadzone = 4;
                         
-                                Controller->LeftStickX = 0.0f;
-                                if(Dualshock4Data->LeftStickX < (Center - Deadzone))
-                                {
-                                    Controller->LeftStickX = (r32)(-(Center - Deadzone) + Dualshock4Data->LeftStickX) / (r32)(Center - Deadzone);
-                                }
-                                else if(Dualshock4Data->LeftStickX > (Center + Deadzone))
-                                {
-                                    Controller->LeftStickX = (r32)(Dualshock4Data->LeftStickX - Center - Deadzone) / (r32)(Center - Deadzone);
-                                }
+                                    Controller->LeftStickX = 0.0f;
+                                    if(Dualshock4Data->LeftStickX < (Center - Deadzone))
+                                    {
+                                        Controller->LeftStickX = (r32)(-(Center - Deadzone) + Dualshock4Data->LeftStickX) / (r32)(Center - Deadzone);
+                                    }
+                                    else if(Dualshock4Data->LeftStickX > (Center + Deadzone))
+                                    {
+                                        Controller->LeftStickX = (r32)(Dualshock4Data->LeftStickX - Center - Deadzone) / (r32)(Center - Deadzone);
+                                    }
 
-                                Controller->LeftStickY = 0.0f;
-                                if(Dualshock4Data->LeftStickY < (Center - Deadzone))
-                                {
-                                    Controller->LeftStickY = (r32)(-(Center - Deadzone) + Dualshock4Data->LeftStickY) / (r32)(Center - Deadzone);
-                                }
-                                else if(Dualshock4Data->LeftStickY > (Center + Deadzone))
-                                {
-                                    Controller->LeftStickY = (r32)(Dualshock4Data->LeftStickY - Center - Deadzone) / (r32)(Center - Deadzone);
-                                }
+                                    Controller->LeftStickY = 0.0f;
+                                    if(Dualshock4Data->LeftStickY < (Center - Deadzone))
+                                    {
+                                        Controller->LeftStickY = (r32)(-(Center - Deadzone) + Dualshock4Data->LeftStickY) / (r32)(Center - Deadzone);
+                                    }
+                                    else if(Dualshock4Data->LeftStickY > (Center + Deadzone))
+                                    {
+                                        Controller->LeftStickY = (r32)(Dualshock4Data->LeftStickY - Center - Deadzone) / (r32)(Center - Deadzone);
+                                    }
 
-                                Controller->RightStickX = 0.0f;
-                                if(Dualshock4Data->RightStickX < (Center - Deadzone))
-                                {
-                                    Controller->RightStickX = (r32)(-(Center - Deadzone) + Dualshock4Data->RightStickX) / (r32)(Center - Deadzone);
-                                }
-                                else if(Dualshock4Data->RightStickX > (Center + Deadzone))
-                                {
-                                    Controller->RightStickX = (r32)(Dualshock4Data->RightStickX - Center - Deadzone) / (r32)(Center - Deadzone);
-                                }
+                                    Controller->RightStickX = 0.0f;
+                                    if(Dualshock4Data->RightStickX < (Center - Deadzone))
+                                    {
+                                        Controller->RightStickX = (r32)(-(Center - Deadzone) + Dualshock4Data->RightStickX) / (r32)(Center - Deadzone);
+                                    }
+                                    else if(Dualshock4Data->RightStickX > (Center + Deadzone))
+                                    {
+                                        Controller->RightStickX = (r32)(Dualshock4Data->RightStickX - Center - Deadzone) / (r32)(Center - Deadzone);
+                                    }
 
-                                Controller->RightStickY = 0.0f;
-                                if(Dualshock4Data->RightStickY < (Center - Deadzone))
-                                {
-                                    Controller->RightStickY = (r32)(-(Center - Deadzone) + Dualshock4Data->RightStickY) / (r32)(Center - Deadzone);
+                                    Controller->RightStickY = 0.0f;
+                                    if(Dualshock4Data->RightStickY < (Center - Deadzone))
+                                    {
+                                        Controller->RightStickY = (r32)(-(Center - Deadzone) + Dualshock4Data->RightStickY) / (r32)(Center - Deadzone);
+                                    }
+                                    else if(Dualshock4Data->RightStickY > (Center + Deadzone))
+                                    {
+                                        Controller->RightStickY = (r32)(Dualshock4Data->RightStickY - Center - Deadzone) / (r32)(Center - Deadzone);
+                                    }
                                 }
-                                else if(Dualshock4Data->RightStickY > (Center + Deadzone))
-                                {
-                                    Controller->RightStickY = (r32)(Dualshock4Data->RightStickY - Center - Deadzone) / (r32)(Center - Deadzone);
-                                }
-                            }
                             
-                            // NOTE(chris): Triggers
-                            {
-                                Controller->LeftTrigger = (r32)Dualshock4Data->LeftTrigger / 0xFF;
-                                Controller->RightTrigger = (r32)Dualshock4Data->RightTrigger / 0xFF;
-                            }
+                                // NOTE(chris): Triggers
+                                {
+                                    Controller->LeftTrigger = (r32)Dualshock4Data->LeftTrigger / 0xFF;
+                                    Controller->RightTrigger = (r32)Dualshock4Data->RightTrigger / 0xFF;
+                                }
 // TODO(chris): Left off here!!! Make these actually work
 #if 0
-                            // NOTE(chris): Buttons
-                            {
-                                ProcessDualshock4Button(&Controller->ActionLeft, Dualshock4Data.Square);
-                                ProcessDualshock4Button(&Controller->ActionDown, Dualshock4Data.Cross);
-                                ProcessDualshock4Button(&Controller->ActionRight, Dualshock4Data.Circle);
-                                ProcessDualshock4Button(&Controller->ActionUp, Dualshock4Data.Triangle);
-                                ProcessDualshock4Button(&Controller->LeftShoulder1, Dualshock4Data.L1);
-                                ProcessDualshock4Button(&Controller->RightShoulder1, Dualshock4Data.R1);
-                                ProcessDualshock4Button(&Controller->LeftShoulder2, Dualshock4Data.L2);
-                                ProcessDualshock4Button(&Controller->RightShoulder2, Dualshock4Data.R2);
-                                ProcessDualshock4Button(&Controller->Select, Dualshock4Data.Share);
-                                ProcessDualshock4Button(&Controller->Start, Dualshock4Data.Options);
-                                ProcessDualshock4Button(&Controller->LeftClick, Dualshock4Data.L3);
-                                ProcessDualshock4Button(&Controller->RightClick, Dualshock4Data.R3);
-                                ProcessDualshock4Button(&Controller->Power, Dualshock4Data.PS);
-                                ProcessDualshock4Button(&Controller->CenterClick, Dualshock4Data.Touchpad);
-                            }
-
-                            // NOTE(chris): DPad
-                            {
-                                switch(Dualshock4Data.DPad)
+                                // NOTE(chris): Buttons
                                 {
-                                    case 0xFFFFFFFF:
-                                    {
-                                        // NOTE(chris): Centered. Don't interfere with analog sticks.
-                                    } break;
-
-                                    case 0:
-                                    {
-                                        Controller->LeftStickX = 0.0f;
-                                        Controller->LeftStickY = 1.0f;
-                                    } break;
-
-                                    case 4500:
-                                    {
-                                        Controller->LeftStickX = 1.0f;
-                                        Controller->LeftStickY = 1.0f;
-                                    } break;
-
-                                    case 9000:
-                                    {
-                                        Controller->LeftStickX = 1.0f;
-                                        Controller->LeftStickY = 0.0f;
-                                    } break;
-
-                                    case 13500:
-                                    {
-                                        Controller->LeftStickX = 1.0f;
-                                        Controller->LeftStickY = -1.0f;
-                                    } break;
-
-                                    case 18000:
-                                    {
-                                        Controller->LeftStickX = 0.0f;
-                                        Controller->LeftStickY = -1.0f;
-                                    } break;
-
-                                    case 22500:
-                                    {
-                                        Controller->LeftStickX = -1.0f;
-                                        Controller->LeftStickY = -1.0f;
-                                    } break;
-
-                                    case 27000:
-                                    {
-                                        Controller->LeftStickX = -1.0f;
-                                        Controller->LeftStickY = 0.0f;
-                                    } break;
-
-                                    case 31500:
-                                    {
-                                        Controller->LeftStickX = -1.0f;
-                                        Controller->LeftStickY = 1.0f;
-                                    } break;
-
-                                    InvalidDefaultCase;
+                                    ProcessDualshock4Button(&Controller->ActionLeft, Dualshock4Data.Square);
+                                    ProcessDualshock4Button(&Controller->ActionDown, Dualshock4Data.Cross);
+                                    ProcessDualshock4Button(&Controller->ActionRight, Dualshock4Data.Circle);
+                                    ProcessDualshock4Button(&Controller->ActionUp, Dualshock4Data.Triangle);
+                                    ProcessDualshock4Button(&Controller->LeftShoulder1, Dualshock4Data.L1);
+                                    ProcessDualshock4Button(&Controller->RightShoulder1, Dualshock4Data.R1);
+                                    ProcessDualshock4Button(&Controller->LeftShoulder2, Dualshock4Data.L2);
+                                    ProcessDualshock4Button(&Controller->RightShoulder2, Dualshock4Data.R2);
+                                    ProcessDualshock4Button(&Controller->Select, Dualshock4Data.Share);
+                                    ProcessDualshock4Button(&Controller->Start, Dualshock4Data.Options);
+                                    ProcessDualshock4Button(&Controller->LeftClick, Dualshock4Data.L3);
+                                    ProcessDualshock4Button(&Controller->RightClick, Dualshock4Data.R3);
+                                    ProcessDualshock4Button(&Controller->Power, Dualshock4Data.PS);
+                                    ProcessDualshock4Button(&Controller->CenterClick, Dualshock4Data.Touchpad);
                                 }
-                            }
+
+                                // NOTE(chris): DPad
+                                {
+                                    switch(Dualshock4Data.DPad)
+                                    {
+                                        case 0xFFFFFFFF:
+                                        {
+                                            // NOTE(chris): Centered. Don't interfere with analog sticks.
+                                        } break;
+
+                                        case 0:
+                                        {
+                                            Controller->LeftStickX = 0.0f;
+                                            Controller->LeftStickY = 1.0f;
+                                        } break;
+
+                                        case 4500:
+                                        {
+                                            Controller->LeftStickX = 1.0f;
+                                            Controller->LeftStickY = 1.0f;
+                                        } break;
+
+                                        case 9000:
+                                        {
+                                            Controller->LeftStickX = 1.0f;
+                                            Controller->LeftStickY = 0.0f;
+                                        } break;
+
+                                        case 13500:
+                                        {
+                                            Controller->LeftStickX = 1.0f;
+                                            Controller->LeftStickY = -1.0f;
+                                        } break;
+
+                                        case 18000:
+                                        {
+                                            Controller->LeftStickX = 0.0f;
+                                            Controller->LeftStickY = -1.0f;
+                                        } break;
+
+                                        case 22500:
+                                        {
+                                            Controller->LeftStickX = -1.0f;
+                                            Controller->LeftStickY = -1.0f;
+                                        } break;
+
+                                        case 27000:
+                                        {
+                                            Controller->LeftStickX = -1.0f;
+                                            Controller->LeftStickY = 0.0f;
+                                        } break;
+
+                                        case 31500:
+                                        {
+                                            Controller->LeftStickX = -1.0f;
+                                            Controller->LeftStickY = 1.0f;
+                                        } break;
+
+                                        InvalidDefaultCase;
+                                    }
+                                }
 #endif
                             
-                            Assert(Controller->LeftStickX >= -1.0f);
-                            Assert(Controller->LeftStickX <= 1.0f);
-                            Assert(Controller->LeftStickY >= -1.0f);
-                            Assert(Controller->LeftStickY <= 1.0f);
-                            Assert(Controller->RightStickX >= -1.0f);
-                            Assert(Controller->RightStickX <= 1.0f);
-                            Assert(Controller->RightStickY >= -1.0f);
-                            Assert(Controller->RightStickY <= 1.0f);
-                            Assert(Controller->LeftTrigger >= 0.0f);
-                            Assert(Controller->LeftTrigger <= 1.0f);
-                            Assert(Controller->RightTrigger >= 0.0f);
-                            Assert(Controller->RightTrigger <= 1.0f);
+                                Assert(Controller->LeftStickX >= -1.0f);
+                                Assert(Controller->LeftStickX <= 1.0f);
+                                Assert(Controller->LeftStickY >= -1.0f);
+                                Assert(Controller->LeftStickY <= 1.0f);
+                                Assert(Controller->RightStickX >= -1.0f);
+                                Assert(Controller->RightStickX <= 1.0f);
+                                Assert(Controller->RightStickY >= -1.0f);
+                                Assert(Controller->RightStickY <= 1.0f);
+                                Assert(Controller->LeftTrigger >= 0.0f);
+                                Assert(Controller->LeftTrigger <= 1.0f);
+                                Assert(Controller->RightTrigger >= 0.0f);
+                                Assert(Controller->RightTrigger <= 1.0f);
+                            }
                         }
-                    }
 #else
-                    LPDIRECTINPUTDEVICE8A Dualshock4Controller = Dualshock4Controllers[ControllerIndex];
-                    if(Dualshock4Controller)
-                    {
-                        dualshock_4_input Dualshock4Data = {};
-                        HRESULT DataFetchResult = Dualshock4Controller->GetDeviceState(sizeof(Dualshock4Data), &Dualshock4Data);
-                        if(SUCCEEDED(DataFetchResult))
+                        LPDIRECTINPUTDEVICE8A Dualshock4Controller = Dualshock4Controllers[ControllerIndex];
+                        if(Dualshock4Controller)
                         {
-                            // NOTE(chris): Analog sticks
+                            dualshock_4_input Dualshock4Data = {};
+                            HRESULT DataFetchResult = Dualshock4Controller->GetDeviceState(sizeof(Dualshock4Data), &Dualshock4Data);
+                            if(SUCCEEDED(DataFetchResult))
                             {
-                                Dualshock4Data.LeftStickY = 0xFFFF - Dualshock4Data.LeftStickY;
-                                Dualshock4Data.RightStickY = 0xFFFF - Dualshock4Data.RightStickY;
-                                r32 Center = 0xFFFF / 2.0f;
-                                s32 Deadzone = 1500;
+                                // NOTE(chris): Analog sticks
+                                {
+                                    Dualshock4Data.LeftStickY = 0xFFFF - Dualshock4Data.LeftStickY;
+                                    Dualshock4Data.RightStickY = 0xFFFF - Dualshock4Data.RightStickY;
+                                    r32 Center = 0xFFFF / 2.0f;
+                                    s32 Deadzone = 1500;
                         
-                                NewController->LeftStickX = 0.0f;
-                                if(Dualshock4Data.LeftStickX < (Center - Deadzone))
-                                {
-                                    NewController->LeftStickX = (r32)(-(Center - Deadzone) + Dualshock4Data.LeftStickX) / (r32)(Center - Deadzone);
-                                }
-                                else if(Dualshock4Data.LeftStickX > (Center + Deadzone))
-                                {
-                                    NewController->LeftStickX = (r32)(Dualshock4Data.LeftStickX - Center - Deadzone) / (r32)(Center - Deadzone);
+                                    NewController->LeftStickX = 0.0f;
+                                    if(Dualshock4Data.LeftStickX < (Center - Deadzone))
+                                    {
+                                        NewController->LeftStickX = (r32)(-(Center - Deadzone) + Dualshock4Data.LeftStickX) / (r32)(Center - Deadzone);
+                                    }
+                                    else if(Dualshock4Data.LeftStickX > (Center + Deadzone))
+                                    {
+                                        NewController->LeftStickX = (r32)(Dualshock4Data.LeftStickX - Center - Deadzone) / (r32)(Center - Deadzone);
+                                    }
+
+                                    NewController->LeftStickY = 0.0f;
+                                    if(Dualshock4Data.LeftStickY < (Center - Deadzone))
+                                    {
+                                        NewController->LeftStickY = (r32)(-(Center - Deadzone) + Dualshock4Data.LeftStickY) / (r32)(Center - Deadzone);
+                                    }
+                                    else if(Dualshock4Data.LeftStickY > (Center + Deadzone))
+                                    {
+                                        NewController->LeftStickY = (r32)(Dualshock4Data.LeftStickY - Center - Deadzone) / (r32)(Center - Deadzone);
+                                    }
+
+                                    NewController->RightStickX = 0.0f;
+                                    if(Dualshock4Data.RightStickX < (Center - Deadzone))
+                                    {
+                                        NewController->RightStickX = (r32)(-(Center - Deadzone) + Dualshock4Data.RightStickX) / (r32)(Center - Deadzone);
+                                    }
+                                    else if(Dualshock4Data.RightStickX > (Center + Deadzone))
+                                    {
+                                        NewController->RightStickX = (r32)(Dualshock4Data.RightStickX - Center - Deadzone) / (r32)(Center - Deadzone);
+                                    }
+
+                                    NewController->RightStickY = 0.0f;
+                                    if(Dualshock4Data.RightStickY < (Center - Deadzone))
+                                    {
+                                        NewController->RightStickY = (r32)(-(Center - Deadzone) + Dualshock4Data.RightStickY) / (r32)(Center - Deadzone);
+                                    }
+                                    else if(Dualshock4Data.RightStickY > (Center + Deadzone))
+                                    {
+                                        NewController->RightStickY = (r32)(Dualshock4Data.RightStickY - Center - Deadzone) / (r32)(Center - Deadzone);
+                                    }
                                 }
 
-                                NewController->LeftStickY = 0.0f;
-                                if(Dualshock4Data.LeftStickY < (Center - Deadzone))
+                                // NOTE(chris): Triggers
                                 {
-                                    NewController->LeftStickY = (r32)(-(Center - Deadzone) + Dualshock4Data.LeftStickY) / (r32)(Center - Deadzone);
-                                }
-                                else if(Dualshock4Data.LeftStickY > (Center + Deadzone))
-                                {
-                                    NewController->LeftStickY = (r32)(Dualshock4Data.LeftStickY - Center - Deadzone) / (r32)(Center - Deadzone);
+                                    NewController->LeftTrigger = (r32)Dualshock4Data.LeftTrigger / 0xFFFF;
+                                    NewController->RightTrigger = (r32)Dualshock4Data.RightTrigger / 0xFFFF;
                                 }
 
-                                NewController->RightStickX = 0.0f;
-                                if(Dualshock4Data.RightStickX < (Center - Deadzone))
+                                // NOTE(chris): Buttons
                                 {
-                                    NewController->RightStickX = (r32)(-(Center - Deadzone) + Dualshock4Data.RightStickX) / (r32)(Center - Deadzone);
-                                }
-                                else if(Dualshock4Data.RightStickX > (Center + Deadzone))
-                                {
-                                    NewController->RightStickX = (r32)(Dualshock4Data.RightStickX - Center - Deadzone) / (r32)(Center - Deadzone);
+                                    ProcessDualshock4Button(&OldController->ActionLeft, &NewController->ActionLeft, Dualshock4Data.Square);
+                                    ProcessDualshock4Button(&OldController->ActionDown, &NewController->ActionDown, Dualshock4Data.Cross);
+                                    ProcessDualshock4Button(&OldController->ActionRight, &NewController->ActionRight, Dualshock4Data.Circle);
+                                    ProcessDualshock4Button(&OldController->ActionUp, &NewController->ActionUp, Dualshock4Data.Triangle);
+                                    ProcessDualshock4Button(&OldController->LeftShoulder1, &NewController->LeftShoulder1, Dualshock4Data.L1);
+                                    ProcessDualshock4Button(&OldController->RightShoulder1, &NewController->RightShoulder1, Dualshock4Data.R1);
+                                    ProcessDualshock4Button(&OldController->LeftShoulder2, &NewController->LeftShoulder2, Dualshock4Data.L2);
+                                    ProcessDualshock4Button(&OldController->RightShoulder2, &NewController->RightShoulder2, Dualshock4Data.R2);
+                                    ProcessDualshock4Button(&OldController->Select, &NewController->Select, Dualshock4Data.Share);
+                                    ProcessDualshock4Button(&OldController->Start, &NewController->Start, Dualshock4Data.Options);
+                                    ProcessDualshock4Button(&OldController->LeftClick, &NewController->LeftClick, Dualshock4Data.L3);
+                                    ProcessDualshock4Button(&OldController->RightClick, &NewController->RightClick, Dualshock4Data.R3);
+                                    ProcessDualshock4Button(&OldController->Power, &NewController->Power, Dualshock4Data.PS);
+                                    ProcessDualshock4Button(&OldController->CenterClick, &NewController->CenterClick, Dualshock4Data.Touchpad);
                                 }
 
-                                NewController->RightStickY = 0.0f;
-                                if(Dualshock4Data.RightStickY < (Center - Deadzone))
+                                // NOTE(chris): DPad
                                 {
-                                    NewController->RightStickY = (r32)(-(Center - Deadzone) + Dualshock4Data.RightStickY) / (r32)(Center - Deadzone);
+                                    switch(Dualshock4Data.DPad)
+                                    {
+                                        case 0xFFFFFFFF:
+                                        {
+                                            // NOTE(chris): Centered. Don't interfere with analog sticks.
+                                        } break;
+
+                                        case 0:
+                                        {
+                                            NewController->LeftStickX = 0.0f;
+                                            NewController->LeftStickY = 1.0f;
+                                        } break;
+
+                                        case 4500:
+                                        {
+                                            NewController->LeftStickX = 1.0f;
+                                            NewController->LeftStickY = 1.0f;
+                                        } break;
+
+                                        case 9000:
+                                        {
+                                            NewController->LeftStickX = 1.0f;
+                                            NewController->LeftStickY = 0.0f;
+                                        } break;
+
+                                        case 13500:
+                                        {
+                                            NewController->LeftStickX = 1.0f;
+                                            NewController->LeftStickY = -1.0f;
+                                        } break;
+
+                                        case 18000:
+                                        {
+                                            NewController->LeftStickX = 0.0f;
+                                            NewController->LeftStickY = -1.0f;
+                                        } break;
+
+                                        case 22500:
+                                        {
+                                            NewController->LeftStickX = -1.0f;
+                                            NewController->LeftStickY = -1.0f;
+                                        } break;
+
+                                        case 27000:
+                                        {
+                                            NewController->LeftStickX = -1.0f;
+                                            NewController->LeftStickY = 0.0f;
+                                        } break;
+
+                                        case 31500:
+                                        {
+                                            NewController->LeftStickX = -1.0f;
+                                            NewController->LeftStickY = 1.0f;
+                                        } break;
+
+                                        InvalidDefaultCase;
+                                    }
                                 }
-                                else if(Dualshock4Data.RightStickY > (Center + Deadzone))
-                                {
-                                    NewController->RightStickY = (r32)(Dualshock4Data.RightStickY - Center - Deadzone) / (r32)(Center - Deadzone);
-                                }
+
+                                Assert(NewController->LeftStickX >= -1.0f);
+                                Assert(NewController->LeftStickX <= 1.0f);
+                                Assert(NewController->LeftStickY >= -1.0f);
+                                Assert(NewController->LeftStickY <= 1.0f);
+                                Assert(NewController->RightStickX >= -1.0f);
+                                Assert(NewController->RightStickX <= 1.0f);
+                                Assert(NewController->RightStickY >= -1.0f);
+                                Assert(NewController->RightStickY <= 1.0f);
+                                Assert(NewController->LeftTrigger >= 0.0f);
+                                Assert(NewController->LeftTrigger <= 1.0f);
+                                Assert(NewController->RightTrigger >= 0.0f);
+                                Assert(NewController->RightTrigger <= 1.0f);
                             }
-
-                            // NOTE(chris): Triggers
-                            {
-                                NewController->LeftTrigger = (r32)Dualshock4Data.LeftTrigger / 0xFFFF;
-                                NewController->RightTrigger = (r32)Dualshock4Data.RightTrigger / 0xFFFF;
-                            }
-
-                            // NOTE(chris): Buttons
-                            {
-                                ProcessDualshock4Button(&OldController->ActionLeft, &NewController->ActionLeft, Dualshock4Data.Square);
-                                ProcessDualshock4Button(&OldController->ActionDown, &NewController->ActionDown, Dualshock4Data.Cross);
-                                ProcessDualshock4Button(&OldController->ActionRight, &NewController->ActionRight, Dualshock4Data.Circle);
-                                ProcessDualshock4Button(&OldController->ActionUp, &NewController->ActionUp, Dualshock4Data.Triangle);
-                                ProcessDualshock4Button(&OldController->LeftShoulder1, &NewController->LeftShoulder1, Dualshock4Data.L1);
-                                ProcessDualshock4Button(&OldController->RightShoulder1, &NewController->RightShoulder1, Dualshock4Data.R1);
-                                ProcessDualshock4Button(&OldController->LeftShoulder2, &NewController->LeftShoulder2, Dualshock4Data.L2);
-                                ProcessDualshock4Button(&OldController->RightShoulder2, &NewController->RightShoulder2, Dualshock4Data.R2);
-                                ProcessDualshock4Button(&OldController->Select, &NewController->Select, Dualshock4Data.Share);
-                                ProcessDualshock4Button(&OldController->Start, &NewController->Start, Dualshock4Data.Options);
-                                ProcessDualshock4Button(&OldController->LeftClick, &NewController->LeftClick, Dualshock4Data.L3);
-                                ProcessDualshock4Button(&OldController->RightClick, &NewController->RightClick, Dualshock4Data.R3);
-                                ProcessDualshock4Button(&OldController->Power, &NewController->Power, Dualshock4Data.PS);
-                                ProcessDualshock4Button(&OldController->CenterClick, &NewController->CenterClick, Dualshock4Data.Touchpad);
-                            }
-
-                            // NOTE(chris): DPad
-                            {
-                                switch(Dualshock4Data.DPad)
-                                {
-                                    case 0xFFFFFFFF:
-                                    {
-                                        // NOTE(chris): Centered. Don't interfere with analog sticks.
-                                    } break;
-
-                                    case 0:
-                                    {
-                                        NewController->LeftStickX = 0.0f;
-                                        NewController->LeftStickY = 1.0f;
-                                    } break;
-
-                                    case 4500:
-                                    {
-                                        NewController->LeftStickX = 1.0f;
-                                        NewController->LeftStickY = 1.0f;
-                                    } break;
-
-                                    case 9000:
-                                    {
-                                        NewController->LeftStickX = 1.0f;
-                                        NewController->LeftStickY = 0.0f;
-                                    } break;
-
-                                    case 13500:
-                                    {
-                                        NewController->LeftStickX = 1.0f;
-                                        NewController->LeftStickY = -1.0f;
-                                    } break;
-
-                                    case 18000:
-                                    {
-                                        NewController->LeftStickX = 0.0f;
-                                        NewController->LeftStickY = -1.0f;
-                                    } break;
-
-                                    case 22500:
-                                    {
-                                        NewController->LeftStickX = -1.0f;
-                                        NewController->LeftStickY = -1.0f;
-                                    } break;
-
-                                    case 27000:
-                                    {
-                                        NewController->LeftStickX = -1.0f;
-                                        NewController->LeftStickY = 0.0f;
-                                    } break;
-
-                                    case 31500:
-                                    {
-                                        NewController->LeftStickX = -1.0f;
-                                        NewController->LeftStickY = 1.0f;
-                                    } break;
-
-                                    InvalidDefaultCase;
-                                }
-                            }
-
-                            Assert(NewController->LeftStickX >= -1.0f);
-                            Assert(NewController->LeftStickX <= 1.0f);
-                            Assert(NewController->LeftStickY >= -1.0f);
-                            Assert(NewController->LeftStickY <= 1.0f);
-                            Assert(NewController->RightStickX >= -1.0f);
-                            Assert(NewController->RightStickX <= 1.0f);
-                            Assert(NewController->RightStickY >= -1.0f);
-                            Assert(NewController->RightStickY <= 1.0f);
-                            Assert(NewController->LeftTrigger >= 0.0f);
-                            Assert(NewController->LeftTrigger <= 1.0f);
-                            Assert(NewController->RightTrigger >= 0.0f);
-                            Assert(NewController->RightTrigger <= 1.0f);
                         }
-                    }
 #endif
+                    }
                 }
 
                 switch(RecordingState)
@@ -1333,6 +1373,7 @@ int WinMain(HINSTANCE Instance,
 
                 QueryPerformanceCounter(&Counter);
                 r32 FrameSeconds = (Counter.QuadPart - LastCounter.QuadPart)*ClocksToSeconds;
+#if 0
                 r32 ElapsedSeconds = FrameSeconds;
                 if(ElapsedSeconds < dtForFrame)
                 {
@@ -1343,7 +1384,6 @@ int WinMain(HINSTANCE Instance,
                     }
                     do
                     {
-                        // TODO(chris): This can be way faster if I can get rdtsc to work.
                         QueryPerformanceCounter(&Counter);
                         ElapsedSeconds = (Counter.QuadPart - LastCounter.QuadPart)*ClocksToSeconds;
                     } while (ElapsedSeconds < dtForFrame);
@@ -1352,10 +1392,46 @@ int WinMain(HINSTANCE Instance,
                 {
                     OutputDebugStringA("Missed framerate!\n");
                 }
+#endif
                 
                 HDC DeviceContext = GetDC(Window);
                 CopyBackBufferToWindow(DeviceContext, &GlobalBackBuffer);
                 ReleaseDC(Window, DeviceContext);
+
+                // TODO(chris): Move debug event processing to game code
+                debug_event *CodeBeginStack = PushArray(&GlobalDebugState->Arena,
+                                                        MAX_DEBUG_EVENTS,
+                                                        debug_event);
+                u32 CodeBeginStackCount = 0;
+                for(u32 EventIndex = 0;
+                    EventIndex < GlobalDebugState->EventCount;
+                    ++EventIndex)
+                {
+                    debug_event *Event = GlobalDebugState->Events + EventIndex;
+                    switch(Event->Type)
+                    {
+                        case(DebugEventType_CodeBegin):
+                        {
+                            debug_event *StackEvent = CodeBeginStack + CodeBeginStackCount;
+                            *StackEvent = *Event;
+                            ++CodeBeginStackCount;
+                        } break;
+
+                        case(DebugEventType_CodeEnd):
+                        {
+                            Assert(CodeBeginStackCount > 0);
+                            --CodeBeginStackCount;
+                            debug_event *BeginEvent = CodeBeginStack + CodeBeginStackCount;
+                            u64 CyclesPassed = Event->Value_u64 - BeginEvent->Value_u64;
+                
+                            _snprintf_s(Text, sizeof(Text), "%s %s %u %lu\n",
+                                        BeginEvent->Name, BeginEvent->File,
+                                        BeginEvent->Line, CyclesPassed);
+                            OutputDebugStringA(Text);
+                        } break;
+                    }
+                }
+                GlobalDebugState->EventCount = 0;
                 
                 _snprintf_s(Text, sizeof(Text), "Frame time: %fms\n",
                             FrameSeconds*1000);
