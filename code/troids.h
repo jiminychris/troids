@@ -27,17 +27,22 @@ struct game_state
     r32 Pitch;
     r32 Roll;
     r32 Cooldown;
+
+    r32 Scale;
     
     u32 LiveBulletCount;
     live_bullet LiveBullets[64];
 
     loaded_bitmap Ship;
     loaded_bitmap Bullet;
+    loaded_obj HeadMesh;
 };
 
 struct transient_state
 {
     b32 IsInitialized;
+
+    memory_arena TranArena;
 };
 
 #define TROIDS_H

@@ -53,6 +53,13 @@ RoundU32(r32 A)
     return(Result);
 }
 
+inline r32
+AbsoluteValue(r32 A)
+{
+    r32 Result = fabs(A);
+    return(Result);
+}
+
 inline s32
 Minimum(s32 A, s32 B)
 {
@@ -277,6 +284,16 @@ operator*=(v3 &A, r32 C)
     return(A);
 }
 
+inline v3
+Hadamard(v3 A, v3 B)
+{
+    v3 Result;
+    Result.x = A.x*B.x;
+    Result.y = A.y*B.y;
+    Result.z = A.z*B.z;
+    return(Result);
+}
+
 inline v4
 V4(r32 X, r32 Y, r32 Z, r32 W)
 {
@@ -341,15 +358,24 @@ Unlerp(r32 A, r32 X, r32 B)
     return(Result);
 }
 
+inline r32
+Lerp(r32 A, r32 t, r32 B)
+{
+    r32 tInv = 1.0f - t;
+    r32 Result;
+    Result = A*tInv + B*t;
+    return(Result);
+}
+
 inline v4
 Lerp(v4 A, r32 t, v4 B)
 {
     r32 tInv = 1.0f - t;
     v4 Result;
-    Result.x = A.x*t + B.x*tInv;
-    Result.y = A.y*t + B.y*tInv;
-    Result.z = A.z*t + B.z*tInv;
-    Result.w = A.w*t + B.w*tInv;
+    Result.x = A.x*tInv + B.x*t;
+    Result.y = A.y*tInv + B.y*t;
+    Result.z = A.z*tInv + B.z*t;
+    Result.w = A.w*tInv + B.w*t;
     return(Result);
 }
 

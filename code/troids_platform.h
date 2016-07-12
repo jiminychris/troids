@@ -35,10 +35,18 @@ struct v2i
     s32 y;
 };
 
-struct v2
+union v2
 {
-    r32 x;
-    r32 y;
+    struct
+    {
+        r32 x;
+        r32 y;
+    };
+    struct
+    {
+        r32 u;
+        r32 v;
+    };
 };
 
 union v3
@@ -51,6 +59,12 @@ union v3
     };
     struct
     {
+        r32 u;
+        r32 v;
+        r32 w;
+    };
+    struct
+    {
         r32 r;
         r32 g;
         r32 b;
@@ -59,6 +73,11 @@ union v3
     {
         v2 xy;
         r32 z;
+    };
+    struct
+    {
+        v2 uv;
+        r32 w;
     };
 };
 
@@ -82,6 +101,17 @@ union v4
     {
         v3 rgb;
         r32 a;
+    };
+    struct
+    {
+        v3 xyz;
+        r32 w;
+    };
+    struct
+    {
+        v2 xy;
+        r32 z;
+        r32 w;
     };
 };
 
@@ -246,6 +276,36 @@ struct loaded_bitmap
     v2 Align;
     s32 Pitch;
     void *Memory;
+};
+
+// TODO(chris): More polygons besides triangles?
+struct obj_face
+{
+    u32 VertexIndexA;
+    u32 TextureVertexIndexA;
+    u32 VertexNormalIndexA;
+
+    u32 VertexIndexB;
+    u32 TextureVertexIndexB;
+    u32 VertexNormalIndexB;
+
+    u32 VertexIndexC;
+    u32 TextureVertexIndexC;
+    u32 VertexNormalIndexC;
+};
+
+// TODO(chris): Groups and smoothing?
+struct loaded_obj
+{
+    u32 VertexCount;
+    u32 TextureVertexCount;
+    u32 VertexNormalCount;
+    u32 FaceCount;
+
+    v4 *Vertices;
+    v3 *TextureVertices;
+    v3 *VertexNormals;
+    obj_face *Faces;
 };
 
 struct game_button

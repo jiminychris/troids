@@ -6,6 +6,8 @@
    $Notice: $
    ======================================================================== */
 
+#include <stdlib.h>
+
 #include "troids_platform.h"
 #include "troids_intrinsics.h"
 #include "troids_math.h"
@@ -17,6 +19,7 @@ internal loaded_bitmap
 LoadBitmap(char *FileName)
 {
     loaded_bitmap Result = {};
+    // TODO(chris): Allocate memory from arena instead of dynamic platform alloc
     read_file_result ReadResult = PlatformReadFile(FileName);
     bitmap_header *BMPHeader = (bitmap_header *)ReadResult.Contents;
 
@@ -73,6 +76,174 @@ LoadBitmap(char *FileName)
                       (B << 0));
         }
         PixelRow += Result.Pitch;
+    }
+
+    return(Result);
+}
+
+inline b32
+IsEOF(char *String)
+{
+    b32 Result = (*String == 0);
+    return(Result);
+}
+
+inline char *
+SkipWhitespace(char *String)
+{
+    char *Result = String;
+    while(!IsEOF(Result) &&
+          ((*Result == ' ') ||
+           (*Result == '\n') ||
+           (*Result == '\r') ||
+           (*Result == '\t')))
+    {
+        ++Result;
+    }
+    return(Result);
+}
+
+inline char *
+SkipLine(char *String)
+{
+    char *Result = String;
+    while(!IsEOF(Result) && *Result++ != '\n');
+    return(Result);
+}
+
+internal loaded_obj
+LoadObj(char *FileName, memory_arena *Arena)
+{
+    loaded_obj Result = {};
+    Result.TextureVertexCount = 1;
+    Result.VertexNormalCount = 1;
+    Result.VertexCount = 1;
+    Result.FaceCount = 1;
+    // TODO(chris): Allocate memory from arena instead of dynamic platform alloc
+    read_file_result ReadResult = PlatformReadFile(FileName);
+
+    char *At = (char *)ReadResult.Contents;
+    // NOTE(chris): Just do two passes over the file for now.
+    while(!IsEOF(At))
+    {
+        switch(*At++)
+        {
+            case 'v':
+            {
+                if(*At == 't')
+                {
+                    ++Result.TextureVertexCount;
+                }
+                else if(*At == 'n')
+                {
+                    ++Result.VertexNormalCount;
+                }
+                else
+                {
+                    ++Result.VertexCount;
+                }
+            } break;
+
+            case 'f':
+            {
+                ++Result.FaceCount;
+            } break;
+        }
+        At = SkipLine(At);
+    }
+
+    Result.Vertices = PushArray(Arena, Result.VertexCount, v4);
+    Result.TextureVertices = PushArray(Arena, Result.TextureVertexCount, v3);
+    Result.VertexNormals = PushArray(Arena, Result.VertexNormalCount, v3);
+    Result.Faces = PushArray(Arena, Result.FaceCount, obj_face);
+
+    v4 *Vertices = Result.Vertices + 1;
+    v3 *TextureVertices = Result.TextureVertices + 1;
+    v3 *VertexNormals = Result.VertexNormals + 1;
+    obj_face *Faces = Result.Faces + 1;
+    
+    At = (char *)ReadResult.Contents;
+    while(!IsEOF(At))
+    {
+        switch(*At++)
+        {
+            case 'v':
+            {
+                if(*At == 't')
+                {
+                    ++At;
+                    TextureVertices->u = strtof(At, &At);
+                    TextureVertices->v = strtof(At, &At);
+                    // TODO(chris): Don't read optional w value
+                    TextureVertices->w = strtof(At, &At);
+
+                    ++TextureVertices;
+                }
+                else if(*At == 'n')
+                {
+                    ++At;
+                    VertexNormals->x = strtof(At, &At);
+                    VertexNormals->y = strtof(At, &At);
+                    VertexNormals->z = strtof(At, &At);
+
+                    ++VertexNormals;
+                }
+                else
+                {
+                    Vertices->x = strtof(At, &At);
+                    Vertices->y = strtof(At, &At);
+                    Vertices->z = strtof(At, &At);
+                    // TODO(chris): Read optional w value
+                    Vertices->w = 1.0f;
+
+                    ++Vertices;
+                }
+            } break;
+
+            case 'f':
+            {
+                Faces->VertexIndexA = strtoul(At, &At, 10);
+                ++At;
+                Faces->TextureVertexIndexA = strtoul(At, &At, 10);
+                ++At;
+                Faces->VertexNormalIndexA = strtoul(At, &At, 10);
+
+                Faces->VertexIndexB = strtoul(At, &At, 10);
+                ++At;
+                Faces->TextureVertexIndexB = strtoul(At, &At, 10);
+                ++At;
+                Faces->VertexNormalIndexB = strtoul(At, &At, 10);
+
+                Faces->VertexIndexC = strtoul(At, &At, 10);
+                ++At;
+                Faces->TextureVertexIndexC = strtoul(At, &At, 10);
+                ++At;
+                Faces->VertexNormalIndexC = strtoul(At, &At, 10);
+
+                ++Faces;
+            } break;
+
+            case '#':
+            {
+                // NOTE(chris): This is a comment in the .obj file
+                At = SkipLine(At);
+            } break;
+
+            case 'g':
+            {
+                // TODO(chris): Implement .obj groups
+                At = SkipLine(At);
+            } break;
+
+            case 's':
+            {
+                // TODO(chris): Implement .obj smoothing
+                At = SkipLine(At);
+            } break;
+
+            InvalidDefaultCase;
+        }
+        At = SkipWhitespace(At);
     }
 
     return(Result);
@@ -149,8 +320,8 @@ RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap Bitmap, v2 Origin, v2 XA
                                (*TexelDPtr >> 0) & 0xFF,
                                (*TexelDPtr >> 24) & 0xFF);
 
-                r32 tU = 1.0f - (tX - (u32)tX);
-                r32 tV = 1.0f - (tY - (u32)tY);
+                r32 tU = tX - (u32)tX;
+                r32 tV = tY - (u32)tY;
                 v4 Texel = Lerp(Lerp(TexelA, tU, TexelB), tV, Lerp(TexelC, tU, TexelD));
 
                 r32 DA = 1.0f - (Inv255*Texel.a*Color.a);
@@ -201,6 +372,81 @@ DrawRectangle(game_backbuffer *BackBuffer, rectangle2 Rect, v4 Color)
         PixelRow += BackBuffer->Pitch;
     }
 }
+
+internal void
+DrawLine(game_backbuffer *BackBuffer, v2 PointA, v2 PointB, v4 Color)
+{
+    u32 A = (u32)(Color.a*255.0f + 0.5f);
+    u32 R = (u32)(Color.r*255.0f + 0.5f);
+    u32 G = (u32)(Color.g*255.0f + 0.5f);
+    u32 B = (u32)(Color.b*255.0f + 0.5f);
+
+    u32 DestColor = ((A << 24) | // A
+                     (R << 16) | // R
+                     (G << 8)  | // G
+                     (B << 0));  // B
+
+    r32 XDistance = AbsoluteValue(PointB.x - PointA.x);
+    r32 YDistance = AbsoluteValue(PointB.y - PointA.y);
+
+    b32 MoreHorizontal = XDistance > YDistance;
+
+    r32 OneOverDistance;
+    v2 Start, End;
+    s32 Min, Max;
+    if(MoreHorizontal)
+    {
+        OneOverDistance = 1.0f / XDistance;
+        if(PointA.x < PointB.x)
+        {
+            Start = PointA;
+            End = PointB;
+        }
+        else
+        {
+            Start = PointB;
+            End = PointA;
+        }
+        Min = Clamp(0, RoundS32(Start.x), BackBuffer->Width);
+        Max = Clamp(0, RoundS32(End.x), BackBuffer->Width);
+        for(s32 X = Min;
+            X < Max;
+            ++X)
+        {
+            s32 Y = RoundS32(Lerp(Start.y, OneOverDistance*(X - Start.x), End.y));
+            if(Y >= 0 && Y < BackBuffer->Height)
+            {
+                *((u32 *)BackBuffer->Memory + Y*BackBuffer->Width + X) = DestColor;
+            }
+        }
+    }
+    else
+    {
+        OneOverDistance = 1.0f / YDistance;
+        if(PointA.y < PointB.y)
+        {
+            Start = PointA;
+            End = PointB;
+        }
+        else
+        {
+            Start = PointB;
+            End = PointA;
+        }
+        Min = Clamp(0, RoundS32(Start.y), BackBuffer->Height);
+        Max = Clamp(0, RoundS32(End.y), BackBuffer->Height);
+        for(s32 Y = Min;
+            Y < Max;
+            ++Y)
+        {
+            s32 X = RoundS32(Lerp(Start.x, OneOverDistance*(Y - Start.y), End.x));
+            if(X >= 0 && X < BackBuffer->Width)
+            {
+                *((u32 *)BackBuffer->Memory + Y*BackBuffer->Width + X) = DestColor;
+            }
+        }
+    }
+}
 #pragma optimize("", on)
 
 inline void
@@ -224,12 +470,20 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         State->P = V2(BackBuffer->Width / 2, BackBuffer->Height / 2);
         State->Ship = LoadBitmap("ship_opaque.bmp");
         State->Bullet = LoadBitmap("bullet.bmp");
+
+        State->Scale = 400.0f;
     }
 
-    transient_state *TranState = (transient_state *)GameMemory->PermanentMemory;
+    transient_state *TranState = (transient_state *)GameMemory->TemporaryMemory;
     if(!TranState->IsInitialized)
     {
+        InitializeArena(&TranState->TranArena,
+                        GameMemory->TemporaryMemorySize - sizeof(transient_state),
+                        (u8 *)GameMemory->TemporaryMemory + sizeof(transient_state));
+        
         TranState->IsInitialized = true;
+        
+        State->HeadMesh = LoadObj("head.obj", &TranState->TranArena);
     }
 
     game_controller *Controller = Input->Controllers + 0;
@@ -238,6 +492,20 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     if(Keyboard->Start.EndedDown || Controller->Start.EndedDown)
     {
         State->P = V2(BackBuffer->Width / 2, BackBuffer->Height / 2);
+    }
+
+    if(Keyboard->ActionUp.EndedDown || Controller->ActionUp.EndedDown)
+    {
+        State->Scale += Input->dtForFrame*100.0f;
+    }
+
+    if(Keyboard->ActionDown.EndedDown || Controller->ActionDown.EndedDown)
+    {
+        State->Scale -= Input->dtForFrame*100.0f;
+    }
+    if(State->Scale < 0.0f)
+    {
+        State->Scale = 0.0f;
     }
 
     r32 ShipScale = 100.0f;
@@ -309,9 +577,30 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             LiveBullet->P += YAxis*Input->dtForFrame*PixelsPerMeter*0.1f;
             RenderBitmap(BackBuffer, State->Bullet, LiveBullet->P, XAxis, YAxis, BulletScale,
                          V4(1.0f, 1.0f, 1.0f, Unlerp(0.0f, LiveBullet->Timer, 2.0f)));
+//            DrawLine(BackBuffer, State->P, LiveBullet->P, V4(0.0f, 0.0f, 1.0f, 1.0f));
             LiveBullet->Timer -= Input->dtForFrame;
             ++LiveBullet;
         }
+    }
+
+    v4 White = V4(1.0f, 1.0f, 1.0f, 1.0f);
+    for(u32 FaceIndex = 1;
+        FaceIndex < State->HeadMesh.FaceCount;
+        ++FaceIndex)
+    {
+        v3 Translation = V3(0.5f*BackBuffer->Width, 0.5f*BackBuffer->Height, 0.0f);
+        v3 Scale = State->Scale*V3(1.0f, 1.0f, 1.0f);
+        obj_face *Face = State->HeadMesh.Faces + FaceIndex;
+        v3 VertexA = (Hadamard((State->HeadMesh.Vertices + Face->VertexIndexA)->xyz, Scale) +
+                      Translation);
+        v3 VertexB = (Hadamard((State->HeadMesh.Vertices + Face->VertexIndexB)->xyz, Scale) +
+                      Translation);
+        v3 VertexC = (Hadamard((State->HeadMesh.Vertices + Face->VertexIndexC)->xyz, Scale) +
+                      Translation);
+
+        DrawLine(BackBuffer, VertexA.xy, VertexB.xy, White);
+        DrawLine(BackBuffer, VertexB.xy, VertexC.xy, White);
+        DrawLine(BackBuffer, VertexC.xy, VertexA.xy, White);
     }
 }
 
