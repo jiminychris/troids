@@ -306,7 +306,7 @@ V4(r32 X, r32 Y, r32 Z, r32 W)
 }
 
 inline v4
-V4(u32 X, u32 Y, u32 Z, u32 W)
+V4i(u32 X, u32 Y, u32 Z, u32 W)
 {
     v4 Result;
     Result.x = (r32)X;
@@ -376,6 +376,52 @@ Lerp(v4 A, r32 t, v4 B)
     Result.y = A.y*tInv + B.y*t;
     Result.z = A.z*tInv + B.z*t;
     Result.w = A.w*tInv + B.w*t;
+    return(Result);
+}
+
+inline m22
+operator*(m22 A, m22 B)
+{
+    m22 Result =
+    {
+        A.E[0]*B.E[0] + A.E[1]*B.E[2], A.E[0]*B.E[1] + A.E[1]*B.E[3], 
+        A.E[2]*B.E[0] + A.E[3]*B.E[2], A.E[2]*B.E[1] + A.E[3]*B.E[3],
+    };
+    return(Result);
+}
+
+inline v2
+operator*(m22 A, v2 X)
+{
+    v2 Result =
+    {
+        A.E[0]*X.x + A.E[1]*X.y,
+        A.E[2]*X.x + A.E[3]*X.y,
+    };
+    return(Result);
+}
+
+inline m33
+operator*(m33 A, m33 B)
+{
+    m33 Result =
+    {
+        A.E[0]*B.E[0] + A.E[1]*B.E[3] + A.E[2]*B.E[6], A.E[0]*B.E[1] + A.E[1]*B.E[4] + A.E[2]*B.E[7], A.E[0]*B.E[2] + A.E[1]*B.E[5] + A.E[2]*B.E[8], 
+        A.E[3]*B.E[0] + A.E[4]*B.E[3] + A.E[5]*B.E[6], A.E[3]*B.E[1] + A.E[4]*B.E[4] + A.E[5]*B.E[7], A.E[3]*B.E[2] + A.E[4]*B.E[5] + A.E[5]*B.E[8], 
+        A.E[6]*B.E[0] + A.E[7]*B.E[3] + A.E[8]*B.E[6], A.E[6]*B.E[1] + A.E[7]*B.E[4] + A.E[8]*B.E[7], A.E[6]*B.E[2] + A.E[7]*B.E[5] + A.E[8]*B.E[8], 
+    };
+    return(Result);
+}
+
+inline v3
+operator*(m33 A, v3 X)
+{
+    v3 Result =
+    {
+        A.E[0]*X.x + A.E[1]*X.y + A.E[2]*X.z,
+        A.E[3]*X.x + A.E[4]*X.y + A.E[5]*X.z,
+        A.E[6]*X.x + A.E[7]*X.y + A.E[8]*X.z,
+    };
     return(Result);
 }
 

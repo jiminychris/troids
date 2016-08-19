@@ -423,6 +423,18 @@
   (other-window 1))
 (define-key global-map "\em" 'make-without-asking)
 
+; Commands
+(set-variable 'grep-command "grep -irHn ")
+(when casey-win32
+    (setq grep-use-null-device t)
+    (set-variable 'grep-command "findstr -snil "))
+
+; Smooth scroll
+(setq scroll-step 3)
+
+; Clock
+(display-time)
+
 ; Startup windowing
 (setq next-line-add-newlines nil)
 (setq-default truncate-lines t)

@@ -7,6 +7,13 @@
    $Notice: $
    ======================================================================== */
 
+struct asteroid
+{
+    v2 P;
+    v2 dP;
+    r32 Scale;
+};
+
 struct live_bullet
 {
     v2 P;
@@ -29,11 +36,16 @@ struct game_state
     r32 Cooldown;
 
     r32 Scale;
+    m33 RotationMatrix;
+
+    u32 AsteroidCount;
+    asteroid Asteroids[64];
     
     u32 LiveBulletCount;
     live_bullet LiveBullets[64];
 
     loaded_bitmap Ship;
+    loaded_bitmap Asteroid;
     loaded_bitmap Bullet;
     loaded_obj HeadMesh;
 };

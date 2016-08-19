@@ -303,19 +303,19 @@ RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap Bitmap, v2 Origin, v2 XA
                 u32 *TexelBPtr = TexelAPtr + 1;
                 u32 *TexelCPtr = TexelAPtr + Bitmap.Width;
                 u32 *TexelDPtr = TexelCPtr + 1;
-                v4 TexelA = V4((*TexelAPtr >> 16) & 0xFF,
+                v4 TexelA = V4i((*TexelAPtr >> 16) & 0xFF,
                                (*TexelAPtr >> 8) & 0xFF,
                                (*TexelAPtr >> 0) & 0xFF,
                                (*TexelAPtr >> 24) & 0xFF);
-                v4 TexelB = V4((*TexelBPtr >> 16) & 0xFF,
+                v4 TexelB = V4i((*TexelBPtr >> 16) & 0xFF,
                                (*TexelBPtr >> 8) & 0xFF,
                                (*TexelBPtr >> 0) & 0xFF,
                                (*TexelBPtr >> 24) & 0xFF);
-                v4 TexelC = V4((*TexelCPtr >> 16) & 0xFF,
+                v4 TexelC = V4i((*TexelCPtr >> 16) & 0xFF,
                                (*TexelCPtr >> 8) & 0xFF,
                                (*TexelCPtr >> 0) & 0xFF,
                                (*TexelCPtr >> 24) & 0xFF);
-                v4 TexelD = V4((*TexelDPtr >> 16) & 0xFF,
+                v4 TexelD = V4i((*TexelDPtr >> 16) & 0xFF,
                                (*TexelDPtr >> 8) & 0xFF,
                                (*TexelDPtr >> 0) & 0xFF,
                                (*TexelDPtr >> 24) & 0xFF);
@@ -469,9 +469,22 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
         State->P = V2(BackBuffer->Width / 2, BackBuffer->Height / 2);
         State->Ship = LoadBitmap("ship_opaque.bmp");
+        State->Asteroid = LoadBitmap("asteroid_opaque.bmp");
         State->Bullet = LoadBitmap("bullet.bmp");
 
         State->Scale = 400.0f;
+
+        State->RotationMatrix =
+        {
+            1, 0, 0,
+            0, 1, 0,
+            0, 0, 1,
+        };
+
+        State->AsteroidCount = 1;
+        State->Asteroids[0].P = V2(BackBuffer->Width / 4, BackBuffer->Height / 4);
+        State->Asteroids[0].dP = 50.0f*V2(0.7f, 0.3f);
+        State->Asteroids[0].Scale = 200.0f;
     }
 
     transient_state *TranState = (transient_state *)GameMemory->TemporaryMemory;
@@ -488,6 +501,41 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     game_controller *Controller = Input->Controllers + 0;
     game_controller *Keyboard = &Input->Keyboard;
+
+    if(WentDown(Controller->Select) && (State->AsteroidCount < ArrayCount(State->Asteroids)))
+    {
+        asteroid *NewAsteroid = State->Asteroids + State->AsteroidCount;
+        asteroid *OldAsteroid = NewAsteroid - 1;
+        // NOTE(chris): Halving volume results in dividing radius by cuberoot(2)
+        OldAsteroid->Scale *= 0.79370052598f;
+        *NewAsteroid = *OldAsteroid;
+
+        {
+            r32 Angle = -Tau/12.0f;
+            r32 CosRot = Cos(Angle);
+            r32 SinRot = Sin(Angle);
+            m22 RotMat =
+            {
+                CosRot, -SinRot,
+                SinRot, CosRot,
+            };
+            OldAsteroid->dP = RotMat*OldAsteroid->dP;
+        }
+
+        {
+            r32 Angle = Tau/12.0f;
+            r32 CosRot = Cos(Angle);
+            r32 SinRot = Sin(Angle);
+            m22 RotMat =
+            {
+                CosRot, -SinRot,
+                SinRot, CosRot,
+            };
+            NewAsteroid->dP = RotMat*NewAsteroid->dP;
+        }
+
+        ++State->AsteroidCount;
+    }
 
     if(Keyboard->Start.EndedDown || Controller->Start.EndedDown)
     {
@@ -510,16 +558,23 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     r32 ShipScale = 100.0f;
     r32 BulletScale = 30.0f;
-    r32 LeftStickX = Controller->LeftStickX;
-    if(Keyboard->LeftStickX)
-    {
-        LeftStickX = Keyboard->LeftStickX;
-    }
-    r32 Throttle = Controller->RightTrigger;
-    if(Keyboard->LeftStickY)
-    {
-        Throttle = Keyboard->LeftStickY;
-    }
+
+    r32 LeftStickX = Keyboard->LeftStickX ? Keyboard->LeftStickX : Controller->LeftStickX;
+    r32 Throttle = Keyboard->LeftStickY ? Keyboard->LeftStickY : Controller->LeftStickY;
+
+    r32 YRotation = Input->dtForFrame*(Keyboard->RightStickX ?
+                                       Keyboard->RightStickX :
+                                       Controller->RightStickX);
+    r32 XRotation = Input->dtForFrame*(Keyboard->RightStickY ?
+                                       Keyboard->RightStickY :
+                                       Controller->RightStickY);
+    r32 ZRotation = Input->dtForFrame*((Keyboard->LeftTrigger ?
+                                        Keyboard->LeftTrigger :
+                                        Controller->LeftTrigger) -
+                                       (Keyboard->RightTrigger ?
+                                        Keyboard->RightTrigger :
+                                        Controller->RightTrigger));
+    
     r32 Halfdt = Input->dtForFrame*0.5f;
     r32 dYaw = State->dYaw + Input->dtForFrame*-LeftStickX;
     State->Yaw += (dYaw + State->dYaw)*Halfdt;
@@ -548,6 +603,15 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     v2 dP = State->dP + Acceleration*Input->dtForFrame;
     State->P += (dP + State->dP)*Halfdt;
     State->dP = dP;
+
+    for(u32 AsteroidIndex = 0;
+        AsteroidIndex < State->AsteroidCount;
+        ++AsteroidIndex)
+    {
+        asteroid *Asteroid = State->Asteroids + AsteroidIndex;
+        Asteroid->P += Asteroid->dP*Input->dtForFrame;
+    }
+    
     if(State->Cooldown > 0.0f)
     {
         State->Cooldown -= Input->dtForFrame;
@@ -561,6 +625,18 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         RenderBitmap(BackBuffer, State->Ship, State->P, XAxis, YAxis, ShipScale);
     }
 
+    {
+        v2 YAxis = V2(0, 1);
+        v2 XAxis = -Perp(YAxis);
+        for(u32 AsteroidIndex = 0;
+            AsteroidIndex < State->AsteroidCount;
+            ++AsteroidIndex)
+        {
+            asteroid *Asteroid = State->Asteroids + AsteroidIndex;
+            RenderBitmap(BackBuffer, State->Asteroid, Asteroid->P, XAxis, YAxis, Asteroid->Scale);
+        }
+    }
+    
     live_bullet *LiveBullet = State->LiveBullets;
     live_bullet *End = State->LiveBullets + State->LiveBulletCount;
     while(LiveBullet != End)
@@ -584,6 +660,36 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     }
 
     v4 White = V4(1.0f, 1.0f, 1.0f, 1.0f);
+
+    r32 CosXRotation = Cos(XRotation);
+    r32 SinXRotation = Sin(XRotation);
+    r32 CosYRotation = Cos(YRotation);
+    r32 SinYRotation = Sin(YRotation);
+    r32 CosZRotation = Cos(ZRotation);
+    r32 SinZRotation = Sin(ZRotation);
+
+    m33 XRotationMatrix =
+    {
+        1, 0,             0,
+        0, CosXRotation, -SinXRotation,
+        0, SinXRotation,  CosXRotation,
+    };
+    m33 YRotationMatrix =
+    {
+         CosYRotation, 0, SinYRotation,
+         0,            1, 0,
+        -SinYRotation, 0, CosYRotation,
+    };
+    m33 ZRotationMatrix =
+    {
+        CosZRotation, -SinZRotation, 0,
+        SinZRotation,  CosZRotation, 0,
+        0,             0,            1,
+    };
+
+    State->RotationMatrix = ZRotationMatrix*YRotationMatrix*XRotationMatrix*State->RotationMatrix;
+
+#if 0
     for(u32 FaceIndex = 1;
         FaceIndex < State->HeadMesh.FaceCount;
         ++FaceIndex)
@@ -591,17 +697,18 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         v3 Translation = V3(0.5f*BackBuffer->Width, 0.5f*BackBuffer->Height, 0.0f);
         v3 Scale = State->Scale*V3(1.0f, 1.0f, 1.0f);
         obj_face *Face = State->HeadMesh.Faces + FaceIndex;
-        v3 VertexA = (Hadamard((State->HeadMesh.Vertices + Face->VertexIndexA)->xyz, Scale) +
+        v3 VertexA = (Hadamard(State->RotationMatrix*(State->HeadMesh.Vertices + Face->VertexIndexA)->xyz, Scale) +
                       Translation);
-        v3 VertexB = (Hadamard((State->HeadMesh.Vertices + Face->VertexIndexB)->xyz, Scale) +
+        v3 VertexB = (Hadamard(State->RotationMatrix*(State->HeadMesh.Vertices + Face->VertexIndexB)->xyz, Scale) +
                       Translation);
-        v3 VertexC = (Hadamard((State->HeadMesh.Vertices + Face->VertexIndexC)->xyz, Scale) +
+        v3 VertexC = (Hadamard(State->RotationMatrix*(State->HeadMesh.Vertices + Face->VertexIndexC)->xyz, Scale) +
                       Translation);
 
         DrawLine(BackBuffer, VertexA.xy, VertexB.xy, White);
         DrawLine(BackBuffer, VertexB.xy, VertexC.xy, White);
         DrawLine(BackBuffer, VertexC.xy, VertexA.xy, White);
     }
+#endif
 }
 
 extern "C" GAME_GET_SOUND_SAMPLES(GameGetSoundSamples)

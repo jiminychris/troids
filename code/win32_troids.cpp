@@ -297,6 +297,14 @@ InitializeOpenGL(HDC DeviceContext)
     }
 }
 
+internal b32
+FileExists(char *Path)
+{
+    b32 Result = (GetFileAttributes(Path) != INVALID_FILE_ATTRIBUTES);
+
+    return(Result);
+}
+
 int WinMain(HINSTANCE Instance,
             HINSTANCE PrevInstance,
             LPSTR     CommandLine,
@@ -666,30 +674,55 @@ int WinMain(HINSTANCE Instance,
             game_update_and_render *GameUpdateAndRender = 0;
             game_get_sound_samples *GameGetSoundSamples = 0;
             // TODO(chris): Is MAX_PATH really correct?
+            char BuildPath[MAX_PATH];
             char CodePath[MAX_PATH];
-            u32 CodePathLength = GetModuleFileName(0, CodePath, sizeof(CodePath));
+            char PDBLockPath[MAX_PATH];
+            u32 EXEPathLength = GetModuleFileName(0, BuildPath, sizeof(BuildPath));
             u64 CodeWriteTime = 0;
             HMODULE GameCode = 0;
+            
             // TODO(chris): Check for truncated path
-            if(CodePathLength)
+            if(EXEPathLength)
             {
-                char *Char;
-                for(Char = CodePath + CodePathLength - 1;
-                    Char > CodePath;
-                    --Char)
+                char *BuildPathEnd;
+                for(BuildPathEnd = BuildPath + EXEPathLength - 1;
+                    BuildPathEnd > BuildPath;
+                    --BuildPathEnd)
                 {
-                    if(*(Char - 1) == '\\')
+                    if(*(BuildPathEnd - 1) == '\\')
                     {
                         break;
                     }
                 }
 
+                char *Dest;
+                char *Source;
+                
+                Dest = CodePath;
+                Source = BuildPath;
                 char *DLLName = "troids.dll";
-                while(*DLLName && Char < (CodePath + sizeof(CodePath) - 1))
+                while((Dest < (CodePath + sizeof(CodePath) - 1)) && (Source < BuildPathEnd))
                 {
-                    *Char++ = *DLLName++;
+                    *Dest++ = *Source++;
                 }
-                *Char = 0;
+                while((Dest < (CodePath + sizeof(CodePath) - 1)) && *DLLName)
+                {
+                    *Dest++ = *DLLName++;
+                }
+                *Dest = 0;
+                
+                Dest = PDBLockPath;
+                Source = BuildPath;
+                char *PDBLockName = "pdb.lock";
+                while((Dest < (PDBLockPath + sizeof(PDBLockPath) - 1)) && (Source < BuildPathEnd))
+                {
+                    *Dest++ = *Source++;
+                }
+                while((Dest < (PDBLockPath + sizeof(PDBLockPath) - 1)) && *PDBLockName)
+                {
+                    *Dest++ = *PDBLockName++;
+                }
+                *Dest = 0;
             }
             else
             {
@@ -1249,7 +1282,7 @@ int WinMain(HINSTANCE Instance,
                 {
                     u64 LastWriteTime = (((u64)FileInfo.ftLastWriteTime.dwHighDateTime << 32) |
                                          (FileInfo.ftLastWriteTime.dwLowDateTime << 0));
-                    if(LastWriteTime > CodeWriteTime)
+                    if((LastWriteTime > CodeWriteTime) && !FileExists(PDBLockPath))
                     {
                         if(GameCode)
                         {
