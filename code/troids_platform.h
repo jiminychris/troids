@@ -347,6 +347,29 @@ struct game_sound_buffer
     void *Region2;
 };
 
+inline u32
+CatStrings(u32 DestSize, char *DestInit,
+           u32 SourceALength, char *SourceA,
+           char *SourceB)
+{
+    char *Dest = DestInit;
+    char *DestEnd = Dest + DestSize - 1;
+    char *SourceAEnd = SourceA + SourceALength;
+    
+    while((Dest < DestEnd) && (SourceA < SourceAEnd))
+    {
+        *Dest++ = *SourceA++;
+    }
+    while((Dest < DestEnd) && *SourceB)
+    {
+        *Dest++ = *SourceB++;
+    }
+    *Dest = 0;
+
+    u32 Result = (u32)(Dest - DestInit);
+    return Result;
+}
+
 #define GAME_UPDATE_AND_RENDER(Name) void Name(game_memory *GameMemory, game_input *Input, game_backbuffer *BackBuffer)
 typedef GAME_UPDATE_AND_RENDER(game_update_and_render);
 

@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <gl/gl.h>
 
+#include "troids_opengl.h"
 #include "troids_platform.h"
 #include "troids_intrinsics.h"
 #include "troids_debug.h"
@@ -82,6 +83,36 @@ CREATE_GUID(GUID_ConstantForce, 0x13541C20,0x8E33,0x11D0,0x9A,0xD0,0x00,0xA0,0xC
 typedef DIRECT_INPUT_CREATE(direct_input_create);
 #endif
 
+global_variable WINDOWPLACEMENT PreviousWindowPlacement = { sizeof(PreviousWindowPlacement) };
+
+inline void
+ToggleFullscreen(HWND Window)
+{
+    // NOTE(chris): Taken from Raymond Chen's blog.
+    DWORD WindowStyle = GetWindowLong(Window, GWL_STYLE);
+    if(WindowStyle & WS_OVERLAPPEDWINDOW)
+    {
+        MONITORINFO MonitorInfo = { sizeof(MonitorInfo) };
+        if(GetWindowPlacement(Window, &PreviousWindowPlacement) &&
+            GetMonitorInfo(MonitorFromWindow(Window, MONITOR_DEFAULTTOPRIMARY), &MonitorInfo))
+        {
+            SetWindowLong(Window, GWL_STYLE, WindowStyle & ~WS_OVERLAPPEDWINDOW);
+            SetWindowPos(Window, HWND_TOP,
+                         MonitorInfo.rcMonitor.left, MonitorInfo.rcMonitor.top,
+                         MonitorInfo.rcMonitor.right - MonitorInfo.rcMonitor.left,
+                         MonitorInfo.rcMonitor.bottom - MonitorInfo.rcMonitor.top,
+                         SWP_NOOWNERZORDER|SWP_FRAMECHANGED);
+        }
+    }
+    else
+    {
+        SetWindowLong(Window, GWL_STYLE, WindowStyle|WS_OVERLAPPEDWINDOW);
+        SetWindowPlacement(Window, &PreviousWindowPlacement);
+        SetWindowPos(Window, NULL, 0, 0, 0, 0,
+                     SWP_NOMOVE|SWP_NOSIZE|SWP_NOZORDER|SWP_NOOWNERZORDER|SWP_FRAMECHANGED);
+    }
+}
+
 inline void
 CopyBackBufferToWindow(HDC DeviceContext, win32_backbuffer *BackBuffer)
 {
@@ -100,11 +131,50 @@ CopyBackBufferToWindow(HDC DeviceContext, win32_backbuffer *BackBuffer)
                   DIB_RGB_COLORS,
                   SRCCOPY);
 #else
-    
+
+#if 0
 //    glClearColor(1.0f, 0.0f, 1.0f, 0.0f);
 //    glClear(GL_COLOR_BUFFER_BIT);
     glDrawPixels(BackBuffer->Width, BackBuffer->Height, GL_BGRA_EXT, GL_UNSIGNED_BYTE,
                  BackBuffer->Memory);
+#else
+    glViewport(0, 0, BackBuffer->Width, BackBuffer->Height);
+
+    glBindTexture(GL_TEXTURE_2D, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, BackBuffer->Width, BackBuffer->Height,
+                 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, BackBuffer->Memory);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+
+    glEnable(GL_TEXTURE_2D);
+    
+    glBegin(GL_TRIANGLES);
+
+    // NOTE(chris): Lower triangle
+    glTexCoord2f(0.0f, 0.0f);
+    glVertex2f(-1.0f, -1.0f);
+
+    glTexCoord2f(1.0f, 0.0f);
+    glVertex2f(1.0f, -1.0f);
+
+    glTexCoord2f(0.0f, 1.0f);
+    glVertex2f(-1.0f, 1.0f);
+
+    // NOTE(chris): Upper triangle
+    glTexCoord2f(1.0f, 1.0f);
+    glVertex2f(1.0f, 1.0f);
+
+    glTexCoord2f(0.0f, 1.0f);
+    glVertex2f(-1.0f, 1.0f);
+
+    glTexCoord2f(1.0f, 0.0f);
+    glVertex2f(1.0f, -1.0f);
+
+    glEnd();
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+    
+#endif
     SwapBuffers(DeviceContext);
 #endif
 }
@@ -280,6 +350,7 @@ InitializeOpenGL(HDC DeviceContext)
     HGLRC OpenGLRC = wglCreateContext(DeviceContext);
     if(wglMakeCurrent(DeviceContext, OpenGLRC))
     {
+        char *Version = (char *)glGetString(GL_VERSION);
         wgl_swap_interval_ext *wglSwapIntervalEXT = (wgl_swap_interval_ext *)wglGetProcAddress("wglSwapIntervalEXT");
         if(wglSwapIntervalEXT)
         {
@@ -675,7 +746,7 @@ int WinMain(HINSTANCE Instance,
             game_get_sound_samples *GameGetSoundSamples = 0;
             // TODO(chris): Is MAX_PATH really correct?
             char BuildPath[MAX_PATH];
-            char CodePath[MAX_PATH];
+            char DLLPath[MAX_PATH];
             char PDBLockPath[MAX_PATH];
             u32 EXEPathLength = GetModuleFileName(0, BuildPath, sizeof(BuildPath));
             u64 CodeWriteTime = 0;
@@ -684,6 +755,9 @@ int WinMain(HINSTANCE Instance,
             // TODO(chris): Check for truncated path
             if(EXEPathLength)
             {
+                char DLLName[] = "troids.dll";
+                char PDBLockName[] = "pdb.lock";
+                
                 char *BuildPathEnd;
                 for(BuildPathEnd = BuildPath + EXEPathLength - 1;
                     BuildPathEnd > BuildPath;
@@ -694,35 +768,15 @@ int WinMain(HINSTANCE Instance,
                         break;
                     }
                 }
+                u32 BuildPathLength = (u32)(BuildPathEnd - BuildPath);
 
-                char *Dest;
-                char *Source;
-                
-                Dest = CodePath;
-                Source = BuildPath;
-                char *DLLName = "troids.dll";
-                while((Dest < (CodePath + sizeof(CodePath) - 1)) && (Source < BuildPathEnd))
-                {
-                    *Dest++ = *Source++;
-                }
-                while((Dest < (CodePath + sizeof(CodePath) - 1)) && *DLLName)
-                {
-                    *Dest++ = *DLLName++;
-                }
-                *Dest = 0;
-                
-                Dest = PDBLockPath;
-                Source = BuildPath;
-                char *PDBLockName = "pdb.lock";
-                while((Dest < (PDBLockPath + sizeof(PDBLockPath) - 1)) && (Source < BuildPathEnd))
-                {
-                    *Dest++ = *Source++;
-                }
-                while((Dest < (PDBLockPath + sizeof(PDBLockPath) - 1)) && *PDBLockName)
-                {
-                    *Dest++ = *PDBLockName++;
-                }
-                *Dest = 0;
+                u32 DLLPathLength = CatStrings(sizeof(DLLPath), DLLPath,
+                                               BuildPathLength, BuildPath, DLLName);
+                u32 PDBLockPathLength = CatStrings(sizeof(PDBLockPath), PDBLockPath,
+                                                   BuildPathLength, BuildPath, PDBLockName);
+
+                Assert(DLLPathLength == (BuildPathLength + sizeof(DLLName) - 1));
+                Assert(PDBLockPathLength == (BuildPathLength + sizeof(PDBLockName) - 1));
             }
             else
             {
@@ -803,6 +857,8 @@ int WinMain(HINSTANCE Instance,
                         {
                             case WM_KEYDOWN:
                             case WM_KEYUP:
+                            case WM_SYSKEYDOWN:
+                            case WM_SYSKEYUP:
                             {
                                 b32 AlreadyDown = (Message.lParam & (1 << 30));
                                 b32 WentDown = !(Message.lParam & (1 << 31));
@@ -830,7 +886,7 @@ int WinMain(HINSTANCE Instance,
                                             ProcessKeyboardMessage(&NewKeyboard->ActionRight);
                                         } break;
 
-                                        case VK_RETURN:
+                                        case VK_SPACE:
                                         {
                                             ProcessKeyboardMessage(&NewKeyboard->RightShoulder1);
                                         } break;
@@ -859,6 +915,22 @@ int WinMain(HINSTANCE Instance,
                                     {
                                         switch(Message.wParam)
                                         {
+                                            case VK_RETURN:
+                                            {
+                                                if(GetKeyState(VK_MENU))
+                                                {
+                                                    ToggleFullscreen(Window);
+                                                }
+                                            } break;
+
+                                            case VK_F4:
+                                            {
+                                                if(GetKeyState(VK_MENU))
+                                                {
+                                                    GlobalRunning = false;
+                                                }
+                                            } break;
+
                                             case 'R':
                                             {
                                                 switch(RecordingState)
@@ -1278,7 +1350,7 @@ int WinMain(HINSTANCE Instance,
                 }
                 
                 WIN32_FILE_ATTRIBUTE_DATA FileInfo;
-                if(GetFileAttributesEx(CodePath, GetFileExInfoStandard, &FileInfo))
+                if(GetFileAttributesEx(DLLPath, GetFileExInfoStandard, &FileInfo))
                 {
                     u64 LastWriteTime = (((u64)FileInfo.ftLastWriteTime.dwHighDateTime << 32) |
                                          (FileInfo.ftLastWriteTime.dwLowDateTime << 0));
@@ -1289,7 +1361,7 @@ int WinMain(HINSTANCE Instance,
                             // TODO(chris): Is this necessary?
                             FreeLibrary(GameCode);
                         }
-                        GameCode = LoadLibrary(CodePath);
+                        GameCode = LoadLibrary(DLLPath);
                         if(GameCode)
                         {
                             CodeWriteTime = LastWriteTime;

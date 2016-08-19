@@ -510,22 +510,19 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         OldAsteroid->Scale *= 0.79370052598f;
         *NewAsteroid = *OldAsteroid;
 
+        r32 Angle = Tau/12.0f;
+        r32 CosRot = Cos(Angle);
+        r32 SinRot = Sin(Angle);
         {
-            r32 Angle = -Tau/12.0f;
-            r32 CosRot = Cos(Angle);
-            r32 SinRot = Sin(Angle);
             m22 RotMat =
             {
-                CosRot, -SinRot,
-                SinRot, CosRot,
+                CosRot, SinRot,
+                -SinRot, CosRot,
             };
             OldAsteroid->dP = RotMat*OldAsteroid->dP;
         }
 
         {
-            r32 Angle = Tau/12.0f;
-            r32 CosRot = Cos(Angle);
-            r32 SinRot = Sin(Angle);
             m22 RotMat =
             {
                 CosRot, -SinRot,
