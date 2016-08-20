@@ -139,6 +139,46 @@ struct rectangle2i
     v2i Max;
 };
 
+inline s32
+Minimum(s32 A, s32 B)
+{
+    if(B < A)
+    {
+        A = B;
+    }
+    return(A);
+}
+
+inline s32
+Maximum(s32 A, s32 B)
+{
+    if(B > A)
+    {
+        A = B;
+    }
+    return(A);
+}
+
+inline r32
+Minimum(r32 A, r32 B)
+{
+    if(B < A)
+    {
+        A = B;
+    }
+    return(A);
+}
+
+inline r32
+Maximum(r32 A, r32 B)
+{
+    if(B > A)
+    {
+        A = B;
+    }
+    return(A);
+}
+
 #define Assert(Expr) {if(!(Expr)) int A = *((int *)0);}
 #define InvalidCodePath Assert(!"Invalid code path");
 #define InvalidDefaultCase default: Assert(!"Invalid default case"); break;
@@ -158,6 +198,15 @@ struct read_file_result
 #define PLATFORM_READ_FILE(Name) read_file_result Name(char *FileName)
 typedef PLATFORM_READ_FILE(platform_read_file);
 
+struct loaded_bitmap
+{
+    s32 Height;
+    s32 Width;
+    v2 Align;
+    s32 Pitch;
+    void *Memory;
+};
+
 struct game_memory
 {
     u64 PermanentMemorySize;
@@ -170,6 +219,8 @@ struct game_memory
     void *DebugMemory;
 
     platform_read_file *PlatformReadFile;
+    
+    loaded_bitmap DebugGlyphs[128];
 };
 
 struct memory_arena
@@ -234,15 +285,6 @@ struct bitmap_header
 	u32 AlphaMask;      /* Mask identifying bits of blue component */
 };
 #pragma pack(pop)
-
-struct loaded_bitmap
-{
-    s32 Height;
-    s32 Width;
-    v2 Align;
-    s32 Pitch;
-    void *Memory;
-};
 
 // TODO(chris): More polygons besides triangles?
 struct obj_face

@@ -61,46 +61,6 @@ AbsoluteValue(r32 A)
 }
 
 inline s32
-Minimum(s32 A, s32 B)
-{
-    if(B < A)
-    {
-        A = B;
-    }
-    return(A);
-}
-
-inline s32
-Maximum(s32 A, s32 B)
-{
-    if(B > A)
-    {
-        A = B;
-    }
-    return(A);
-}
-
-inline r32
-Minimum(r32 A, r32 B)
-{
-    if(B < A)
-    {
-        A = B;
-    }
-    return(A);
-}
-
-inline r32
-Maximum(r32 A, r32 B)
-{
-    if(B > A)
-    {
-        A = B;
-    }
-    return(A);
-}
-
-inline s32
 Clamp(s32 Min, s32 A, s32 Max)
 {
     s32 Result = Maximum(Min, Minimum(Max, A));
@@ -131,7 +91,7 @@ V2(r32 X, r32 Y)
 }
 
 inline v2
-V2(s32 X, s32 Y)
+V2i(s32 X, s32 Y)
 {
     v2 Result;
     Result.x = (r32)X;
@@ -346,6 +306,16 @@ operator*(v4 A, r32 C)
     Result.y = C*A.y;
     Result.z = C*A.z;
     Result.w = C*A.w;
+    return(Result);
+}
+
+inline rectangle2
+CenterDim(v2 Center, v2 Dim)
+{
+    v2 Radius = 0.5f*Dim;
+    rectangle2 Result;
+    Result.Min = Center - Radius;
+    Result.Max = Center + Radius;
     return(Result);
 }
 

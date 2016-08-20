@@ -452,10 +452,133 @@ int WinMain(HINSTANCE Instance,
             SetPixelFormat(DeviceContext, SuggestedPixelFormatIndex, &SuggestedPixelFormat);
 
             InitializeOpenGL(DeviceContext);
+
+            game_memory GameMemory;
+            for(u32 GlyphIndex = 0;
+                GlyphIndex < ArrayCount(GameMemory.DebugGlyphs);
+                ++GlyphIndex)
+            {
+                GameMemory.DebugGlyphs[GlyphIndex] = {};
+            }
+            // TODO(chris): All font stuff should move into a packed asset file sometime.
+            {
+                win32_backbuffer FontBuffer;
+                FontBuffer.Height = 1024;
+                FontBuffer.Width = 1024;
+                FontBuffer.Pitch = FontBuffer.Width*sizeof(u32);
+                FontBuffer.Info.bmiHeader.biSize = sizeof(FontBuffer.Info.bmiHeader);
+                FontBuffer.Info.bmiHeader.biWidth = FontBuffer.Width;
+                FontBuffer.Info.bmiHeader.biHeight = FontBuffer.Height;
+                FontBuffer.Info.bmiHeader.biPlanes = 1;
+                FontBuffer.Info.bmiHeader.biBitCount = 32;
+                FontBuffer.Info.bmiHeader.biCompression = BI_RGB;
+                FontBuffer.Info.bmiHeader.biSizeImage = 0;
+                FontBuffer.Info.bmiHeader.biXPelsPerMeter = 1;
+                FontBuffer.Info.bmiHeader.biYPelsPerMeter = 1;
+                FontBuffer.Info.bmiHeader.biClrUsed = 0;
+                FontBuffer.Info.bmiHeader.biClrImportant = 0;
+
+                HDC FontDC = CreateCompatibleDC(DeviceContext);
+                
+                HBITMAP FontBitmap = CreateDIBSection(FontDC, &FontBuffer.Info, DIB_RGB_COLORS,
+                                                      &FontBuffer.Memory, 0, 0);
+                SelectObject(FontDC, FontBitmap);
+                HFONT DebugFont = CreateFont(128, 0, // NOTE(chris): Height/Width
+                                             0, // NOTE(chris): Escapement
+                                             0, // NOTE(chris): Orientation
+                                             0, // NOTE(chris): Weight
+                                             0, // NOTE(chris): Italic
+                                             0, // NOTE(chris): Underline
+                                             0, // NOTE(chris): Strikeout
+                                             ANSI_CHARSET,
+                                             OUT_DEFAULT_PRECIS,
+                                             CLIP_DEFAULT_PRECIS,
+                                             ANTIALIASED_QUALITY,
+                                             DEFAULT_PITCH|FF_DONTCARE,
+                                             "Courier New");
+                SelectObject(FontDC, DebugFont);
+                SetBkColor(FontDC, RGB(0, 0, 0));
+                SetTextColor(FontDC, RGB(255, 255, 255));
+
+                TEXTMETRIC Metrics;
+                GetTextMetrics(FontDC, &Metrics);
+
+                for(char GlyphIndex = 'A';
+                    GlyphIndex <= 'Z';
+                    ++GlyphIndex)
+                {
+                    SIZE GlyphSize;
+                    Assert(GetTextExtentPoint32(FontDC, &GlyphIndex, 1, &GlyphSize));
+                    Assert(TextOutA(FontDC, 128, 0, &GlyphIndex, 1));
+
+                    s32 MinX = 10000;
+                    s32 MaxX = -10000;
+                    s32 MinY = 10000;
+                    s32 MaxY = -10000;
+
+                    u8 *ScanRow = (u8 *)FontBuffer.Memory;
+                    for(s32 Y = 0;
+                        Y < FontBuffer.Height;
+                        ++Y)
+                    {
+                        u32 *Scan = (u32 *)ScanRow;
+                        for(s32 X = 0;
+                            X < FontBuffer.Width;
+                            ++X)
+                        {
+                            if(*Scan++)
+                            {
+                                MinX = Minimum(X, MinX);
+                                MaxX = Maximum(X, MaxX);
+                                MinY = Minimum(Y, MinY);
+                                MaxY = Maximum(Y, MaxY);
+                            }
+                        }
+                        ScanRow += FontBuffer.Pitch;
+                    }
+
+                    loaded_bitmap *DebugGlyph = GameMemory.DebugGlyphs + GlyphIndex;
+                    DebugGlyph->Height = MaxY - MinY + 3;
+                    DebugGlyph->Width = MaxX - MinX + 3;
+                    DebugGlyph->Align = {0.0f, 0.0f};
+                    DebugGlyph->Pitch = DebugGlyph->Width*sizeof(u32);
+                    // TODO(chris): Don't do this. This should allocate from a custom asset
+                    // virtual memory system.
+                    DebugGlyph->Memory = VirtualAlloc(0,
+                                                      sizeof(u32)*DebugGlyph->Height*DebugGlyph->Width,
+                                                      MEM_COMMIT|MEM_RESERVE,
+                                                      PAGE_READWRITE);
+
+                    u8 *SourceRow = (u8 *)FontBuffer.Memory + FontBuffer.Pitch*MinY;
+                    u8 *DestRow = (u8 *)DebugGlyph->Memory;
+                    for(s32 Y = 1;
+                        Y < DebugGlyph->Height - 1;
+                        ++Y)
+                    {
+                        u32 *Source = (u32 *)SourceRow + MinX;
+                        u32 *Dest = (u32 *)DestRow;
+                        for(s32 X = 1;
+                            X < DebugGlyph->Width - 1;
+                            ++X)
+                        {
+                            u32 Alpha = (*Source & 0xFF);
+                            *Dest++ = ((Alpha << 24) |
+                                     (Alpha << 16) |
+                                     (Alpha << 8)  |
+                                     (Alpha << 0));
+                            *Source++ = 0;
+                        }
+                        SourceRow += FontBuffer.Pitch;
+                        DestRow += DebugGlyph->Pitch;
+                    }
+                }
+                
+                DeleteObject(FontBitmap);
+                DeleteDC(FontDC);
+            }
             
             ReleaseDC(Window, DeviceContext);
 
-            game_memory GameMemory;
             GameMemory.PermanentMemorySize = Megabytes(256);
             GameMemory.TemporaryMemorySize = Gigabytes(2);
             GameMemory.DebugMemorySize = Gigabytes(2);
@@ -825,8 +948,7 @@ int WinMain(HINSTANCE Instance,
 
             QueryPerformanceCounter(&LastCounter);
             while(GlobalRunning)
-            {
-                
+            {                
                 {
                     TIMED_BLOCK(Input);
 
@@ -913,11 +1035,12 @@ int WinMain(HINSTANCE Instance,
                                     }
                                     if(WentDown)
                                     {
+                                        b32 AltIsDown = (Message.lParam & (1 << 29));
                                         switch(Message.wParam)
                                         {
                                             case VK_RETURN:
                                             {
-                                                if(GetKeyState(VK_MENU))
+                                                if(AltIsDown)
                                                 {
                                                     ToggleFullscreen(Window);
                                                 }
@@ -925,7 +1048,7 @@ int WinMain(HINSTANCE Instance,
 
                                             case VK_F4:
                                             {
-                                                if(GetKeyState(VK_MENU))
+                                                if(AltIsDown)
                                                 {
                                                     GlobalRunning = false;
                                                 }

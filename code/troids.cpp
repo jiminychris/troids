@@ -251,13 +251,13 @@ LoadObj(char *FileName, memory_arena *Arena)
 
 #pragma optimize("gts", on)
 internal void
-RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap Bitmap, v2 Origin, v2 XAxis, v2 YAxis,
+RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAxis, v2 YAxis,
              r32 Scale, v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f))
 {
     Color.rgb *= Color.a;
     XAxis *= Scale;
     YAxis *= Scale;
-    Origin -= Hadamard(Bitmap.Align, XAxis + YAxis);
+    Origin -= Hadamard(Bitmap->Align, XAxis + YAxis);
     s32 XMin = Clamp(0, Floor(Minimum(Minimum(Origin.x, Origin.x + XAxis.x),
                                       Minimum(Origin.x + YAxis.x, Origin.x + XAxis.x + YAxis.x))),
                      BackBuffer->Width);
@@ -286,7 +286,7 @@ RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap Bitmap, v2 Origin, v2 XA
             X += 1)
         {
             // NOTE(chris): Test the next four pixels and mask the ones we're using
-            v2 TestPoint = V2(X, Y) - Origin;
+            v2 TestPoint = V2i(X, Y) - Origin;
 
             r32 U = Inner(TestPoint, XAxis)*InvXAxisLengthSq;
             r32 V = Inner(TestPoint, YAxis)*InvYAxisLengthSq;
@@ -296,12 +296,12 @@ RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap Bitmap, v2 Origin, v2 XA
                V >= 0.0f &&
                V <= 1.0f)
             {
-                r32 tX = U*(Bitmap.Width - 2) + 0.5f;
-                r32 tY = V*(Bitmap.Height - 2) + 0.5f;
+                r32 tX = U*(Bitmap->Width - 2) + 0.5f;
+                r32 tY = V*(Bitmap->Height - 2) + 0.5f;
 
-                u32 *TexelAPtr = (u32 *)Bitmap.Memory + (u32)tY*Bitmap.Width + (u32)tX;
+                u32 *TexelAPtr = (u32 *)Bitmap->Memory + (u32)tY*Bitmap->Width + (u32)tX;
                 u32 *TexelBPtr = TexelAPtr + 1;
-                u32 *TexelCPtr = TexelAPtr + Bitmap.Width;
+                u32 *TexelCPtr = TexelAPtr + Bitmap->Width;
                 u32 *TexelDPtr = TexelCPtr + 1;
                 v4 TexelA = V4i((*TexelAPtr >> 16) & 0xFF,
                                (*TexelAPtr >> 8) & 0xFF,
@@ -357,12 +357,12 @@ DrawRectangle(game_backbuffer *BackBuffer, rectangle2 Rect, v4 Color)
                      (G << 8)  | // G
                      (B << 0));  // B
 
-    u8 *PixelRow = (u8 *)BackBuffer->Memory;
+    u8 *PixelRow = (u8 *)BackBuffer->Memory + BackBuffer->Pitch*YMin;
     for(s32 Y = YMin;
         Y < YMax;
         ++Y)
     {
-        u32 *Dest = (u32 *)PixelRow;
+        u32 *Dest = (u32 *)PixelRow + XMin;
         for(s32 X = XMin;
             X < XMax;
             ++X)
@@ -454,7 +454,7 @@ Clear(game_backbuffer *BackBuffer, v4 Color)
 {
     rectangle2 Rect;
     Rect.Min = V2(0, 0);
-    Rect.Max = V2(BackBuffer->Width, BackBuffer->Height);
+    Rect.Max = V2i(BackBuffer->Width, BackBuffer->Height);
     DrawRectangle(BackBuffer, Rect, Color);
 }
 
@@ -467,7 +467,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         
         State->IsInitialized = true;
 
-        State->P = V2(BackBuffer->Width / 2, BackBuffer->Height / 2);
+        State->P = V2(BackBuffer->Width / 2.0f, BackBuffer->Height / 2.0f);
         State->Ship = LoadBitmap("ship_opaque.bmp");
         State->Asteroid = LoadBitmap("asteroid_opaque.bmp");
         State->Bullet = LoadBitmap("bullet.bmp");
@@ -482,7 +482,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         };
 
         State->AsteroidCount = 1;
-        State->Asteroids[0].P = V2(BackBuffer->Width / 4, BackBuffer->Height / 4);
+        State->Asteroids[0].P = V2(BackBuffer->Width / 4.0f, BackBuffer->Height / 4.0f);
         State->Asteroids[0].dP = 50.0f*V2(0.7f, 0.3f);
         State->Asteroids[0].Scale = 200.0f;
     }
@@ -536,7 +536,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     if(Keyboard->Start.EndedDown || Controller->Start.EndedDown)
     {
-        State->P = V2(BackBuffer->Width / 2, BackBuffer->Height / 2);
+        State->P = V2(BackBuffer->Width / 2.0f, BackBuffer->Height / 2.0f);
     }
 
     if(Keyboard->ActionUp.EndedDown || Controller->ActionUp.EndedDown)
@@ -619,7 +619,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     {
         v2 YAxis = Facing;
         v2 XAxis = -Perp(YAxis);
-        RenderBitmap(BackBuffer, State->Ship, State->P, XAxis, YAxis, ShipScale);
+        RenderBitmap(BackBuffer, &State->Ship, State->P, XAxis, YAxis, ShipScale);
     }
 
     {
@@ -630,7 +630,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             ++AsteroidIndex)
         {
             asteroid *Asteroid = State->Asteroids + AsteroidIndex;
-            RenderBitmap(BackBuffer, State->Asteroid, Asteroid->P, XAxis, YAxis, Asteroid->Scale);
+            RenderBitmap(BackBuffer, &State->Asteroid, Asteroid->P, XAxis, YAxis, Asteroid->Scale);
         }
     }
     
@@ -648,7 +648,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             v2 YAxis = V2(Cos(LiveBullet->Direction), Sin(LiveBullet->Direction));
             v2 XAxis = -0.5f*Perp(YAxis);
             LiveBullet->P += YAxis*Input->dtForFrame*PixelsPerMeter*0.1f;
-            RenderBitmap(BackBuffer, State->Bullet, LiveBullet->P, XAxis, YAxis, BulletScale,
+            RenderBitmap(BackBuffer, &State->Bullet, LiveBullet->P, XAxis, YAxis, BulletScale,
                          V4(1.0f, 1.0f, 1.0f, Unlerp(0.0f, LiveBullet->Timer, 2.0f)));
 //            DrawLine(BackBuffer, State->P, LiveBullet->P, V4(0.0f, 0.0f, 1.0f, 1.0f));
             LiveBullet->Timer -= Input->dtForFrame;
@@ -685,6 +685,30 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     };
 
     State->RotationMatrix = ZRotationMatrix*YRotationMatrix*XRotationMatrix*State->RotationMatrix;
+
+#if 0
+    {
+        v2 P = V2(0, BackBuffer->Height*0.5f);
+        for(char GlyphIndex = 'A';
+            GlyphIndex <= 'Z';
+            ++GlyphIndex)
+        {
+            loaded_bitmap *Glyph = GameMemory->DebugGlyphs + GlyphIndex;
+            if(Glyph->Memory)
+            {
+                v2 YAxis = V2(0, 1);
+                v2 XAxis = -Perp(YAxis)*((r32)Glyph->Width/(r32)Glyph->Height);
+                r32 Scale = (r32)Glyph->Height;
+#if 0
+                DrawRectangle(BackBuffer, CenterDim(P, Scale*(XAxis + YAxis)),
+                              V4(1.0f, 0.0f, 1.0f, 1.0f));
+#endif
+                RenderBitmap(BackBuffer, Glyph, P, XAxis, YAxis, Scale);
+                P.x += XAxis.x*Scale;
+            }
+        }
+    }
+#endif
 
 #if 0
     for(u32 FaceIndex = 1;
