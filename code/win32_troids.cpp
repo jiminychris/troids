@@ -192,8 +192,7 @@ LRESULT WindowProc(HWND Window,
                                 DEV_BROADCAST_DEVICEINTERFACE *Interface = (DEV_BROADCAST_DEVICEINTERFACE *)LParam;
                                 if(IsEqualGUID(Interface->dbcc_classguid, GUID_DEVINTERFACE_HID))
                                 {
-                                    HINSTANCE Instance = GetModuleHandle(0);
-                                    LatchControllers(Instance, Window);
+                                    LatchControllers(Window);
                                 }
                             } break;
                         }
@@ -202,6 +201,22 @@ LRESULT WindowProc(HWND Window,
 
                 case DBT_DEVICEREMOVECOMPLETE:
                 {
+                    DEV_BROADCAST_HDR *Header = (DEV_BROADCAST_HDR *)LParam;
+                    if(Header)
+                    {
+                        switch(Header->dbch_devicetype)
+                        {
+                            case DBT_DEVTYP_DEVICEINTERFACE:
+                            {
+                                DEV_BROADCAST_DEVICEINTERFACE *Interface = (DEV_BROADCAST_DEVICEINTERFACE *)LParam;
+                                if(IsEqualGUID(Interface->dbcc_classguid, GUID_DEVINTERFACE_HID))
+                                {
+                                    UnlatchController();
+                                }
+                            } break;
+                        }
+                    }
+                    
                 } break;
 
 #if 0
@@ -610,17 +625,16 @@ int WinMain(HINSTANCE Instance,
                 // TODO(chris): Logging
             }
 
-            InitializeInput();
-            LatchControllers(Instance, Window);
+            InitializeInput(Instance);
+            LatchControllers(Window);
             
             DEV_BROADCAST_DEVICEINTERFACE Filter = {};
             Filter.dbcc_size = sizeof(Filter);
             Filter.dbcc_devicetype =  DBT_DEVTYP_DEVICEINTERFACE;
-//            Filter.dbcc_classguid = GUID_Joystick;
+            Filter.dbcc_classguid = GUID_DEVINTERFACE_HID;
 //            Filter->dbcc_name[1]
-            HDEVNOTIFY DeviceNotification = RegisterDeviceNotification(Window, &Filter,
-                                                                       DEVICE_NOTIFY_WINDOW_HANDLE|
-                                                                       DEVICE_NOTIFY_ALL_INTERFACE_CLASSES);
+            HDEVNOTIFY DeviceNotification = RegisterDeviceNotificationA(Window, &Filter,
+                                                                       DEVICE_NOTIFY_WINDOW_HANDLE);
 
             game_update_and_render *GameUpdateAndRender = 0;
             game_get_sound_samples *GameGetSoundSamples = 0;

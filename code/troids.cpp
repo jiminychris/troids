@@ -499,13 +499,14 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         State->HeadMesh = LoadObj("head.obj", &TranState->TranArena);
     }
 
-    game_controller *Controller = Input->Controllers + 0;
+    game_controller *ShipController = Input->Controllers + 0;
+    game_controller *AsteroidController = Input->Controllers + 1;
     game_controller *Keyboard = &Input->Keyboard;
 
-    if(WentDown(Controller->Select) && (State->AsteroidCount < ArrayCount(State->Asteroids)))
+    if(WentDown(ShipController->Select) && (State->AsteroidCount < ArrayCount(State->Asteroids)))
     {
         asteroid *NewAsteroid = State->Asteroids + State->AsteroidCount;
-        asteroid *OldAsteroid = NewAsteroid - 1;
+        asteroid *OldAsteroid = State->Asteroids;
         // NOTE(chris): Halving volume results in dividing radius by cuberoot(2)
         OldAsteroid->Scale *= 0.79370052598f;
         *NewAsteroid = *OldAsteroid;
@@ -534,17 +535,17 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         ++State->AsteroidCount;
     }
 
-    if(Keyboard->Start.EndedDown || Controller->Start.EndedDown)
+    if(Keyboard->Start.EndedDown || ShipController->Start.EndedDown)
     {
         State->P = V2(BackBuffer->Width / 2.0f, BackBuffer->Height / 2.0f);
     }
 
-    if(Keyboard->ActionUp.EndedDown || Controller->ActionUp.EndedDown)
+    if(Keyboard->ActionUp.EndedDown || ShipController->ActionUp.EndedDown)
     {
         State->Scale += Input->dtForFrame*100.0f;
     }
 
-    if(Keyboard->ActionDown.EndedDown || Controller->ActionDown.EndedDown)
+    if(Keyboard->ActionDown.EndedDown || ShipController->ActionDown.EndedDown)
     {
         State->Scale -= Input->dtForFrame*100.0f;
     }
@@ -556,21 +557,21 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     r32 ShipScale = 100.0f;
     r32 BulletScale = 30.0f;
 
-    r32 LeftStickX = Keyboard->LeftStickX ? Keyboard->LeftStickX : Controller->LeftStickX;
-    r32 Throttle = Keyboard->LeftStickY ? Keyboard->LeftStickY : Controller->LeftStickY;
+    r32 LeftStickX = Keyboard->LeftStickX ? Keyboard->LeftStickX : ShipController->LeftStickX;
+    r32 Throttle = Keyboard->LeftStickY ? Keyboard->LeftStickY : ShipController->LeftStickY;
 
     r32 YRotation = Input->dtForFrame*(Keyboard->RightStickX ?
                                        Keyboard->RightStickX :
-                                       Controller->RightStickX);
+                                       ShipController->RightStickX);
     r32 XRotation = Input->dtForFrame*(Keyboard->RightStickY ?
                                        Keyboard->RightStickY :
-                                       Controller->RightStickY);
+                                       ShipController->RightStickY);
     r32 ZRotation = Input->dtForFrame*((Keyboard->LeftTrigger ?
                                         Keyboard->LeftTrigger :
-                                        Controller->LeftTrigger) -
+                                        ShipController->LeftTrigger) -
                                        (Keyboard->RightTrigger ?
                                         Keyboard->RightTrigger :
-                                        Controller->RightTrigger));
+                                        ShipController->RightTrigger));
     
     r32 Halfdt = Input->dtForFrame*0.5f;
     r32 dYaw = State->dYaw + Input->dtForFrame*-LeftStickX;
@@ -579,7 +580,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     v2 Facing = V2(Cos(State->Yaw), Sin(State->Yaw));
 
     v2 Acceleration = {};
-    if((WentDown(Controller->RightShoulder1) || WentDown(Keyboard->RightShoulder1)) &&
+    if((WentDown(ShipController->RightShoulder1) || WentDown(Keyboard->RightShoulder1)) &&
        State->LiveBulletCount < ArrayCount(State->LiveBullets))
     {
         if(State->Cooldown <= 0.0f)
@@ -601,6 +602,11 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     State->P += (dP + State->dP)*Halfdt;
     State->dP = dP;
 
+    v2 AsteroidAcceleration = (0.25f*PixelsPerMeter*
+                               V2(AsteroidController->LeftStickX, AsteroidController->LeftStickY));
+
+    State->Asteroids[0].dP += AsteroidAcceleration*Input->dtForFrame;
+    
     for(u32 AsteroidIndex = 0;
         AsteroidIndex < State->AsteroidCount;
         ++AsteroidIndex)
