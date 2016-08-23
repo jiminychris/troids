@@ -172,21 +172,24 @@ UnlatchController()
                 ++GlobalControllerIndex)
             {
                 input_device *GlobalController = GlobalControllers + GlobalControllerIndex;
-                b32 StillAttached = false;
-                for(u32 DeviceGUIDIndex = 0;
-                    DeviceGUIDIndex < ControllerGUIDs.Count;
-                    ++DeviceGUIDIndex)
+                if(GlobalController->Type != InputDeviceType_None)
                 {
-                    GUID *DeviceGUID = ControllerGUIDs.GUIDs + DeviceGUIDIndex;
-                    if(IsEqualGUID(*DeviceGUID, GlobalController->GUID))
+                    b32 StillAttached = false;
+                    for(u32 DeviceGUIDIndex = 0;
+                        DeviceGUIDIndex < ControllerGUIDs.Count;
+                        ++DeviceGUIDIndex)
                     {
-                        StillAttached = true;
+                        GUID *DeviceGUID = ControllerGUIDs.GUIDs + DeviceGUIDIndex;
+                        if(IsEqualGUID(*DeviceGUID, GlobalController->GUID))
+                        {
+                            StillAttached = true;
+                        }
                     }
-                }
-                if(!StillAttached)
-                {
-                    GlobalController->Type = InputDeviceType_None;
-                    --GlobalControllerCount;
+                    if(!StillAttached)
+                    {
+                        GlobalController->Type = InputDeviceType_None;
+                        --GlobalControllerCount;
+                    }
                 }
             }
         }
@@ -234,6 +237,7 @@ LatchControllers(HWND Window)
                         if(Controller->Type == InputDeviceType_None)
                         {
                             NewController = Controller;
+                            break;
                         }
                     }
                     NewController->GUID = *ControllerGUID;
