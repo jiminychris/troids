@@ -540,6 +540,11 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         State->P = V2(BackBuffer->Width / 2.0f, BackBuffer->Height / 2.0f);
     }
 
+    if(AsteroidController->Start.EndedDown)
+    {
+        State->Asteroids[0].P = V2(BackBuffer->Width / 2.0f, BackBuffer->Height / 2.0f);
+    }
+
     if(Keyboard->ActionUp.EndedDown || ShipController->ActionUp.EndedDown)
     {
         State->Scale += Input->dtForFrame*100.0f;
@@ -716,7 +721,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     }
 #endif
 
-#if 0
+#if 1
     for(u32 FaceIndex = 1;
         FaceIndex < State->HeadMesh.FaceCount;
         ++FaceIndex)

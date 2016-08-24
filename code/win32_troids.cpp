@@ -877,15 +877,8 @@ int WinMain(HINSTANCE Instance,
                             } break;
                         }
                     }
-                
-                    for(u32 ControllerIndex = 0;
-                        ControllerIndex < ArrayCount(NewInput->Controllers);
-                        ++ControllerIndex)
-                    {
-                        game_controller *NewController = NewInput->Controllers + ControllerIndex;
-                        game_controller *OldController = OldInput->Controllers + ControllerIndex;
-                        ProcessControllerInput(ControllerIndex, OldController, NewController);
-                    }
+
+                    ProcessControllerInput(OldInput, NewInput);
                 }
 
                 switch(RecordingState)

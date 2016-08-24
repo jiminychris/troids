@@ -14,7 +14,7 @@ CREATE_GUID(GUID_DEVINTERFACE_USB_DEVICE, 0xA5DCBF10,0x6530,0x11D2,0x90,0x1F,0x0
 internal void InitializeInput(HINSTANCE Instance);
 internal void UnlatchControllers(HWND Window);
 internal void LatchControllers(HWND Window);
-internal void ProcessControllerInput(u32 ControllerIndex, game_controller *OldController, game_controller *NewController);
+internal void ProcessControllerInput(game_input *OldController, game_input *NewController);
 
 #define TROIDS_INPUT_H
 #endif
