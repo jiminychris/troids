@@ -7,6 +7,11 @@
    $Notice: $
    ======================================================================== */
 
+#include "troids_platform.h"
+#include "troids_intrinsics.h"
+#include "troids_math.h"
+#include "troids_render.h"
+
 struct asteroid
 {
     v2 P;
@@ -55,6 +60,7 @@ struct transient_state
     b32 IsInitialized;
 
     memory_arena TranArena;
+    render_buffer RenderBuffer;
 };
 
 #define TROIDS_H

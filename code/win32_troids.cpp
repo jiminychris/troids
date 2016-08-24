@@ -16,6 +16,11 @@
 #include "troids_intrinsics.h"
 #include "troids_debug.h"
 
+#if TROIDS_INTERNAL
+#define DATA_PATH "..\\troids\\data"
+#else
+#define DATA_PATH "data"
+#endif
 
 typedef BOOL WINAPI wgl_swap_interval_ext(int);
     
@@ -370,6 +375,14 @@ int WinMain(HINSTANCE Instance,
                                       0);
         if(Window)
         {
+            u32 PathLength;
+            char Path[MAX_PATH];
+
+            char *DataPath = DATA_PATH;
+            PathLength = GetCurrentDirectoryA(sizeof(Path), Path);
+            Assert(SetCurrentDirectory(DataPath));
+            PathLength = GetCurrentDirectoryA(sizeof(Path), Path);
+            
             GlobalBackBuffer.Width = BackBufferWidth;
             GlobalBackBuffer.Height = BackBufferHeight;
             GlobalBackBuffer.Pitch = GlobalBackBuffer.Width*sizeof(u32);

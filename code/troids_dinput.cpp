@@ -831,7 +831,7 @@ ProcessControllerInput(game_input *OldInput, game_input *NewInput)
                             NewController->LeftStickX = 0.0f;
                             if(N64Data.StickX < (Center - Deadzone))
                             {
-                                NewController->LeftStickX = (Center - Deadzone - (r32)N64Data.StickX) / (Center - Deadzone);
+                                NewController->LeftStickX = -(Center - Deadzone - (r32)N64Data.StickX) / (Center - Deadzone);
                             }
                             else if(N64Data.StickX > (Center + Deadzone))
                             {

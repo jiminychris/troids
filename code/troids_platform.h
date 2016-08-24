@@ -190,6 +190,8 @@ Maximum(r32 A, r32 B)
 #define Gigabytes(Value) (Megabytes(Value)*1024)
 #define Terabytes(Value) (Gigabytes(Value)*1024)
 
+#define PackedBufferAdvance(Name, type, Cursor) type *Name = (type *)Cursor; Cursor += sizeof(type);
+
 struct read_file_result
 {
     u64 ContentsSize;
@@ -257,6 +259,36 @@ PushSize(memory_arena *Arena, memory_size Size)
 
 #define PushStruct(Arena, type) (type *)PushSize(Arena, sizeof(type))
 #define PushArray(Arena, Count, type) (type *)PushSize(Arena, Count*sizeof(type))
+
+inline memory_arena
+SubArena(memory_arena *Arena, memory_size Size)
+{
+    void *Memory = PushSize(Arena, Size);
+    memory_arena Result;
+    InitializeArena(&Result, Size, Memory);
+    return(Result);
+}
+
+struct temporary_memory
+{
+    memory_size Used;
+    memory_arena *Arena;
+};
+
+inline temporary_memory
+BeginTemporaryMemory(memory_arena *Arena)
+{
+    temporary_memory Result;
+    Result.Used = Arena->Used;
+    Result.Arena = Arena;
+    return(Result);
+}
+
+inline void
+EndTemporaryMemory(temporary_memory Temp)
+{
+    Temp.Arena->Used = Temp.Used;
+}
 
 #pragma pack(push, 1)
 struct bitmap_header
