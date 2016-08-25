@@ -29,6 +29,12 @@ typedef int32_t b32;
 
 typedef size_t memory_size;
 
+#define U8_MIN 0
+#define U8_MAX 0xFF
+
+#define S32_MIN -32768
+#define S32_MAX 32767
+
 struct v2i
 {
     s32 x;
@@ -209,6 +215,13 @@ struct loaded_bitmap
     void *Memory;
 };
 
+struct loaded_font
+{
+    r32 Height;
+    loaded_bitmap Glyphs[128];
+    r32 KerningTable[128][128];
+};
+
 struct game_memory
 {
     u64 PermanentMemorySize;
@@ -221,9 +234,8 @@ struct game_memory
     void *DebugMemory;
 
     platform_read_file *PlatformReadFile;
-    
-    r32 DebugFontHeight;
-    loaded_bitmap DebugGlyphs[128];
+
+    loaded_font DebugFont;
 };
 
 struct memory_arena
@@ -390,8 +402,15 @@ struct game_input
 {
     r32 dtForFrame;
 
-    game_controller Keyboard;
-    game_controller Controllers[4];
+    union
+    {
+        game_controller Controllers[5];
+        struct
+        {
+            game_controller Keyboard;
+            game_controller GamePads[4];
+        };
+    };
 };
 
 inline b32

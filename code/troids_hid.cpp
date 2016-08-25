@@ -61,7 +61,7 @@ struct dualshock_4_output
 };
 #pragma pack(pop)
 
-global_variable HANDLE GlobalDualshock4Controllers[4] =
+global_variable HANDLE GlobalDualshock4GamePads[4] =
 {
     INVALID_HANDLE_VALUE,
     INVALID_HANDLE_VALUE,
@@ -122,7 +122,7 @@ static unsigned int stbiw__crc32(unsigned char *buffer, int len)
 }
 
 internal void
-LatchControllers(HINSTANCE Instance, HWND Window)
+LatchGamePads(HINSTANCE Instance, HWND Window)
 {
     // NOTE(chris): Maybe use this if we need to get battery info, set LED color?
     if(GetHIDGUID && GetDeviceAttributes && GetClassDevs && EnumDeviceInterfaces &&
@@ -171,7 +171,7 @@ LatchControllers(HINSTANCE Instance, HWND Window)
                     if(AttributesResult &&
                        Attributes.VendorID == 0x054C && Attributes.ProductID == 0x05C4)
                     {
-                        GlobalDualshock4Controllers[0] = Device;
+                        GlobalDualshock4GamePads[0] = Device;
 
                         dualshock_4_output Output = {};
 #if 1
@@ -236,7 +236,7 @@ internal void
 ProcessControllerInput(u32 ControllerIndex, game_controller *OldController, game_controller *NewController)
 {
     game_controller *Controller = NewController;
-    HANDLE Dualshock4Controller = GlobalDualshock4Controllers[ControllerIndex];
+    HANDLE Dualshock4Controller = GlobalDualshock4GamePads[ControllerIndex];
     if(Dualshock4Controller != INVALID_HANDLE_VALUE && GetInputReport)
     {
         dualshock_4_input Dualshock4Reports[32];

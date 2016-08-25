@@ -197,7 +197,7 @@ LRESULT WindowProc(HWND Window,
                                 DEV_BROADCAST_DEVICEINTERFACE *Interface = (DEV_BROADCAST_DEVICEINTERFACE *)LParam;
                                 if(IsEqualGUID(Interface->dbcc_classguid, GUID_DEVINTERFACE_HID))
                                 {
-                                    LatchControllers(Window);
+                                    LatchGamePads(Window);
                                 }
                             } break;
                         }
@@ -216,7 +216,7 @@ LRESULT WindowProc(HWND Window,
                                 DEV_BROADCAST_DEVICEINTERFACE *Interface = (DEV_BROADCAST_DEVICEINTERFACE *)LParam;
                                 if(IsEqualGUID(Interface->dbcc_classguid, GUID_DEVINTERFACE_HID))
                                 {
-                                    UnlatchController();
+                                    UnlatchGamePads();
                                 }
                             } break;
                         }
@@ -420,13 +420,13 @@ int WinMain(HINSTANCE Instance,
 
             game_memory GameMemory;
             for(u32 GlyphIndex = 0;
-                GlyphIndex < ArrayCount(GameMemory.DebugGlyphs);
+                GlyphIndex < ArrayCount(GameMemory.DebugFont.Glyphs);
                 ++GlyphIndex)
             {
-                GameMemory.DebugGlyphs[GlyphIndex] = {};
+                GameMemory.DebugFont.Glyphs[GlyphIndex] = {};
             }
             // TODO(chris): All font stuff should move into a packed asset file sometime.
-            {
+            {               
                 win32_backbuffer FontBuffer;
                 FontBuffer.Height = 1024;
                 FontBuffer.Width = 1024;
@@ -448,10 +448,10 @@ int WinMain(HINSTANCE Instance,
                 HBITMAP FontBitmap = CreateDIBSection(FontDC, &FontBuffer.Info, DIB_RGB_COLORS,
                                                       &FontBuffer.Memory, 0, 0);
                 SelectObject(FontDC, FontBitmap);
-                HFONT DebugFont = CreateFont(128, 0, // NOTE(chris): Height/Width
+                HFONT DebugFont = CreateFont(72, 0, // NOTE(chris): Height, Width
                                              0, // NOTE(chris): Escapement
                                              0, // NOTE(chris): Orientation
-                                             0, // NOTE(chris): Weight
+                                             FW_BOLD, // NOTE(chris): Weight
                                              0, // NOTE(chris): Italic
                                              0, // NOTE(chris): Underline
                                              0, // NOTE(chris): Strikeout
@@ -467,12 +467,31 @@ int WinMain(HINSTANCE Instance,
 
                 TEXTMETRIC Metrics;
                 GetTextMetrics(FontDC, &Metrics);
-                GameMemory.DebugFontHeight = (r32)Metrics.tmHeight;
+                GameMemory.DebugFont.Height = (r32)Metrics.tmHeight;
 
-                for(char GlyphIndex = '!';
-                    GlyphIndex <= '~';
+                char FirstChar = ' ';
+                char LastChar = '~';
+                
+                ABCFLOAT ABCWidths[128];
+                Assert(GetCharABCWidthsFloat(FontDC, FirstChar, LastChar, ABCWidths));
+
+                for(char GlyphIndex = FirstChar;
+                    GlyphIndex <= LastChar;
                     ++GlyphIndex)
                 {
+                    for(char SecondGlyphIndex = FirstChar;
+                        SecondGlyphIndex <= LastChar;
+                        ++SecondGlyphIndex)
+                    {
+                        ABCFLOAT *FirstABCWidth = ABCWidths + GlyphIndex - FirstChar;
+                        ABCFLOAT *SecondABCWidth = ABCWidths + SecondGlyphIndex - FirstChar;
+                            
+                        r32 Kern = 0;
+                        GameMemory.DebugFont.KerningTable[GlyphIndex][SecondGlyphIndex] =
+                            FirstABCWidth->abcfB + FirstABCWidth->abcfC + SecondABCWidth->abcfA + Kern;
+                    }
+                    if(GlyphIndex == ' ') continue;
+
                     SIZE GlyphSize;
                     Assert(GetTextExtentPoint32(FontDC, &GlyphIndex, 1, &GlyphSize));
                     Assert(TextOutA(FontDC, 128, 0, &GlyphIndex, 1));
@@ -503,10 +522,12 @@ int WinMain(HINSTANCE Instance,
                         ScanRow += FontBuffer.Pitch;
                     }
 
-                    loaded_bitmap *DebugGlyph = GameMemory.DebugGlyphs + GlyphIndex;
-                    DebugGlyph->Height = MaxY - MinY + 3;
-                    DebugGlyph->Width = MaxX - MinX + 3;
-                    DebugGlyph->Align = {0.0f, 0.0f};
+                    loaded_bitmap *DebugGlyph = GameMemory.DebugFont.Glyphs + GlyphIndex;
+                    s32 Height = MaxY - MinY + 1;
+                    s32 Width = MaxX - MinX + 1;
+                    DebugGlyph->Height = Height + 2;
+                    DebugGlyph->Width = Width + 2;
+                    DebugGlyph->Align = {0.0f, 1.0f-((r32)(Metrics.tmAscent-FontBuffer.Height+MaxY)/(r32)Height)};
                     DebugGlyph->Pitch = DebugGlyph->Width*sizeof(u32);
                     // TODO(chris): Don't do this. This should allocate from a custom asset
                     // virtual memory system.
@@ -516,15 +537,15 @@ int WinMain(HINSTANCE Instance,
                                                       PAGE_READWRITE);
 
                     u8 *SourceRow = (u8 *)FontBuffer.Memory + FontBuffer.Pitch*MinY;
-                    u8 *DestRow = (u8 *)DebugGlyph->Memory;
-                    for(s32 Y = 1;
-                        Y < DebugGlyph->Height - 1;
+                    u8 *DestRow = (u8 *)DebugGlyph->Memory + DebugGlyph->Pitch;
+                    for(s32 Y = MinY;
+                        Y <= MaxY;
                         ++Y)
                     {
                         u32 *Source = (u32 *)SourceRow + MinX;
-                        u32 *Dest = (u32 *)DestRow;
-                        for(s32 X = 1;
-                            X < DebugGlyph->Width - 1;
+                        u32 *Dest = (u32 *)DestRow + 1;
+                        for(s32 X = MinX;
+                            X <= MaxX;
                             ++X)
                         {
                             u32 Alpha = (*Source & 0xFF);
@@ -536,9 +557,55 @@ int WinMain(HINSTANCE Instance,
                         }
                         SourceRow += FontBuffer.Pitch;
                         DestRow += DebugGlyph->Pitch;
+                    }                    
+
+                    // NOTE(chris): Enable this to assert that the border around the glyph is pure alpha
+#if 0
+                    u8 *Row = (u8 *)DebugGlyph->Memory;
+                    for(s32 Y = 0;
+                        Y < DebugGlyph->Height;
+                        ++Y)
+                    {
+                        u32 *Pixel = (u32 *)Row;
+                        for(s32 X = 0;
+                            X < DebugGlyph->Width;
+                            ++X)
+                        {
+                            if((Y == 0) ||
+                               (Y == (DebugGlyph->Height - 1)) ||
+                               (X == 0) ||
+                               (X == (DebugGlyph->Width - 1)))
+                            {
+                                Assert(!(*Pixel));
+                            }
+                        }
+                        Row += DebugGlyph->Pitch;
+                    }
+#endif
+                }
+
+#if 1
+                KERNINGPAIR KerningPairs[128];
+                u32 KerningPairCount = GetKerningPairs(FontDC, ArrayCount(KerningPairs), 0);
+                Assert(KerningPairCount <= ArrayCount(KerningPairs));
+                if(KerningPairCount)
+                {
+                    Assert(GetKerningPairs(FontDC, KerningPairCount, KerningPairs));
+                    for(u32 KerningPairIndex = 0;
+                        KerningPairIndex < KerningPairCount;
+                        ++KerningPairIndex)
+                    {
+                        KERNINGPAIR *KerningPair = KerningPairs + KerningPairIndex;
+                        if((KerningPair->wFirst < ArrayCount(GameMemory.DebugFont.KerningTable)) &&
+                           (KerningPair->wSecond < ArrayCount(GameMemory.DebugFont.KerningTable[0])))
+                        {
+                            GameMemory.DebugFont.KerningTable[KerningPair->wFirst][KerningPair->wSecond] +=
+                                (r32)KerningPair->iKernAmount;
+                        }
                     }
                 }
-                
+#endif
+
                 DeleteObject(FontBitmap);
                 DeleteDC(FontDC);
             }
@@ -640,7 +707,7 @@ int WinMain(HINSTANCE Instance,
             }
 
             InitializeInput(Instance);
-            LatchControllers(Window);
+            LatchGamePads(Window);
             
             DEV_BROADCAST_DEVICEINTERFACE Filter = {};
             Filter.dbcc_size = sizeof(Filter);
@@ -892,7 +959,7 @@ int WinMain(HINSTANCE Instance,
                         }
                     }
 
-                    ProcessControllerInput(OldInput, NewInput);
+                    ProcessGamePadInput(OldInput, NewInput);
                 }
 
                 switch(RecordingState)

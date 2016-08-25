@@ -61,8 +61,8 @@ PushLine(render_buffer *RenderBuffer, v2 PointA, v2 PointB, v4 Color);
 inline void
 PushClear(render_buffer *RenderBuffer, v4 Color);
 
-inline void
-PushText(render_buffer *RenderBuffer, r32 FontHeight, loaded_bitmap *Glyphs, u32 TextLength, char *Text,
+internal void
+PushText(render_buffer *RenderBuffer, loaded_font *Font, u32 TextLength, char *Text,
          v2 *P, r32 Height,v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f));
 
 internal void

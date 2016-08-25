@@ -57,37 +57,52 @@ PushClear(render_buffer *RenderBuffer, v4 Color)
     Data->Color = Color;
 }
 
-// TODO(chris): Clean this up. Make fonts and font layout more systematic.
-inline void
-PushText(render_buffer *RenderBuffer, r32 FontHeight, loaded_bitmap *Glyphs, u32 TextLength, char *Text,
-         v2 *P, r32 Height, v4 Color)
+inline r32
+GetTextAdvance(loaded_font *Font, char A, char B)
 {
+    r32 Result = Font->KerningTable[A][B];
+    return(Result);
+}
+
+// TODO(chris): Clean this up. Make fonts and font layout more systematic.
+internal void
+PushText(render_buffer *RenderBuffer, loaded_font *Font, u32 TextLength, char *Text,
+         v2 *P, r32 Scale, v4 Color)
+{
+    r32 LineAdvance = 1.25f*Font->Height*Scale;
     r32 XInit = P->x;
+    char Prev = 0;
     char *At = Text;
     for(u32 AtIndex = 0;
         AtIndex < TextLength;
         ++At, ++AtIndex)
     {
-        if(*At == ' ')
+        if(*At == '-')
         {
-            P->x += 0.5f*Height;
+                int A = 0;
         }
-        else
+        if(Prev)
         {
-            loaded_bitmap *Glyph = Glyphs + *At;
+            if(Prev == '-')
+            {
+            }
+            P->x += Scale*GetTextAdvance(Font, Prev, *At);
+        }
+        loaded_bitmap *Glyph = Font->Glyphs + *At;
+        if(Glyph->Height && Glyph->Width)
+        {
             v2 YAxis = V2(0, 1);
-            v2 XAxis = -Perp(YAxis)*((r32)Glyph->Width/(r32)Glyph->Height);
-            r32 Scale = Height*(Glyph->Height / FontHeight);
+            v2 XAxis = -Perp(YAxis);
 #if 0
             PushRectangle(&TranState->RenderBuffer, CenterDim(P, Scale*(XAxis + YAxis)),
                           V4(1.0f, 0.0f, 1.0f, 1.0f));
 #endif
             PushBitmap(RenderBuffer, Glyph, *P, XAxis, YAxis, Scale);
-            P->x += XAxis.x * Scale;
         }
+        Prev = *At;
     }
     P->x = XInit;
-    P->y -= Height*1.5f;
+    P->y -= LineAdvance;
 }
 
 #pragma optimize("gts", on)
@@ -96,8 +111,8 @@ RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 X
              r32 Scale, v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f))
 {
     Color.rgb *= Color.a;
-    XAxis *= Scale;
-    YAxis *= Scale;
+    XAxis *= Scale*Bitmap->Width;
+    YAxis *= Scale*Bitmap->Height;
     Origin -= Hadamard(Bitmap->Align, XAxis + YAxis);
     s32 XMin = Clamp(0, Floor(Minimum(Minimum(Origin.x, Origin.x + XAxis.x),
                                       Minimum(Origin.x + YAxis.x, Origin.x + XAxis.x + YAxis.x))),
