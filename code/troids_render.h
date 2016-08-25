@@ -50,7 +50,7 @@ struct render_buffer
 
 inline void
 PushBitmap(render_buffer *RenderBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAxis, v2 YAxis,
-           r32 Scale, v4 Color);
+           r32 Scale, v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f));
 
 inline void
 PushRectangle(render_buffer *RenderBuffer, rectangle2 Rect, v4 Color);
@@ -60,6 +60,10 @@ PushLine(render_buffer *RenderBuffer, v2 PointA, v2 PointB, v4 Color);
 
 inline void
 PushClear(render_buffer *RenderBuffer, v4 Color);
+
+inline void
+PushText(render_buffer *RenderBuffer, r32 FontHeight, loaded_bitmap *Glyphs, u32 TextLength, char *Text,
+         v2 *P, r32 Height,v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f));
 
 internal void
 RenderBufferToBackBuffer(render_buffer *RenderBuffer, game_backbuffer *BackBuffer);

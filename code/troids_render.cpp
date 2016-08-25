@@ -14,16 +14,19 @@ PushRenderHeader(memory_arena *Arena, render_command Command)
 
 inline void
 PushBitmap(render_buffer *RenderBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAxis, v2 YAxis,
-             r32 Scale, v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f))
+           r32 Scale, v4 Color)
 {
-    PushRenderHeader(&RenderBuffer->Arena, RenderCommand_Bitmap);
-    render_bitmap_data *Data = PushStruct(&RenderBuffer->Arena, render_bitmap_data);
-    Data->Bitmap = Bitmap;
-    Data->Origin = Origin;
-    Data->XAxis = XAxis;
-    Data->YAxis = YAxis;
-    Data->Scale = Scale;
-    Data->Color = Color;
+    if(Bitmap->Height && Bitmap->Width)
+    {
+        PushRenderHeader(&RenderBuffer->Arena, RenderCommand_Bitmap);
+        render_bitmap_data *Data = PushStruct(&RenderBuffer->Arena, render_bitmap_data);
+        Data->Bitmap = Bitmap;
+        Data->Origin = Origin;
+        Data->XAxis = XAxis;
+        Data->YAxis = YAxis;
+        Data->Scale = Scale;
+        Data->Color = Color;
+    }
 }
 
 inline void
@@ -52,6 +55,39 @@ PushClear(render_buffer *RenderBuffer, v4 Color)
     PushRenderHeader(&RenderBuffer->Arena, RenderCommand_Clear);
     render_clear_data *Data = PushStruct(&RenderBuffer->Arena, render_clear_data);
     Data->Color = Color;
+}
+
+// TODO(chris): Clean this up. Make fonts and font layout more systematic.
+inline void
+PushText(render_buffer *RenderBuffer, r32 FontHeight, loaded_bitmap *Glyphs, u32 TextLength, char *Text,
+         v2 *P, r32 Height, v4 Color)
+{
+    r32 XInit = P->x;
+    char *At = Text;
+    for(u32 AtIndex = 0;
+        AtIndex < TextLength;
+        ++At, ++AtIndex)
+    {
+        if(*At == ' ')
+        {
+            P->x += 0.5f*Height;
+        }
+        else
+        {
+            loaded_bitmap *Glyph = Glyphs + *At;
+            v2 YAxis = V2(0, 1);
+            v2 XAxis = -Perp(YAxis)*((r32)Glyph->Width/(r32)Glyph->Height);
+            r32 Scale = Height*(Glyph->Height / FontHeight);
+#if 0
+            PushRectangle(&TranState->RenderBuffer, CenterDim(P, Scale*(XAxis + YAxis)),
+                          V4(1.0f, 0.0f, 1.0f, 1.0f));
+#endif
+            PushBitmap(RenderBuffer, Glyph, *P, XAxis, YAxis, Scale);
+            P->x += XAxis.x * Scale;
+        }
+    }
+    P->x = XInit;
+    P->y -= Height*1.5f;
 }
 
 #pragma optimize("gts", on)

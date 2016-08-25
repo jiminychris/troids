@@ -467,9 +467,10 @@ int WinMain(HINSTANCE Instance,
 
                 TEXTMETRIC Metrics;
                 GetTextMetrics(FontDC, &Metrics);
+                GameMemory.DebugFontHeight = (r32)Metrics.tmHeight;
 
-                for(char GlyphIndex = 'A';
-                    GlyphIndex <= 'Z';
+                for(char GlyphIndex = '!';
+                    GlyphIndex <= '~';
                     ++GlyphIndex)
                 {
                     SIZE GlyphSize;

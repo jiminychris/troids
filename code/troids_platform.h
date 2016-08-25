@@ -222,6 +222,7 @@ struct game_memory
 
     platform_read_file *PlatformReadFile;
     
+    r32 DebugFontHeight;
     loaded_bitmap DebugGlyphs[128];
 };
 

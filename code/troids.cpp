@@ -7,6 +7,7 @@
    ======================================================================== */
 
 #include <stdlib.h>
+#include <stdio.h>
 
 #include "troids.h"
 
@@ -290,8 +291,87 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         
         State->HeadMesh = LoadObj("head.obj", &TranState->TranArena);
     }
-
     temporary_memory RenderMemory = BeginTemporaryMemory(&TranState->RenderBuffer.Arena);
+    PushClear(&TranState->RenderBuffer, V4(0.1f, 0.1f, 0.1f, 1.0f));
+
+    r32 FontHeight = 20;
+    for(u32 ControllerIndex = 0;
+        ControllerIndex < ArrayCount(Input->Controllers) + 1;
+        ++ControllerIndex)
+    {
+        v2 At = V2(BackBuffer->Width*((r32)ControllerIndex/((r32)ArrayCount(Input->Controllers) + 1)),
+                   BackBuffer->Height - FontHeight);
+        game_controller *Controller = &Input->Keyboard + ControllerIndex;
+
+        u32 TextLength;
+        char Text[256];
+        
+        TextLength = _snprintf_s(Text, sizeof(Text), "Controller %d", ControllerIndex);
+        PushText(&TranState->RenderBuffer, GameMemory->DebugFontHeight,GameMemory->DebugGlyphs,
+                 TextLength, Text, &At, FontHeight);
+
+        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %f", "LeftStickX", Controller->LeftStickX);
+        PushText(&TranState->RenderBuffer, GameMemory->DebugFontHeight,GameMemory->DebugGlyphs,
+                 TextLength, Text, &At, FontHeight);
+        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %f", "LeftStickY", Controller->LeftStickY);
+        PushText(&TranState->RenderBuffer, GameMemory->DebugFontHeight,GameMemory->DebugGlyphs,
+                 TextLength, Text, &At, FontHeight);
+        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %f", "RightStickX", Controller->RightStickX);
+        PushText(&TranState->RenderBuffer, GameMemory->DebugFontHeight,GameMemory->DebugGlyphs,
+                 TextLength, Text, &At, FontHeight);
+        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %f", "RightStickY", Controller->RightStickY);
+        PushText(&TranState->RenderBuffer, GameMemory->DebugFontHeight,GameMemory->DebugGlyphs,
+                 TextLength, Text, &At, FontHeight);
+        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %f", "LeftTrigger", Controller->LeftTrigger);
+        PushText(&TranState->RenderBuffer, GameMemory->DebugFontHeight,GameMemory->DebugGlyphs,
+                 TextLength, Text, &At, FontHeight);
+        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %f", "RightTrigger", Controller->RightTrigger);
+        PushText(&TranState->RenderBuffer, GameMemory->DebugFontHeight,GameMemory->DebugGlyphs,
+                 TextLength, Text, &At, FontHeight);
+        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "ActionUp", Controller->ActionUp);
+        PushText(&TranState->RenderBuffer, GameMemory->DebugFontHeight,GameMemory->DebugGlyphs,
+                 TextLength, Text, &At, FontHeight);
+        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "ActionLeft", Controller->ActionLeft);
+        PushText(&TranState->RenderBuffer, GameMemory->DebugFontHeight,GameMemory->DebugGlyphs,
+                 TextLength, Text, &At, FontHeight);
+        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "ActionDown", Controller->ActionDown);
+        PushText(&TranState->RenderBuffer, GameMemory->DebugFontHeight,GameMemory->DebugGlyphs,
+                 TextLength, Text, &At, FontHeight);
+        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "ActionRight", Controller->ActionRight);
+        PushText(&TranState->RenderBuffer, GameMemory->DebugFontHeight,GameMemory->DebugGlyphs,
+                 TextLength, Text, &At, FontHeight);
+        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "LeftShoulder1", Controller->LeftShoulder1);
+        PushText(&TranState->RenderBuffer, GameMemory->DebugFontHeight,GameMemory->DebugGlyphs,
+                 TextLength, Text, &At, FontHeight);
+        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "RightShoulder1", Controller->RightShoulder1);
+        PushText(&TranState->RenderBuffer, GameMemory->DebugFontHeight,GameMemory->DebugGlyphs,
+                 TextLength, Text, &At, FontHeight);
+        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "LeftShoulder2", Controller->LeftShoulder2);
+        PushText(&TranState->RenderBuffer, GameMemory->DebugFontHeight,GameMemory->DebugGlyphs,
+                 TextLength, Text, &At, FontHeight);
+        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "RightShoulder2", Controller->RightShoulder2);
+        PushText(&TranState->RenderBuffer, GameMemory->DebugFontHeight,GameMemory->DebugGlyphs,
+                 TextLength, Text, &At, FontHeight);
+        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "Select", Controller->Select);
+        PushText(&TranState->RenderBuffer, GameMemory->DebugFontHeight,GameMemory->DebugGlyphs,
+                 TextLength, Text, &At, FontHeight);
+        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "Start", Controller->Start);
+        PushText(&TranState->RenderBuffer, GameMemory->DebugFontHeight,GameMemory->DebugGlyphs,
+                 TextLength, Text, &At, FontHeight);
+        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "LeftClick", Controller->LeftClick);
+        PushText(&TranState->RenderBuffer, GameMemory->DebugFontHeight,GameMemory->DebugGlyphs,
+                 TextLength, Text, &At, FontHeight);
+        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "RightClick", Controller->RightClick);
+        PushText(&TranState->RenderBuffer, GameMemory->DebugFontHeight,GameMemory->DebugGlyphs,
+                 TextLength, Text, &At, FontHeight);
+        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "Power", Controller->Power);
+        PushText(&TranState->RenderBuffer, GameMemory->DebugFontHeight,GameMemory->DebugGlyphs,
+                 TextLength, Text, &At, FontHeight);
+        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "CenterClick", Controller->CenterClick);
+        PushText(&TranState->RenderBuffer, GameMemory->DebugFontHeight,GameMemory->DebugGlyphs,
+                 TextLength, Text, &At, FontHeight);
+        
+    }
 
     game_controller *ShipController = Input->Controllers + 0;
     game_controller *AsteroidController = Input->Controllers + 1;
@@ -419,8 +499,6 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         State->Cooldown -= Input->dtForFrame;
     }
 
-    PushClear(&TranState->RenderBuffer, V4(0.1f, 0.1f, 0.1f, 1.0f));
-
     {
         v2 YAxis = Facing;
         v2 XAxis = -Perp(YAxis);
@@ -505,7 +583,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                 v2 XAxis = -Perp(YAxis)*((r32)Glyph->Width/(r32)Glyph->Height);
                 r32 Scale = (r32)Glyph->Height;
 #if 0
-                DrawRectangle(BackBuffer, CenterDim(P, Scale*(XAxis + YAxis)),
+                PushRectangle(BackBuffer, CenterDim(P, Scale*(XAxis + YAxis)),
                               V4(1.0f, 0.0f, 1.0f, 1.0f));
 #endif
                 PushBitmap(&TranState->RenderBuffer, Glyph, P, XAxis, YAxis, Scale);
