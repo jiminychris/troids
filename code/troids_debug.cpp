@@ -8,32 +8,17 @@
 
 extern "C" DEBUG_COLLATE(DebugCollate)
 {
-#if TROIDS_PROFILE
-    GlobalDebugState = (debug_state *)GameMemory->DebugMemory;
+    debug_frame *Frame = GlobalDebugState->Frames + GlobalDebugState->FrameIndex;
+    debug_frame *CompletedFrame = 0;
     transient_state *TranState = (transient_state *)GameMemory->TemporaryMemory;
     if(!GlobalDebugState->IsInitialized)
     {
         GlobalDebugState->IsInitialized = true;
     }
-    loaded_font *Font = &GameMemory->DebugFont;
-    Assert(TranState->IsInitialized);
-    render_buffer *RenderBuffer = &TranState->RenderBuffer;
-    temporary_memory RenderMemory = BeginTemporaryMemory(&TranState->RenderBuffer.Arena);
-    temporary_memory CollateMemory = BeginTemporaryMemory(&GlobalDebugState->Arena);
-    
-    u32 TextLength;
-    char Text[256];
-    
+
+    // TODO(chris): Handle events that cross a frame boundary (i.e. threads)
     u32 CodeBeginStackCount = 0;
     debug_event CodeBeginStack[MAX_DEBUG_EVENTS];
-    
-    u32 StringCount = 0;
-    u32 StringLengths[MAX_DEBUG_EVENTS];
-
-    memory_arena StringArena = SubArena(&GlobalDebugState->Arena, Megabytes(1));
-
-    r32 FontScale = 0.3f;
-    v2 P = V2(0, BackBuffer->Height - Font->Ascent*FontScale);
     for(u32 EventIndex = 0;
         EventIndex < GlobalDebugState->EventCount;
         ++EventIndex)
@@ -53,38 +38,130 @@ extern "C" DEBUG_COLLATE(DebugCollate)
                 Assert(CodeBeginStackCount > 0);
                 --CodeBeginStackCount;
                 debug_event *BeginEvent = CodeBeginStack + CodeBeginStackCount;
-                u64 CyclesPassed = Event->Value_u64 - BeginEvent->Value_u64;
 
-                memory_size Remaining = StringArena.Size-StringArena.Used;
-                char *CurrentString = (char *)StringArena.Memory + StringArena.Used;
-                TextLength = _snprintf_s(CurrentString, Remaining, _TRUNCATE, "%s %s %u %lu",
-                                         BeginEvent->Name, BeginEvent->File,
-                                         BeginEvent->Line, CyclesPassed);
-                StringLengths[StringCount++] = TextLength;
+                debug_element *Element = PushStruct(&GlobalDebugState->Arena, debug_element);
+                if(Frame->LastElement)
+                {
+                    Frame->LastElement = Frame->LastElement->Next = Element;
+                }
+                else
+                {
+                    Frame->FirstElement = Element;
+                    Frame->LastElement = Element;
+                }
 
-                PushArray(&StringArena, TextLength, char);
+                Element->Line = BeginEvent->Line;
+                Element->BeginTicks = BeginEvent->Value_u64;
+                Element->EndTicks = Event->Value_u64;
+                Element->File = BeginEvent->File;
+                Element->Name = BeginEvent->Name;
             } break;
 
             case(DebugEventType_FrameMarker):
             {
-                TextLength = _snprintf_s(Text, sizeof(Text), "Frame time: %fms",
-                                         Event->Value_r32*1000);
-                PushText(RenderBuffer, Font, TextLength, Text, &P, FontScale);
+                Frame->ElapsedSeconds = Event->ElapsedSeconds;
+                Frame->EndTicks = Event->Value_u64;
+                CompletedFrame = Frame;
+
+                // NOTE(chris): Trick only works if MAX_DEBUG_FRAMES is a power of two.
+                GlobalDebugState->FrameIndex = (GlobalDebugState->FrameIndex+1)&(MAX_DEBUG_FRAMES-1);
+                Frame = GlobalDebugState->Frames + GlobalDebugState->FrameIndex;
+                Frame->BeginTicks = Event->Value_u64;
+                Frame->LastElement = 0;
             } break;
         }
     }
-
-    char *String = (char *)StringArena.Memory;
-    for(u32 StringIndex = 0;
-        StringIndex < StringCount;
-        ++StringIndex)
-    {
-        u32 StringLength = StringLengths[StringIndex];
-        PushText(RenderBuffer, Font, StringLength, String, &P, FontScale);
-        String += StringLength;
-    }
     GlobalDebugState->EventCount = 0;
-    EndTemporaryMemory(CollateMemory);
+
+    u32 ColorIndex = 0;
+    v4 Colors[7] =
+    {
+        V4(1, 0, 0, 1),
+        V4(0, 1, 0, 1),
+        V4(0, 0, 1, 1),
+        V4(1, 1, 0, 1),
+        V4(1, 0, 1, 1),
+        V4(0, 1, 1, 1),
+        V4(0.5, 0.5, 0.5, 1),
+    };
+    
+#if TROIDS_PROFILE
+    Assert(TranState->IsInitialized);
+    render_buffer *RenderBuffer = &TranState->RenderBuffer;
+    temporary_memory RenderMemory = BeginTemporaryMemory(&TranState->RenderBuffer.Arena);
+    u32 TextLength;
+    char Text[256];
+    text_layout Layout;
+    Layout.Font = &GameMemory->DebugFont;
+    Layout.Scale = 0.3f;
+    Layout.P = V2(0, BackBuffer->Height - Layout.Font->Ascent*Layout.Scale);
+    Layout.Color = V4(1, 1, 1, 1);
+#if 1
+    if(CompletedFrame)
+    {
+        Frame = CompletedFrame;
+        TextLength = _snprintf_s(Text, sizeof(Text), "Frame time: %fms",
+                                 Frame->ElapsedSeconds*1000);
+        PushText(RenderBuffer, &Layout, TextLength, Text);
+
+        r32 TotalWidth = 1900;
+        r32 TotalHeight = 300;
+        v2 Margin = V2(10, 10 + Layout.Font->LineAdvance*Layout.Scale);
+        rectangle2 ProfileRect = TopLeftDim(V2(Margin.x, (r32)BackBuffer->Height - Margin.y),
+                                            V2(TotalWidth, TotalHeight));
+        PushRectangle(RenderBuffer, ProfileRect, V4(0, 0, 0, 0.1f));
+        r32 InverseTotalCycles = 1.0f / (Frame->EndTicks - Frame->BeginTicks);
+        for(debug_element *Element = Frame->FirstElement;
+            Element;
+            Element = Element->Next)
+        {
+            u64 CyclesPassed = Element->EndTicks - Element->BeginTicks;
+
+            r32 Left = ProfileRect.Min.x + (Element->BeginTicks-Frame->BeginTicks)*InverseTotalCycles*TotalWidth;
+            r32 Width = CyclesPassed*InverseTotalCycles*TotalWidth;
+            rectangle2 RegionRect = TopLeftDim(V2(Left, ProfileRect.Max.y), V2(Width, TotalHeight));
+            PushRectangle(RenderBuffer, RegionRect, Colors[ColorIndex++]);
+            TextLength = _snprintf_s(Text, sizeof(Text), "%s %s %u %lu",
+                                     Element->Name, Element->File,
+                                     Element->Line, CyclesPassed);
+            Layout.P = V2(Left, ProfileRect.Max.y - Layout.Font->Ascent*Layout.Scale);
+            if(Inside(RegionRect, Input->Mouse))
+            {
+                PushText(RenderBuffer, &Layout, TextLength, Text);
+            }
+        }
+    }
+#else
+    for(u32 FrameIndex = 0;
+        FrameIndex < MAX_DEBUG_FRAMES;
+        ++FrameIndex)
+    {
+        if(FrameIndex == GlobalDebugState->FrameIndex)
+        {
+            // TODO(chris): This frame is being populated right now.
+        }
+        else
+        {
+            Frame = GlobalDebugState->Frames + FrameIndex;
+            TextLength = _snprintf_s(Text, sizeof(Text), "Frame time: %fms",
+                                     Frame->ElapsedSeconds*1000);
+            PushText(RenderBuffer, &Layout, TextLength, Text);
+
+            rectangle2 ProfileRect = TopLeftDim(V2(10, (r32)BackBuffer->Height - 10), V2(800, 300));
+            for(debug_element *Element = Frame->FirstElement;
+                Element;
+                Element = Element->Next)
+            {
+                u64 CyclesPassed = Element->EndTicks - Element->BeginTicks;
+
+                TextLength = _snprintf_s(Text, sizeof(Text), "%s %s %u %lu",
+                                         Element->Name, Element->File,
+                                         Element->Line, CyclesPassed);
+                PushText(RenderBuffer, &Layout, TextLength, Text);
+            }
+        }
+    }
+#endif
 
     RenderBufferToBackBuffer(RenderBuffer, BackBuffer);
     EndTemporaryMemory(RenderMemory);

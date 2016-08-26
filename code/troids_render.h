@@ -61,9 +61,16 @@ PushLine(render_buffer *RenderBuffer, v2 PointA, v2 PointB, v4 Color);
 inline void
 PushClear(render_buffer *RenderBuffer, v4 Color);
 
+struct text_layout
+{
+    loaded_font *Font;
+    v2 P;
+    r32 Scale;
+    v4 Color;
+};
+
 internal void
-PushText(render_buffer *RenderBuffer, loaded_font *Font, u32 TextLength, char *Text,
-         v2 *P, r32 Height,v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f));
+PushText(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char *Text);
 
 internal void
 RenderBufferToBackBuffer(render_buffer *RenderBuffer, game_backbuffer *BackBuffer);

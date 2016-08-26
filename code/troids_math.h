@@ -319,6 +319,35 @@ CenterDim(v2 Center, v2 Dim)
     return(Result);
 }
 
+inline rectangle2
+MinDim(v2 Min, v2 Dim)
+{
+    rectangle2 Result;
+    Result.Min = Min;
+    Result.Max = Result.Min + Dim;
+    return(Result);
+}
+
+inline rectangle2
+TopLeftDim(v2 TopLeft, v2 Dim)
+{
+    rectangle2 Result;
+    Result.Min = V2(TopLeft.x, TopLeft.y - Dim.y);
+    Result.Max = V2(TopLeft.x + Dim.x, TopLeft.y);
+    return(Result);
+}
+
+inline b32
+Inside(rectangle2 Rect, v2 Point)
+{
+    b32 Result = (Point.x >= Rect.Min.x &&
+                  Point.x < Rect.Max.x &&
+                  Point.y >= Rect.Min.y &&
+                  Point.y < Rect.Max.y);
+
+    return(Result);
+}
+
 inline r32
 Unlerp(r32 A, r32 X, r32 B)
 {

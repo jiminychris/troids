@@ -409,6 +409,7 @@ struct game_input
 {
     r32 dtForFrame;
 
+    v2 Mouse;
     union
     {
         game_controller Controllers[5];
@@ -477,7 +478,7 @@ typedef GAME_UPDATE_AND_RENDER(game_update_and_render);
 #define GAME_GET_SOUND_SAMPLES(Name) void Name(game_memory *GameMemory, game_input *Input, game_sound_buffer *SoundBuffer)
 typedef GAME_GET_SOUND_SAMPLES(game_get_sound_samples);
 
-#define DEBUG_COLLATE(Name) void Name(game_memory *GameMemory, game_backbuffer *BackBuffer)
+#define DEBUG_COLLATE(Name) void Name(game_memory *GameMemory, game_input *Input, game_backbuffer *BackBuffer)
 typedef DEBUG_COLLATE(debug_collate);
 
 #define TROIDS_PLATFORM_H

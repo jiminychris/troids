@@ -55,6 +55,7 @@ struct win32_backbuffer
     void *Memory;
 };
 
+global_variable v2 GlobalMouse;
 global_variable win32_backbuffer GlobalBackBuffer;
 global_variable b32 GlobalRunning;
 
@@ -238,6 +239,11 @@ LRESULT WindowProc(HWND Window,
         } break;
 
         case WM_MOUSEMOVE:
+        {
+            GlobalMouse = {(r32)(LParam & 0xFFFF),
+                           (r32)((LParam >> 16) & 0xFFFF)};
+        } break;
+
         default:
         {
             Result = DefWindowProcA(Window, Message, WParam, LParam); 
@@ -845,7 +851,7 @@ int WinMain(HINSTANCE Instance,
                     while(PeekMessageA(&Message, Window, 0, 0, PM_REMOVE))
                     {
                         switch(Message.message)
-                        {
+                        {                            
                             case WM_KEYDOWN:
                             case WM_KEYUP:
                             case WM_SYSKEYDOWN:
@@ -977,6 +983,7 @@ int WinMain(HINSTANCE Instance,
                     }
 
                     ProcessGamePadInput(OldInput, NewInput);
+                    NewInput->Mouse = {GlobalMouse.x, GlobalBackBuffer.Height - GlobalMouse.y};
                 }
 
                 switch(RecordingState)
@@ -1138,8 +1145,13 @@ int WinMain(HINSTANCE Instance,
 #if TROIDS_INTERNAL
                 if(DebugCollate)
                 {
-                    DebugCollate(&GameMemory, &GameBackBuffer);
-                    GlobalDebugState = (debug_state *)GameMemory.DebugMemory;
+                    // TODO(chris): Figure out why this number keeps going up.
+                    char Text[256];
+                    _snprintf_s(Text, sizeof(Text), "%d\n", GlobalDebugState->EventCount);
+                    OutputDebugStringA(Text);
+                    DebugCollate(&GameMemory, NewInput, &GameBackBuffer);
+                    _snprintf_s(Text, sizeof(Text), "%d\n", GlobalDebugState->EventCount);
+                    OutputDebugStringA(Text);
                 }
 #endif
 

@@ -8,7 +8,7 @@
    ======================================================================== */
 
 #if TROIDS_INTERNAL
-#define MAX_DEBUG_EVENTS 64
+#define MAX_DEBUG_EVENTS 8192
 
 enum debug_event_type
 {
@@ -20,15 +20,36 @@ enum debug_event_type
 struct debug_event
 {
     u32 Line;
+    r32 ElapsedSeconds;
     debug_event_type Type;
     union
     {
-        u32 Value_u32;
         u64 Value_u64;
-        r32 Value_r32;
     };
     char *File;
     char *Name;
+};
+
+struct debug_element
+{
+    u32 Line;
+    u64 BeginTicks;
+    u64 EndTicks;
+    char *File;
+    char *Name;
+    
+    debug_element *Next;
+};
+
+#define MAX_DEBUG_FRAMES 128
+struct debug_frame
+{
+    r32 ElapsedSeconds;
+    u64 BeginTicks;
+    u64 EndTicks;
+
+    debug_element *FirstElement;
+    debug_element *LastElement;
 };
 
 struct debug_state
@@ -37,7 +58,9 @@ struct debug_state
     
     memory_arena Arena;
     u32 EventCount;
+    u32 FrameIndex;
     debug_event Events[MAX_DEBUG_EVENTS];
+    debug_frame Frames[MAX_DEBUG_FRAMES];
 };
 
 global_variable debug_state *GlobalDebugState;
@@ -46,24 +69,20 @@ struct debug_timer
 {
     debug_timer(char *FileInit, u32 LineInit, char *NameInit)
     {
-        if(GlobalDebugState)
-        {
-            debug_event *Event = GlobalDebugState->Events + GlobalDebugState->EventCount++;
-            Event->Type = DebugEventType_CodeBegin;
-            Event->Value_u64 = __rdtsc();
-            Event->File = FileInit;
-            Event->Line = LineInit;
-            Event->Name = NameInit;
-        }
+        Assert(GlobalDebugState->EventCount < ArrayCount(GlobalDebugState->Events));
+        debug_event *Event = GlobalDebugState->Events + GlobalDebugState->EventCount++;
+        Event->Type = DebugEventType_CodeBegin;
+        Event->Value_u64 = __rdtsc();
+        Event->File = FileInit;
+        Event->Line = LineInit;
+        Event->Name = NameInit;
     }
     ~debug_timer(void)
     {
-        if(GlobalDebugState)
-        {
-            debug_event *Event = GlobalDebugState->Events + GlobalDebugState->EventCount++;
-            Event->Type = DebugEventType_CodeEnd;
-            Event->Value_u64 = __rdtsc();
-        }
+        Assert(GlobalDebugState->EventCount < ArrayCount(GlobalDebugState->Events));
+        debug_event *Event = GlobalDebugState->Events + GlobalDebugState->EventCount++;
+        Event->Type = DebugEventType_CodeEnd;
+        Event->Value_u64 = __rdtsc();
     }
 };
 
@@ -72,12 +91,11 @@ struct debug_timer
 #define TIMED_BLOCK(Name) TIMED_BLOCK_(Name, __FILE__, __LINE__, __COUNTER__)
 #define FRAME_MARKER(FrameSeconds)                                      \
     {                                                                   \
-        if(GlobalDebugState)                                            \
-        {                                                               \
-            debug_event *Event = GlobalDebugState->Events + GlobalDebugState->EventCount++; \
-            Event->Type = DebugEventType_FrameMarker;                   \
-            Event->Value_r32 = FrameSeconds;                            \
-        }                                                               \
+        Assert(GlobalDebugState->EventCount < ArrayCount(GlobalDebugState->Events)); \
+        debug_event *Event = GlobalDebugState->Events + GlobalDebugState->EventCount++; \
+        Event->Type = DebugEventType_FrameMarker;                       \
+        Event->ElapsedSeconds = FrameSeconds;                           \
+        Event->Value_u64 = __rdtsc();                                   \
     }
 #else
 #define TIMED_BLOCK__(...)

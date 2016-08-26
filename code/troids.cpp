@@ -250,6 +250,9 @@ LoadObj(char *FileName, memory_arena *Arena)
 
 extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 {
+#if TROIDS_INTERNAL
+    GlobalDebugState = (debug_state *)GameMemory->DebugMemory;
+#endif
     game_state *State = (game_state *)GameMemory->PermanentMemory;
     if(!State->IsInitialized)
     {
@@ -295,82 +298,85 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
 
 #if 0
-    r32 FontScale = 0.3f;
     u32 TextLength;
     char Text[256];
+    text_layout Layout;
+    Layout.Scale = 0.3f;
+    Layout.Font = &GameMemory->DebugFont;
+    Layout.Color = V4(1, 1, 1, 1);
     TextLength = _snprintf_s(Text, sizeof(Text), "Keyboard");
         
     for(u32 ControllerIndex = 0;
         ControllerIndex < ArrayCount(Input->Controllers);
         ++ControllerIndex)
     {
-        v2 At = V2(BackBuffer->Width*((r32)ControllerIndex/(r32)ArrayCount(Input->Controllers)),
-                   BackBuffer->Height - GameMemory->DebugFont.Ascent*FontScale);
+        Layout.P = V2(BackBuffer->Width*((r32)ControllerIndex/(r32)ArrayCount(Input->Controllers)),
+                      BackBuffer->Height - GameMemory->DebugFont.Ascent*Layout.Scale);
         game_controller *Controller = Input->Controllers + ControllerIndex;
 
-        PushText(&TranState->RenderBuffer, &GameMemory->DebugFont,
-                 TextLength, Text, &At, FontScale);
+        PushText(&TranState->RenderBuffer, &Layout,
+                 TextLength, Text);
 
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %f", "LeftStickX", Controller->LeftStickX);
-        PushText(&TranState->RenderBuffer, &GameMemory->DebugFont,
-                 TextLength, Text, &At, FontScale);
+        PushText(&TranState->RenderBuffer, &Layout,
+                 TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %f", "LeftStickY", Controller->LeftStickY);
-        PushText(&TranState->RenderBuffer, &GameMemory->DebugFont,
-                 TextLength, Text, &At, FontScale);
+        PushText(&TranState->RenderBuffer, &Layout,
+                 TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %f", "RightStickX", Controller->RightStickX);
-        PushText(&TranState->RenderBuffer, &GameMemory->DebugFont,
-                 TextLength, Text, &At, FontScale);
+        PushText(&TranState->RenderBuffer, &Layout,
+                 TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %f", "RightStickY", Controller->RightStickY);
-        PushText(&TranState->RenderBuffer, &GameMemory->DebugFont,
-                 TextLength, Text, &At, FontScale);
+        PushText(&TranState->RenderBuffer, &Layout,
+                 TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %f", "LeftTrigger", Controller->LeftTrigger);
-        PushText(&TranState->RenderBuffer, &GameMemory->DebugFont,
-                 TextLength, Text, &At, FontScale);
+        PushText(&TranState->RenderBuffer, &Layout,
+                 TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %f", "RightTrigger", Controller->RightTrigger);
-        PushText(&TranState->RenderBuffer, &GameMemory->DebugFont,
-                 TextLength, Text, &At, FontScale);
+        PushText(&TranState->RenderBuffer, &Layout,
+                 TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "ActionUp", Controller->ActionUp);
-        PushText(&TranState->RenderBuffer, &GameMemory->DebugFont,
-                 TextLength, Text, &At, FontScale);
+        PushText(&TranState->RenderBuffer, &Layout,
+                 TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "ActionLeft", Controller->ActionLeft);
-        PushText(&TranState->RenderBuffer, &GameMemory->DebugFont,
-                 TextLength, Text, &At, FontScale);
+        PushText(&TranState->RenderBuffer, &Layout,
+                 TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "ActionDown", Controller->ActionDown);
-        PushText(&TranState->RenderBuffer, &GameMemory->DebugFont,
-                 TextLength, Text, &At, FontScale);
+        PushText(&TranState->RenderBuffer, &Layout,
+                 TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "ActionRight", Controller->ActionRight);
-        PushText(&TranState->RenderBuffer, &GameMemory->DebugFont,
-                 TextLength, Text, &At, FontScale);
+        PushText(&TranState->RenderBuffer, &Layout,
+                 TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "LeftShoulder1", Controller->LeftShoulder1);
-        PushText(&TranState->RenderBuffer, &GameMemory->DebugFont,
-                 TextLength, Text, &At, FontScale);
+        PushText(&TranState->RenderBuffer, &Layout,
+                 TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "RightShoulder1", Controller->RightShoulder1);
-        PushText(&TranState->RenderBuffer, &GameMemory->DebugFont,
-                 TextLength, Text, &At, FontScale);
+        PushText(&TranState->RenderBuffer, &Layout,
+                 TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "LeftShoulder2", Controller->LeftShoulder2);
-        PushText(&TranState->RenderBuffer, &GameMemory->DebugFont,
-                 TextLength, Text, &At, FontScale);
+        PushText(&TranState->RenderBuffer, &Layout,
+                 TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "RightShoulder2", Controller->RightShoulder2);
-        PushText(&TranState->RenderBuffer, &GameMemory->DebugFont,
-                 TextLength, Text, &At, FontScale);
+        PushText(&TranState->RenderBuffer, &Layout,
+                 TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "Select", Controller->Select);
-        PushText(&TranState->RenderBuffer, &GameMemory->DebugFont,
-                 TextLength, Text, &At, FontScale);
+        PushText(&TranState->RenderBuffer, &Layout,
+                 TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "Start", Controller->Start);
-        PushText(&TranState->RenderBuffer, &GameMemory->DebugFont,
-                 TextLength, Text, &At, FontScale);
+        PushText(&TranState->RenderBuffer, &Layout,
+                 TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "LeftClick", Controller->LeftClick);
-        PushText(&TranState->RenderBuffer, &GameMemory->DebugFont,
-                 TextLength, Text, &At, FontScale);
+        PushText(&TranState->RenderBuffer, &Layout,
+                 TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "RightClick", Controller->RightClick);
-        PushText(&TranState->RenderBuffer, &GameMemory->DebugFont,
-                 TextLength, Text, &At, FontScale);
+        PushText(&TranState->RenderBuffer, &Layout,
+                 TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "Power", Controller->Power);
-        PushText(&TranState->RenderBuffer, &GameMemory->DebugFont,
-                 TextLength, Text, &At, FontScale);
+        PushText(&TranState->RenderBuffer, &Layout,
+                 TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "CenterClick", Controller->CenterClick);
-        PushText(&TranState->RenderBuffer, &GameMemory->DebugFont,
-                 TextLength, Text, &At, FontScale);
+        PushText(&TranState->RenderBuffer, &Layout,
+                 TextLength, Text);
 
         TextLength = _snprintf_s(Text, sizeof(Text), "Game Pad %d", ControllerIndex);
     }
@@ -684,4 +690,6 @@ extern "C" GAME_GET_SOUND_SAMPLES(GameGetSoundSamples)
 #endif
 }
 
+#if TROIDS_INTERNAL
 #include "troids_debug.cpp"
+#endif

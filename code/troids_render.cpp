@@ -66,10 +66,9 @@ GetTextAdvance(loaded_font *Font, char A, char B)
 
 // TODO(chris): Clean this up. Make fonts and font layout more systematic.
 internal void
-PushText(render_buffer *RenderBuffer, loaded_font *Font, u32 TextLength, char *Text,
-         v2 *P, r32 Scale, v4 Color)
+PushText(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char *Text)
 {
-    r32 XInit = P->x;
+    r32 XInit = Layout->P.x;
     char Prev = 0;
     char *At = Text;
     for(u32 AtIndex = 0;
@@ -85,9 +84,9 @@ PushText(render_buffer *RenderBuffer, loaded_font *Font, u32 TextLength, char *T
             if(Prev == '-')
             {
             }
-            P->x += Scale*GetTextAdvance(Font, Prev, *At);
+            Layout->P.x += Layout->Scale*GetTextAdvance(Layout->Font, Prev, *At);
         }
-        loaded_bitmap *Glyph = Font->Glyphs + *At;
+        loaded_bitmap *Glyph = Layout->Font->Glyphs + *At;
         if(Glyph->Height && Glyph->Width)
         {
             v2 YAxis = V2(0, 1);
@@ -96,19 +95,20 @@ PushText(render_buffer *RenderBuffer, loaded_font *Font, u32 TextLength, char *T
             PushRectangle(&TranState->RenderBuffer, CenterDim(P, Scale*(XAxis + YAxis)),
                           V4(1.0f, 0.0f, 1.0f, 1.0f));
 #endif
-            PushBitmap(RenderBuffer, Glyph, *P, XAxis, YAxis, Scale);
+            PushBitmap(RenderBuffer, Glyph, Layout->P, XAxis, YAxis, Layout->Scale);
         }
         Prev = *At;
     }
-    P->x = XInit;
-    P->y -= Font->LineAdvance*Scale;
+    Layout->P.x = XInit;
+    Layout->P.y -= Layout->Font->LineAdvance*Layout->Scale;
 }
 
-#pragma optimize("gts", on)
+#pragma optimize("", on)
 internal void
 RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAxis, v2 YAxis,
              r32 Scale, v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f))
 {
+    TIMED_BLOCK(RenderBitmap);
     Color.rgb *= Color.a;
     XAxis *= Scale*Bitmap->Width;
     YAxis *= Scale*Bitmap->Height;
@@ -197,34 +197,62 @@ RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 X
 internal void
 DrawRectangle(game_backbuffer *BackBuffer, rectangle2 Rect, v4 Color)
 {
+    TIMED_BLOCK(DrawRectangle);
     s32 XMin = Clamp(0, RoundS32(Rect.Min.x), BackBuffer->Width);
     s32 YMin = Clamp(0, RoundS32(Rect.Min.y), BackBuffer->Height);
     s32 XMax = Clamp(0, RoundS32(Rect.Max.x), BackBuffer->Width);
     s32 YMax = Clamp(0, RoundS32(Rect.Max.y), BackBuffer->Height);
-    
-    u32 A = (u32)(Color.a*255.0f + 0.5f);
-    u32 R = (u32)(Color.r*255.0f + 0.5f);
-    u32 G = (u32)(Color.g*255.0f + 0.5f);
-    u32 B = (u32)(Color.b*255.0f + 0.5f);
 
-    u32 DestColor = ((A << 24) | // A
-                     (R << 16) | // R
-                     (G << 8)  | // G
-                     (B << 0));  // B
+    Color.rgb *= 255.0f;
 
-    u8 *PixelRow = (u8 *)BackBuffer->Memory + BackBuffer->Pitch*YMin;
-    for(s32 Y = YMin;
-        Y < YMax;
-        ++Y)
+    if(Color.a)
     {
-        u32 *Dest = (u32 *)PixelRow + XMin;
-        for(s32 X = XMin;
-            X < XMax;
-            ++X)
+        Color.rgb *= Color.a;
+        r32 SR = Color.r;
+        r32 SG = Color.g;
+        r32 SB = Color.b;
+        r32 DA = 1.0f - Color.a;
+
+        u8 *PixelRow = (u8 *)BackBuffer->Memory + BackBuffer->Pitch*YMin;
+        for(s32 Y = YMin;
+            Y < YMax;
+            ++Y)
         {
-            *Dest++ = DestColor;
+            u32 *Dest = (u32 *)PixelRow + XMin;
+            for(s32 X = XMin;
+                X < XMax;
+                ++X)
+            {
+                r32 DR = (r32)((*Dest >> 16) & 0xFF);
+                r32 DG = (r32)((*Dest >> 8) & 0xFF);
+                r32 DB = (r32)((*Dest >> 0) & 0xFF);
+                *Dest++ = ((RoundU32(DA*DR + SR) << 16) | 
+                           (RoundU32(DA*DG + SG) << 8) | 
+                           (RoundU32(DA*DB + SB) << 0));
+            }
+            PixelRow += BackBuffer->Pitch;
         }
-        PixelRow += BackBuffer->Pitch;
+    }
+    else
+    {
+        u32 DestColor = ((RoundU32(Color.r) << 16) |
+                         (RoundU32(Color.g) << 8) |
+                         (RoundU32(Color.b) << 0));
+
+        u8 *PixelRow = (u8 *)BackBuffer->Memory + BackBuffer->Pitch*YMin;
+        for(s32 Y = YMin;
+            Y < YMax;
+            ++Y)
+        {
+            u32 *Dest = (u32 *)PixelRow + XMin;
+            for(s32 X = XMin;
+                X < XMax;
+                ++X)
+            {
+                *Dest++ = DestColor;
+            }
+            PixelRow += BackBuffer->Pitch;
+        }
     }
 }
 
