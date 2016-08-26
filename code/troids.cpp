@@ -10,7 +10,6 @@
 #include <stdio.h>
 
 #include "troids.h"
-
 #include "troids_render.cpp"
 
 platform_read_file *PlatformReadFile;
@@ -287,15 +286,15 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
         TranState->RenderBuffer.Arena = SubArena(&TranState->TranArena, Megabytes(1));
         
-        TranState->IsInitialized = true;
-        
         State->HeadMesh = LoadObj("head.obj", &TranState->TranArena);
+
+        TranState->IsInitialized = true;
     }
     temporary_memory RenderMemory = BeginTemporaryMemory(&TranState->RenderBuffer.Arena);
     PushClear(&TranState->RenderBuffer, V4(0.1f, 0.1f, 0.1f, 1.0f));
 
 
-#if 1
+#if 0
     r32 FontScale = 0.3f;
     u32 TextLength;
     char Text[256];
@@ -306,7 +305,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         ++ControllerIndex)
     {
         v2 At = V2(BackBuffer->Width*((r32)ControllerIndex/(r32)ArrayCount(Input->Controllers)),
-                   BackBuffer->Height - GameMemory->DebugFont.Height*FontScale);
+                   BackBuffer->Height - GameMemory->DebugFont.Ascent*FontScale);
         game_controller *Controller = Input->Controllers + ControllerIndex;
 
         PushText(&TranState->RenderBuffer, &GameMemory->DebugFont,
@@ -441,7 +440,16 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     r32 BulletScale = 0.5f;
 
     r32 LeftStickX = Keyboard->LeftStickX ? Keyboard->LeftStickX : ShipController->LeftStickX;
-    r32 Throttle = Keyboard->LeftStickY ? Keyboard->LeftStickY : ShipController->LeftStickY;
+    r32 Thrust;
+    if(Keyboard->LeftStickY)
+    {
+        Thrust = Clamp01(Keyboard->LeftStickY);
+    }
+    else
+    {
+        Thrust = Clamp01(ShipController->LeftStickY);
+        ShipController->LowFrequencyMotor = Thrust;
+    }
 
     r32 YRotation = Input->dtForFrame*(Keyboard->RightStickX ?
                                        Keyboard->RightStickX :
@@ -481,7 +489,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     r32 MetersPerPixel = 0.00027211314f;
     r32 PixelsPerMeter = 1.0f/MetersPerPixel;
 
-    Acceleration += Facing*0.075f*PixelsPerMeter*Clamp01(Throttle);
+    Acceleration += Facing*0.075f*PixelsPerMeter*Thrust;
     v2 dP = State->dP + Acceleration*Input->dtForFrame;
     State->P += (dP + State->dP)*Halfdt;
     State->dP = dP;
@@ -502,6 +510,11 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     if(State->Cooldown > 0.0f)
     {
         State->Cooldown -= Input->dtForFrame;
+        ShipController->HighFrequencyMotor = 1.0f;
+    }
+    else
+    {
+        ShipController->HighFrequencyMotor = 0.0f;
     }
 
     {
@@ -670,3 +683,5 @@ extern "C" GAME_GET_SOUND_SAMPLES(GameGetSoundSamples)
     }
 #endif
 }
+
+#include "troids_debug.cpp"

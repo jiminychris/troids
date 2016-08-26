@@ -11,6 +11,7 @@
 #include "troids_intrinsics.h"
 #include "troids_math.h"
 #include "troids_render.h"
+#include "troids_debug.h"
 
 struct asteroid
 {

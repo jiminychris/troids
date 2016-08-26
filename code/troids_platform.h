@@ -218,6 +218,8 @@ struct loaded_bitmap
 struct loaded_font
 {
     r32 Height;
+    r32 Ascent;
+    r32 LineAdvance;
     loaded_bitmap Glyphs[128];
     r32 KerningTable[128][128];
 };
@@ -230,12 +232,13 @@ struct game_memory
     u64 TemporaryMemorySize;
     void *TemporaryMemory;
 
+#if TROIDS_INTERNAL
     u64 DebugMemorySize;
     void *DebugMemory;
+    loaded_font DebugFont;
+#endif
 
     platform_read_file *PlatformReadFile;
-
-    loaded_font DebugFont;
 };
 
 struct memory_arena
@@ -375,6 +378,10 @@ struct game_controller
     r32 RightStickY;
     r32 LeftTrigger;
     r32 RightTrigger;
+
+    r32 LowFrequencyMotor;
+    r32 HighFrequencyMotor;
+
     union
     {
         game_button Buttons[14];
@@ -469,6 +476,9 @@ typedef GAME_UPDATE_AND_RENDER(game_update_and_render);
 
 #define GAME_GET_SOUND_SAMPLES(Name) void Name(game_memory *GameMemory, game_input *Input, game_sound_buffer *SoundBuffer)
 typedef GAME_GET_SOUND_SAMPLES(game_get_sound_samples);
+
+#define DEBUG_COLLATE(Name) void Name(game_memory *GameMemory, game_backbuffer *BackBuffer)
+typedef DEBUG_COLLATE(debug_collate);
 
 #define TROIDS_PLATFORM_H
 #endif

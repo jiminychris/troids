@@ -11,10 +11,10 @@
 #include <dbt.h>
 #include <gl/gl.h>
 
-#include "troids_opengl.h"
 #include "troids_platform.h"
-#include "troids_intrinsics.h"
 #include "troids_debug.h"
+#include "troids_opengl.h"
+#include "troids_intrinsics.h"
 
 #if TROIDS_INTERNAL
 #define DATA_PATH "..\\troids\\data"
@@ -31,7 +31,7 @@ typedef DIRECT_SOUND_CREATE(direct_sound_create);
 #define CREATE_GUID(Name, x, y, z, a, b, c, d, e, f, g, h) const GUID Name = {x, y, z, {a, b, c, d, e, f, g, h}}
 #include "troids_input.h"
 #if 1
-#include "troids_dinput.cpp"
+#include "troids_dxinput.cpp"
 #else
 #include "troids_hid.cpp"
 #endif
@@ -419,6 +419,8 @@ int WinMain(HINSTANCE Instance,
             InitializeOpenGL(DeviceContext);
 
             game_memory GameMemory;
+
+#if TROIDS_INTERNAL
             for(u32 GlyphIndex = 0;
                 GlyphIndex < ArrayCount(GameMemory.DebugFont.Glyphs);
                 ++GlyphIndex)
@@ -468,6 +470,9 @@ int WinMain(HINSTANCE Instance,
                 TEXTMETRIC Metrics;
                 GetTextMetrics(FontDC, &Metrics);
                 GameMemory.DebugFont.Height = (r32)Metrics.tmHeight;
+                GameMemory.DebugFont.Ascent = (r32)Metrics.tmAscent;
+                GameMemory.DebugFont.LineAdvance = (GameMemory.DebugFont.Height +
+                                                    (r32)Metrics.tmExternalLeading);
 
                 char FirstChar = ' ';
                 char LastChar = '~';
@@ -609,24 +614,33 @@ int WinMain(HINSTANCE Instance,
                 DeleteObject(FontBitmap);
                 DeleteDC(FontDC);
             }
+#endif
             
             ReleaseDC(Window, DeviceContext);
 
             GameMemory.PermanentMemorySize = Megabytes(256);
             GameMemory.TemporaryMemorySize = Gigabytes(2);
+#if TROIDS_INTERNAL
             GameMemory.DebugMemorySize = Gigabytes(2);
+#endif
             u64 TotalMemorySize = (GameMemory.PermanentMemorySize +
-                                   GameMemory.TemporaryMemorySize +
-                                   GameMemory.DebugMemorySize);
+                                   GameMemory.TemporaryMemorySize
+#if TROIDS_INTERNAL
+                                   + GameMemory.DebugMemorySize
+#endif
+                                   );
             GameMemory.PermanentMemory = VirtualAlloc(0, TotalMemorySize,
                                                       MEM_COMMIT|MEM_RESERVE,
                                                       PAGE_READWRITE);
             GameMemory.TemporaryMemory = (u8 *)GameMemory.PermanentMemory + GameMemory.PermanentMemorySize;
+#if TROIDS_INTERNAL
             GameMemory.DebugMemory = (u8 *)GameMemory.TemporaryMemory + GameMemory.TemporaryMemorySize;
             GlobalDebugState = (debug_state *)GameMemory.DebugMemory;
             InitializeArena(&GlobalDebugState->Arena,
                             GameMemory.DebugMemorySize - sizeof(debug_state),
                             (u8 *)GameMemory.DebugMemory + sizeof(debug_state));
+        
+#endif
 
             GameMemory.PlatformReadFile = Win32ReadFile;
             
@@ -719,6 +733,9 @@ int WinMain(HINSTANCE Instance,
 
             game_update_and_render *GameUpdateAndRender = 0;
             game_get_sound_samples *GameGetSoundSamples = 0;
+#if TROIDS_INTERNAL
+            debug_collate *DebugCollate = 0;
+#endif
             // TODO(chris): Is MAX_PATH really correct?
             char BuildPath[MAX_PATH];
             char DLLPath[MAX_PATH];
@@ -1014,11 +1031,10 @@ int WinMain(HINSTANCE Instance,
                                 (game_update_and_render *)GetProcAddress(GameCode, "GameUpdateAndRender");
                             GameGetSoundSamples =
                                 (game_get_sound_samples *)GetProcAddress(GameCode, "GameGetSoundSamples");
-                        }
-                        else
-                        {
-                            GameUpdateAndRender = 0;
-                            GameGetSoundSamples = 0;
+#if TROIDS_INTERNAL
+                            DebugCollate =
+                                (debug_collate *)GetProcAddress(GameCode, "DebugCollate");
+#endif
                         }
                     }
                 }
@@ -1105,7 +1121,7 @@ int WinMain(HINSTANCE Instance,
                         for(u32 Y = RecordIconMargin + RecordIconRadius;
                             Y < RecordIconMargin + 2*RecordIconRadius;
                             ++Y)
-                        {
+                       {
                             u32 *Pixel = (u32 *)PixelRow + RecordIconMargin;
                             u32 Width = (RecordIconMargin + 2*RecordIconRadius - Y)*2;
                             for(u32 X = RecordIconMargin;
@@ -1119,8 +1135,19 @@ int WinMain(HINSTANCE Instance,
                     } break;
                 }
 
+#if TROIDS_INTERNAL
+                if(DebugCollate)
+                {
+                    DebugCollate(&GameMemory, &GameBackBuffer);
+                    GlobalDebugState = (debug_state *)GameMemory.DebugMemory;
+                }
+#endif
+
                 QueryPerformanceCounter(&Counter);
                 r32 FrameSeconds = (Counter.QuadPart - LastCounter.QuadPart)*ClocksToSeconds;
+                FRAME_MARKER(FrameSeconds);
+
+                // TODO(chris): Use as backup if VSYNC fails.
 #if 0
                 char Text[256];
                 r32 ElapsedSeconds = FrameSeconds;
@@ -1148,47 +1175,6 @@ int WinMain(HINSTANCE Instance,
                 HDC DeviceContext = GetDC(Window);
                 CopyBackBufferToWindow(DeviceContext, &GlobalBackBuffer);
                 ReleaseDC(Window, DeviceContext);
-
-                // TODO(chris): Move debug event processing to game code
-#if TROIDS_PROFILE
-                debug_event *CodeBeginStack = PushArray(&GlobalDebugState->Arena,
-                                                        MAX_DEBUG_EVENTS,
-                                                        debug_event);
-                u32 CodeBeginStackCount = 0;
-                for(u32 EventIndex = 0;
-                    EventIndex < GlobalDebugState->EventCount;
-                    ++EventIndex)
-                {
-                    debug_event *Event = GlobalDebugState->Events + EventIndex;
-                    switch(Event->Type)
-                    {
-                        case(DebugEventType_CodeBegin):
-                        {
-                            debug_event *StackEvent = CodeBeginStack + CodeBeginStackCount;
-                            *StackEvent = *Event;
-                            ++CodeBeginStackCount;
-                        } break;
-
-                        case(DebugEventType_CodeEnd):
-                        {
-                            Assert(CodeBeginStackCount > 0);
-                            --CodeBeginStackCount;
-                            debug_event *BeginEvent = CodeBeginStack + CodeBeginStackCount;
-                            u64 CyclesPassed = Event->Value_u64 - BeginEvent->Value_u64;
-                
-                            _snprintf_s(Text, sizeof(Text), "%s %s %u %lu\n",
-                                        BeginEvent->Name, BeginEvent->File,
-                                        BeginEvent->Line, CyclesPassed);
-                            OutputDebugStringA(Text);
-                        } break;
-                    }
-                }
-                GlobalDebugState->EventCount = 0;
-                
-                _snprintf_s(Text, sizeof(Text), "Frame time: %fms\n",
-                            FrameSeconds*1000);
-                OutputDebugStringA(Text);
-#endif
                 
                 LastCounter = Counter;
             }

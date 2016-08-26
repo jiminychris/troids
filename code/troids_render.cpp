@@ -69,7 +69,6 @@ internal void
 PushText(render_buffer *RenderBuffer, loaded_font *Font, u32 TextLength, char *Text,
          v2 *P, r32 Scale, v4 Color)
 {
-    r32 LineAdvance = 1.25f*Font->Height*Scale;
     r32 XInit = P->x;
     char Prev = 0;
     char *At = Text;
@@ -102,7 +101,7 @@ PushText(render_buffer *RenderBuffer, loaded_font *Font, u32 TextLength, char *T
         Prev = *At;
     }
     P->x = XInit;
-    P->y -= LineAdvance;
+    P->y -= Font->LineAdvance*Scale;
 }
 
 #pragma optimize("gts", on)

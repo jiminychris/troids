@@ -28,7 +28,9 @@ CREATE_GUID(GUID_ConstantForce, 0x13541C20,0x8E33,0x11D0,0x9A,0xD0,0x00,0xA0,0xC
 typedef DIRECT_INPUT_CREATE(direct_input_create);
 #define XINPUT_GET_STATE(Name) DWORD Name(DWORD dwUserIndex, XINPUT_STATE *pState)
 typedef XINPUT_GET_STATE(xinput_get_state);
-
+#define XINPUT_SET_STATE(Name) DWORD Name(DWORD dwUserIndex, XINPUT_VIBRATION *pVibration)
+typedef XINPUT_SET_STATE(xinput_set_state);
+    
 #define XBOX_GAMEPAD_LEFT_THUMB_DEADZONE  7849
 #define XBOX_GAMEPAD_RIGHT_THUMB_DEADZONE 8689
 #define XBOX_GAMEPAD_TRIGGER_THRESHOLD    30
@@ -163,9 +165,11 @@ global_variable input_device GlobalActiveGamePadsSentinel;
 global_variable input_device *GlobalFreeGamePads = 0;
 global_variable direct_input_create *DirectInputCreate = 0;
 global_variable xinput_get_state *XInputGetState_ = 0;
+global_variable xinput_set_state *XInputSetState_ = 0;
 global_variable LPDIRECTINPUT8 GlobalDirectInput = 0;
 
 inline XINPUT_GET_STATE(XInputGetState){return XInputGetState_(dwUserIndex, pState);}
+inline XINPUT_SET_STATE(XInputSetState){return XInputSetState_(dwUserIndex, pVibration);}
 
 internal void
 InitializeInput(HINSTANCE Instance)
@@ -216,6 +220,14 @@ InitializeInput(HINSTANCE Instance)
     {
         XInputGetState_ = (xinput_get_state *)GetProcAddress(XInputCode, "XInputGetState");
         if(XInputGetState_)
+        {
+        }
+        else
+        {
+            // TODO(chris): Diagnostic
+        }
+        XInputSetState_ = (xinput_set_state *)GetProcAddress(XInputCode, "XInputSetState");
+        if(XInputSetState_)
         {
         }
         else
@@ -414,7 +426,7 @@ LatchGamePads(HWND Window)
                                 case InputDeviceType_Xbox360:
                                 {
                                     for(u32 XInputIndex = 0;
-                                        XInputIndex < XUSER_MAX_COUNT;
+                                        (XInputIndex < XUSER_MAX_COUNT) && XInputGetState_;
                                         ++XInputIndex)
                                     {
                                         b32 XInputAlreadyLatched = false;
@@ -718,6 +730,18 @@ ProcessGamePadInput(game_input *OldInput, game_input *NewInput)
             {
                 if(IsXInputGamePad(ActiveGamePad))
                 {
+#if TROIDS_RUMBLE
+                    if(XInputSetState_)
+                    {
+                        XINPUT_VIBRATION Vibration;
+                        Vibration.wLeftMotorSpeed = (u16)(OldGamePad->LowFrequencyMotor*(r32)0xFFFF + 0.5f);
+                        Vibration.wRightMotorSpeed = (u16)(OldGamePad->HighFrequencyMotor*(r32)0xFFF + 0.5f);
+                        
+                        Assert(SUCCEEDED(XInputSetState(ActiveGamePad->XInputIndex, &Vibration)));
+                    }
+#endif
+
+                    Assert(XInputGetState_);
                     XINPUT_STATE XInputState;
                     ZeroMemory(&XInputState, sizeof(XInputState));
 
