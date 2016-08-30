@@ -6,14 +6,18 @@
    $Notice: $
    ======================================================================== */
 
+#define TEXT_Z 200000.0f
+#define HUD_Z 100000.0f
+
 inline void
 PushRenderHeader(memory_arena *Arena, render_command Command)
 {
-    *PushStruct(Arena, render_command) = Command;
+    render_command_header *Header = PushStruct(Arena, render_command_header);
+    Header->Command = Command;
 }
 
 inline void
-PushBitmap(render_buffer *RenderBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAxis, v2 YAxis,
+PushBitmap(render_buffer *RenderBuffer, loaded_bitmap *Bitmap, v3 Origin, v2 XAxis, v2 YAxis,
            r32 Scale, v4 Color)
 {
     if(Bitmap->Height && Bitmap->Width)
@@ -26,26 +30,31 @@ PushBitmap(render_buffer *RenderBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAx
         Data->YAxis = YAxis;
         Data->Scale = Scale;
         Data->Color = Color;
+        Data->SortKey = Origin.z;
     }
 }
 
 inline void
-PushRectangle(render_buffer *RenderBuffer, rectangle2 Rect, v4 Color)
+PushRectangle(render_buffer *RenderBuffer, v3 P, v2 Dim, v4 Color)
 {
     PushRenderHeader(&RenderBuffer->Arena, RenderCommand_Rectangle);
+    rectangle2 Rect = MinDim(P.xy, Dim);
     render_rectangle_data *Data = PushStruct(&RenderBuffer->Arena, render_rectangle_data);
     Data->Rect = Rect;
     Data->Color = Color;
+    Data->SortKey = P.z;
 }
 
+// TODO(chris): How do I sort lines that move through z? This goes for bitmaps and rectangles also.
 inline void
-PushLine(render_buffer *RenderBuffer, v2 PointA, v2 PointB, v4 Color)
+PushLine(render_buffer *RenderBuffer, v3 PointA, v3 PointB, v4 Color)
 {
     PushRenderHeader(&RenderBuffer->Arena, RenderCommand_Line);
     render_line_data *Data = PushStruct(&RenderBuffer->Arena, render_line_data);
     Data->PointA = PointA;
     Data->PointB = PointB;
     Data->Color = Color;
+    Data->SortKey = 0.5f*(PointA.z + PointB.z);
 }
 
 
@@ -65,27 +74,17 @@ GetTextAdvance(loaded_font *Font, char A, char B)
 }
 
 // TODO(chris): Clean this up. Make fonts and font layout more systematic.
-internal void
-PushText(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char *Text)
+internal v2
+DrawText(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char *Text)
 {
+    v2 Result;
     r32 XInit = Layout->P.x;
     char Prev = 0;
     char *At = Text;
     for(u32 AtIndex = 0;
         AtIndex < TextLength;
-        ++At, ++AtIndex)
+        ++AtIndex)
     {
-        if(*At == '-')
-        {
-                int A = 0;
-        }
-        if(Prev)
-        {
-            if(Prev == '-')
-            {
-            }
-            Layout->P.x += Layout->Scale*GetTextAdvance(Layout->Font, Prev, *At);
-        }
         loaded_bitmap *Glyph = Layout->Font->Glyphs + *At;
         if(Glyph->Height && Glyph->Width)
         {
@@ -95,12 +94,30 @@ PushText(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char 
             PushRectangle(&TranState->RenderBuffer, CenterDim(P, Scale*(XAxis + YAxis)),
                           V4(1.0f, 0.0f, 1.0f, 1.0f));
 #endif
-            PushBitmap(RenderBuffer, Glyph, Layout->P, XAxis, YAxis, Layout->Scale);
+            PushBitmap(RenderBuffer, Glyph, V3(Layout->P, TEXT_Z-1),
+                       XAxis, YAxis, Layout->Scale*1.1f, V4(0, 0, 0, 1));
+            PushBitmap(RenderBuffer, Glyph, V3(Layout->P, TEXT_Z), XAxis, YAxis, Layout->Scale);
         }
-        Prev = *At;
+        Prev = *At++;
+        Layout->P.x += Layout->Scale*GetTextAdvance(Layout->Font, Prev, *At);
     }
+    Result = V2(Layout->P.x - XInit, Layout->Scale*Layout->Font->Height);
     Layout->P.x = XInit;
     Layout->P.y -= Layout->Font->LineAdvance*Layout->Scale;
+    
+    return(Result);
+}
+
+internal rectangle2
+DrawButton(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char *Text)
+{
+    rectangle2 Result;
+    v2 PInit = Layout->P;
+    v2 ButtonDim = DrawText(RenderBuffer, Layout, TextLength, Text);
+    Result = TopLeftDim(V2(PInit.x, PInit.y + Layout->Font->Ascent*Layout->Scale), ButtonDim);
+    PushRectangle(RenderBuffer, V3(Result.Min, HUD_Z), ButtonDim, V4(1, 0, 1, 1));
+    
+    return(Result);
 }
 
 #pragma optimize("gts", on)
@@ -195,9 +212,9 @@ RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 X
 }
 
 internal void
-DrawRectangle(game_backbuffer *BackBuffer, rectangle2 Rect, v4 Color)
+RenderRectangle(game_backbuffer *BackBuffer, rectangle2 Rect, v4 Color)
 {
-    TIMED_BLOCK(DrawRectangle);
+    TIMED_BLOCK(RenderRectangle);
     s32 XMin = Clamp(0, RoundS32(Rect.Min.x), BackBuffer->Width);
     s32 YMin = Clamp(0, RoundS32(Rect.Min.y), BackBuffer->Height);
     s32 XMax = Clamp(0, RoundS32(Rect.Max.x), BackBuffer->Width);
@@ -257,7 +274,7 @@ DrawRectangle(game_backbuffer *BackBuffer, rectangle2 Rect, v4 Color)
 }
 
 internal void
-DrawLine(game_backbuffer *BackBuffer, v2 PointA, v2 PointB, v4 Color)
+RenderLine(game_backbuffer *BackBuffer, v2 PointA, v2 PointB, v4 Color)
 {
     u32 A = (u32)(Color.a*255.0f + 0.5f);
     u32 R = (u32)(Color.r*255.0f + 0.5f);
@@ -338,47 +355,143 @@ Clear(game_backbuffer *BackBuffer, v4 Color)
     rectangle2 Rect;
     Rect.Min = V2(0, 0);
     Rect.Max = V2i(BackBuffer->Width, BackBuffer->Height);
-    DrawRectangle(BackBuffer, Rect, Color);
+    RenderRectangle(BackBuffer, Rect, Color);
+}
+
+struct binary_node
+{
+    r32 SortKey;
+    void *Data;
+    binary_node *Chain;
+    binary_node *Prev;
+    binary_node *Next;
+};
+
+inline void
+Insert(memory_arena *Arena, binary_node **NodePtr, r32 SortKey, void *Data)
+{
+    binary_node *Node;
+    if(!(*NodePtr))
+    {
+        *NodePtr = PushStruct(Arena, binary_node);
+        Node = *NodePtr;
+        Node->SortKey = SortKey;
+        Node->Data = Data;
+        Node->Chain = 0;
+        Node->Prev = 0;
+        Node->Next = 0;
+    }
+    else
+    {
+        Node = *NodePtr;
+        if(SortKey > Node->SortKey)
+        {
+            Insert(Arena, &Node->Next, SortKey, Data);
+        }
+        else if(SortKey < Node->SortKey)
+        {
+            Insert(Arena, &Node->Prev, SortKey, Data);
+        }
+        else
+        {
+            binary_node *Chain = 0;
+            Insert(Arena, &Chain, SortKey, Data);
+            Chain->Chain = Node->Chain;
+            Node->Chain = Chain;
+        }
+    }
+}
+
+internal void
+RenderTree(binary_node *Node, game_backbuffer *BackBuffer)
+{
+    if(Node->Prev)
+    {
+        RenderTree(Node->Prev, BackBuffer);
+    }
+    for(binary_node *Chain = Node;
+        Chain;
+        Chain = Chain->Chain)
+    {
+        render_command_header *Header = (render_command_header *)Chain->Data;
+        switch(Header->Command)
+        {
+            case RenderCommand_Bitmap:
+            {
+                render_bitmap_data *Data = (render_bitmap_data *)(Header + 1);
+                RenderBitmap(BackBuffer, Data->Bitmap, Data->Origin.xy, Data->XAxis, Data->YAxis,
+                             Data->Scale, Data->Color);
+            } break;
+
+            case RenderCommand_Rectangle:
+            {
+                render_rectangle_data *Data = (render_rectangle_data *)(Header + 1);
+                RenderRectangle(BackBuffer, Data->Rect, Data->Color);
+            } break;
+            
+            case RenderCommand_Line:
+            {
+                render_line_data *Data = (render_line_data *)(Header + 1);
+                RenderLine(BackBuffer, Data->PointA.xy, Data->PointB.xy, Data->Color);
+            } break;
+            
+            case RenderCommand_Clear:
+            {
+                render_clear_data *Data = (render_clear_data *)(Header + 1);
+                Clear(BackBuffer, Data->Color);
+            } break;
+
+            InvalidDefaultCase;
+        }
+    }
+    if(Node->Next)
+    {
+        RenderTree(Node->Next, BackBuffer);
+    }
 }
 
 // TODO(chris): Sorting!!!
 internal void
 RenderBufferToBackBuffer(render_buffer *RenderBuffer, game_backbuffer *BackBuffer)
 {
+    binary_node *SortTree = 0;
     u8 *Cursor = (u8 *)RenderBuffer->Arena.Memory;
     u8 *End = Cursor + RenderBuffer->Arena.Used;
     while(Cursor != End)
     {
-        render_command *Command = (render_command *)Cursor;
-        Cursor += sizeof(render_command);
-        switch(*Command)
+        render_command_header *Header = (render_command_header *)Cursor;
+        Cursor += sizeof(render_command_header);
+        switch(Header->Command)
         {
             case RenderCommand_Bitmap:
             {
                 PackedBufferAdvance(Data, render_bitmap_data, Cursor);
-                RenderBitmap(BackBuffer, Data->Bitmap, Data->Origin, Data->XAxis, Data->YAxis,
-                             Data->Scale, Data->Color);
+                Insert(&RenderBuffer->Arena, &SortTree, Data->SortKey, Header);
             } break;
 
             case RenderCommand_Rectangle:
             {
                 PackedBufferAdvance(Data, render_rectangle_data, Cursor);
-                DrawRectangle(BackBuffer, Data->Rect, Data->Color);
+                Insert(&RenderBuffer->Arena, &SortTree, Data->SortKey, Header);
             } break;
             
             case RenderCommand_Line:
             {
                 PackedBufferAdvance(Data, render_line_data, Cursor);
-                DrawLine(BackBuffer, Data->PointA, Data->PointB, Data->Color);
+                Insert(&RenderBuffer->Arena, &SortTree, Data->SortKey, Header);
             } break;
             
             case RenderCommand_Clear:
             {
                 PackedBufferAdvance(Data, render_clear_data, Cursor);
-                Clear(BackBuffer, Data->Color);
+                Insert(&RenderBuffer->Arena, &SortTree, -REAL32_MAX, Header);
             } break;
 
             InvalidDefaultCase;
         }
+    }
+    if(SortTree)
+    {
+        RenderTree(SortTree, BackBuffer);
     }
 }

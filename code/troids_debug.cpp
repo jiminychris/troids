@@ -84,7 +84,7 @@ extern "C" DEBUG_COLLATE(DebugCollate)
         V4(1, 1, 0, 1),
         V4(1, 0, 1, 1),
         V4(0, 1, 1, 1),
-        V4(0.5, 0.5, 0.5, 1),
+        V4(1, 0.5, 0, 1),
     };
     
 #if TROIDS_PROFILE
@@ -95,32 +95,40 @@ extern "C" DEBUG_COLLATE(DebugCollate)
     char Text[256];
     text_layout Layout;
     Layout.Font = &GameMemory->DebugFont;
-    Layout.Scale = 0.3f;
+    Layout.Scale = 0.5f;
     Layout.P = V2(0, BackBuffer->Height - Layout.Font->Ascent*Layout.Scale);
     Layout.Color = V4(1, 1, 1, 1);
 #if 1
     Frame = GlobalDebugState->Frames + GlobalDebugState->LastFrameIndex;
     TextLength = _snprintf_s(Text, sizeof(Text), "Frame time: %fms",
                              Frame->ElapsedSeconds*1000);
-    PushText(RenderBuffer, &Layout, TextLength, Text);
+    DrawText(RenderBuffer, &Layout, TextLength, Text);
+
+    char *ButtonText;
+    if(GlobalDebugState->Paused)
+    {
+        char Pause[] = "Pause";
+        ButtonText = Pause;
+        TextLength = sizeof(Pause);
+    }
+    else
+    {
+        char Unpause[] = "Unpause";
+        ButtonText = Unpause;
+        TextLength = sizeof(Unpause);
+    }
+    rectangle2 ButtonRect = DrawButton(RenderBuffer, &Layout, TextLength, ButtonText);
     
-    rectangle2 ButtonRect = TopLeftDim(V2(Layout.P.x, Layout.P.y+Layout.Font->Ascent*Layout.Scale),
-                                       V2(100, Layout.Font->Height*Layout.Scale));
-    TextLength = _snprintf_s(Text, sizeof(Text), "%s",
-                             GlobalDebugState->Paused ? "Unpause" : "Pause");
-    PushRectangle(RenderBuffer, ButtonRect, V4(1, 0, 1, 1));
-    PushText(RenderBuffer, &Layout, TextLength, Text);
     if(Inside(ButtonRect, Input->MousePosition) && WentDown(Input->LeftMouse))
     {
         GlobalDebugState->Paused = !GlobalDebugState->Paused;
     }
 
-    r32 TotalWidth = 1900;
-    r32 TotalHeight = 300;
+    v2 TotalDim = V2(1900, 300);
     v2 Margin = V2(10, 10 + Layout.Font->LineAdvance*Layout.Scale);
     rectangle2 ProfileRect = TopLeftDim(V2(Margin.x, (r32)BackBuffer->Height - Margin.y),
-                                        V2(TotalWidth, TotalHeight));
-    PushRectangle(RenderBuffer, ProfileRect, V4(0, 0, 0, 0.1f));
+                                        TotalDim);
+    PushRectangle(RenderBuffer, V3(ProfileRect.Min, HUD_Z), TotalDim, V4(0, 0, 0, 0.1f));
     r32 InverseTotalCycles = 1.0f / (Frame->EndTicks - Frame->BeginTicks);
     for(debug_element *Element = Frame->FirstElement;
         Element;
@@ -128,17 +136,18 @@ extern "C" DEBUG_COLLATE(DebugCollate)
     {
         u64 CyclesPassed = Element->EndTicks - Element->BeginTicks;
 
-        r32 Left = ProfileRect.Min.x + (Element->BeginTicks-Frame->BeginTicks)*InverseTotalCycles*TotalWidth;
-        r32 Width = CyclesPassed*InverseTotalCycles*TotalWidth;
-        rectangle2 RegionRect = TopLeftDim(V2(Left, ProfileRect.Max.y), V2(Width, TotalHeight));
-        PushRectangle(RenderBuffer, RegionRect, Colors[ColorIndex++]);
+        r32 Left = ProfileRect.Min.x + (Element->BeginTicks-Frame->BeginTicks)*InverseTotalCycles*TotalDim.x;
+        r32 Width = CyclesPassed*InverseTotalCycles*TotalDim.x;
+        v2 RegionDim = V2(Width, TotalDim.y);
+        rectangle2 RegionRect = TopLeftDim(V2(Left, ProfileRect.Max.y), RegionDim);
+        PushRectangle(RenderBuffer, V3(RegionRect.Min, HUD_Z+1.0f), RegionDim, Colors[ColorIndex++]);
         TextLength = _snprintf_s(Text, sizeof(Text), "%s %s %u %lu",
                                  Element->Name, Element->File,
                                  Element->Line, CyclesPassed);
         Layout.P = V2(Left, ProfileRect.Max.y - Layout.Font->Ascent*Layout.Scale);
         if(Inside(RegionRect, Input->MousePosition))
         {
-            PushText(RenderBuffer, &Layout, TextLength, Text);
+            DrawText(RenderBuffer, &Layout, TextLength, Text);
         }
     }
 #else

@@ -260,7 +260,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         
         State->IsInitialized = true;
 
-        State->P = V2(BackBuffer->Width / 2.0f, BackBuffer->Height / 2.0f);
+        State->P = V3(BackBuffer->Width / 2.0f, BackBuffer->Height / 2.0f, 0.0f);
         State->Ship = LoadBitmap("ship_opaque.bmp");
         State->Asteroid = LoadBitmap("asteroid_opaque.bmp");
         State->Bullet = LoadBitmap("bullet.bmp");
@@ -275,8 +275,8 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         };
 
         State->AsteroidCount = 1;
-        State->Asteroids[0].P = V2(BackBuffer->Width / 4.0f, BackBuffer->Height / 4.0f);
-        State->Asteroids[0].dP = 50.0f*V2(0.7f, 0.3f);
+        State->Asteroids[0].P = V3(BackBuffer->Width / 4.0f, BackBuffer->Height / 4.0f, 0.0f);
+        State->Asteroids[0].dP = 50.0f*V3(0.7f, 0.3f, 0.0f);
         State->Asteroids[0].Scale = 0.15f;
     }
 
@@ -398,19 +398,21 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         r32 CosRot = Cos(Angle);
         r32 SinRot = Sin(Angle);
         {
-            m22 RotMat =
+            m33 RotMat =
             {
-                CosRot, SinRot,
-                -SinRot, CosRot,
+                CosRot, SinRot, 0,
+                -SinRot, CosRot, 0,
+                0, 0, 1,
             };
             OldAsteroid->dP = RotMat*OldAsteroid->dP;
         }
 
         {
-            m22 RotMat =
+            m33 RotMat =
             {
-                CosRot, -SinRot,
-                SinRot, CosRot,
+                CosRot, -SinRot, 0,
+                SinRot, CosRot, 0,
+                0, 0, 1,
             };
             NewAsteroid->dP = RotMat*NewAsteroid->dP;
         }
@@ -420,12 +422,12 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     if(Keyboard->Start.EndedDown || ShipController->Start.EndedDown)
     {
-        State->P = V2(BackBuffer->Width / 2.0f, BackBuffer->Height / 2.0f);
+        State->P = V3(BackBuffer->Width / 2.0f, BackBuffer->Height / 2.0f, 0.0f);
     }
 
     if(AsteroidController->Start.EndedDown)
     {
-        State->Asteroids[0].P = V2(BackBuffer->Width / 2.0f, BackBuffer->Height / 2.0f);
+        State->Asteroids[0].P = V3(BackBuffer->Width / 2.0f, BackBuffer->Height / 2.0f, 0.0f);
     }
 
     if(Keyboard->ActionUp.EndedDown || ShipController->ActionUp.EndedDown)
@@ -474,9 +476,9 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     r32 dYaw = State->dYaw + Input->dtForFrame*-LeftStickX;
     State->Yaw += (dYaw + State->dYaw)*Halfdt;
     State->dYaw = dYaw;
-    v2 Facing = V2(Cos(State->Yaw), Sin(State->Yaw));
+    v3 Facing = V3(Cos(State->Yaw), Sin(State->Yaw), 0.0f);
 
-    v2 Acceleration = {};
+    v3 Acceleration = {};
     if((WentDown(ShipController->RightShoulder1) || WentDown(Keyboard->RightShoulder1)) &&
        State->LiveBulletCount < ArrayCount(State->LiveBullets))
     {
@@ -496,12 +498,12 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     r32 PixelsPerMeter = 1.0f/MetersPerPixel;
 
     Acceleration += Facing*0.075f*PixelsPerMeter*Thrust;
-    v2 dP = State->dP + Acceleration*Input->dtForFrame;
+    v3 dP = State->dP + Acceleration*Input->dtForFrame;
     State->P += (dP + State->dP)*Halfdt;
     State->dP = dP;
 
-    v2 AsteroidAcceleration = (0.25f*PixelsPerMeter*
-                               V2(AsteroidController->LeftStickX, AsteroidController->LeftStickY));
+    v3 AsteroidAcceleration = (0.25f*PixelsPerMeter*
+                               V3(AsteroidController->LeftStickX, AsteroidController->LeftStickY, 0.0f));
 
     State->Asteroids[0].dP += AsteroidAcceleration*Input->dtForFrame;
     
@@ -524,7 +526,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     }
 
     {
-        v2 YAxis = Facing;
+        v2 YAxis = Facing.xy;
         v2 XAxis = -Perp(YAxis);
         PushBitmap(&TranState->RenderBuffer, &State->Ship, State->P, XAxis, YAxis, ShipScale);
     }
@@ -554,7 +556,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         {
             v2 YAxis = V2(Cos(LiveBullet->Direction), Sin(LiveBullet->Direction));
             v2 XAxis = -Perp(YAxis);
-            LiveBullet->P += YAxis*Input->dtForFrame*PixelsPerMeter*0.1f;
+            LiveBullet->P += V3(YAxis, 0)*Input->dtForFrame*PixelsPerMeter*0.1f;
             PushBitmap(&TranState->RenderBuffer, &State->Bullet, LiveBullet->P, XAxis, YAxis, BulletScale,
                        V4(1.0f, 1.0f, 1.0f, Unlerp(0.0f, LiveBullet->Timer, 2.0f)));
 //            DrawLine(BackBuffer, State->P, LiveBullet->P, V4(0.0f, 0.0f, 1.0f, 1.0f));
@@ -632,9 +634,9 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         v3 VertexC = (Hadamard(State->RotationMatrix*(State->HeadMesh.Vertices + Face->VertexIndexC)->xyz, Scale) +
                       Translation);
 
-        PushLine(&TranState->RenderBuffer, VertexA.xy, VertexB.xy, White);
-        PushLine(&TranState->RenderBuffer, VertexB.xy, VertexC.xy, White);
-        PushLine(&TranState->RenderBuffer, VertexC.xy, VertexA.xy, White);
+        PushLine(&TranState->RenderBuffer, VertexA, VertexB, White);
+        PushLine(&TranState->RenderBuffer, VertexB, VertexC, White);
+        PushLine(&TranState->RenderBuffer, VertexC, VertexA, White);
     }
 #endif
 

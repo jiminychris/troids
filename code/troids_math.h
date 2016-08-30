@@ -208,6 +208,26 @@ V3(r32 X, r32 Y, r32 Z)
 }
 
 inline v3
+V3(v2 XY, r32 Z)
+{
+    v3 Result;
+    Result.x = XY.x;
+    Result.y = XY.y;
+    Result.z = Z;
+    return(Result);
+}
+
+inline v3
+operator-(v3 A)
+{
+    v3 Result;
+    Result.x = -A.x;
+    Result.y = -A.y;
+    Result.z = -A.z;
+    return(Result);
+}
+
+inline v3
 operator+(v3 A, v3 B)
 {
     v3 Result;
@@ -235,6 +255,13 @@ operator*(v3 A, r32 C)
     Result.y = C*A.y;
     Result.z = C*A.z;
     return(Result);
+}
+
+inline v3
+operator+=(v3 &A, v3 B)
+{
+    A = A + B;
+    return(A);
 }
 
 inline v3

@@ -8,6 +8,7 @@
    ======================================================================== */
 
 #include <stdint.h>
+#include <float.h>
 
 #define global_variable static
 #define internal static
@@ -34,6 +35,9 @@ typedef size_t memory_size;
 
 #define S32_MIN -32768
 #define S32_MAX 32767
+
+#define REAL32_MIN FLT_MIN
+#define REAL32_MAX FLT_MAX
 
 struct v2i
 {

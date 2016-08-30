@@ -15,14 +15,14 @@
 
 struct asteroid
 {
-    v2 P;
-    v2 dP;
+    v3 P;
+    v3 dP;
     r32 Scale;
 };
 
 struct live_bullet
 {
-    v2 P;
+    v3 P;
     r32 Direction;
     r32 Timer;
 };
@@ -33,8 +33,8 @@ struct game_state
     
     u32 RunningSampleCount;
     
-    v2 P;
-    v2 dP;
+    v3 P;
+    v3 dP;
     r32 dYaw;
     r32 Yaw;
     r32 Pitch;

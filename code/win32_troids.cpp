@@ -463,7 +463,7 @@ int WinMain(HINSTANCE Instance,
                 HBITMAP FontBitmap = CreateDIBSection(FontDC, &FontBuffer.Info, DIB_RGB_COLORS,
                                                       &FontBuffer.Memory, 0, 0);
                 SelectObject(FontDC, FontBitmap);
-                HFONT DebugFont = CreateFont(72, 0, // NOTE(chris): Height, Width
+                HFONT DebugFont = CreateFont(42, 0, // NOTE(chris): Height, Width
                                              0, // NOTE(chris): Escapement
                                              0, // NOTE(chris): Orientation
                                              FW_BOLD, // NOTE(chris): Weight
@@ -497,16 +497,17 @@ int WinMain(HINSTANCE Instance,
                     GlyphIndex <= LastChar;
                     ++GlyphIndex)
                 {
+                    ABCFLOAT *FirstABCWidth = ABCWidths + GlyphIndex - FirstChar;
+                    r32 FirstGlyphAdvance = FirstABCWidth->abcfB + FirstABCWidth->abcfC;
+                    GameMemory.DebugFont.KerningTable[GlyphIndex][0] = FirstGlyphAdvance;
                     for(char SecondGlyphIndex = FirstChar;
                         SecondGlyphIndex <= LastChar;
                         ++SecondGlyphIndex)
                     {
-                        ABCFLOAT *FirstABCWidth = ABCWidths + GlyphIndex - FirstChar;
                         ABCFLOAT *SecondABCWidth = ABCWidths + SecondGlyphIndex - FirstChar;
                             
-                        r32 Kern = 0;
                         GameMemory.DebugFont.KerningTable[GlyphIndex][SecondGlyphIndex] =
-                            FirstABCWidth->abcfB + FirstABCWidth->abcfC + SecondABCWidth->abcfA + Kern;
+                            FirstGlyphAdvance + SecondABCWidth->abcfA;
                     }
                     if(GlyphIndex == ' ') continue;
 
