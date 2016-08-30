@@ -15,6 +15,7 @@ enum debug_event_type
     DebugEventType_CodeBegin,
     DebugEventType_CodeEnd,
     DebugEventType_FrameMarker,
+    DebugEventType_Data,
 };
 
 struct debug_event
@@ -24,7 +25,17 @@ struct debug_event
     debug_event_type Type;
     union
     {
+        b32 Value_b32;
+        u8 Value_u8;
+        u16 Value_u16;
+        u32 Value_u32;
         u64 Value_u64;
+        s8 Value_s8;
+        s16 Value_s16;
+        s32 Value_s32;
+        s64 Value_s64;
+        r32 Value_r32;
+        r64 Value_r64;
     };
     char *File;
     char *Name;
@@ -55,10 +66,12 @@ struct debug_frame
 struct debug_state
 {
     b32 IsInitialized;
-    
+
+    b32 Paused;
     memory_arena Arena;
     u32 EventCount;
     u32 FrameIndex;
+    u32 LastFrameIndex;
     debug_event Events[MAX_DEBUG_EVENTS];
     debug_frame Frames[MAX_DEBUG_FRAMES];
 };

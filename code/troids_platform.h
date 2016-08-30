@@ -409,7 +409,8 @@ struct game_input
 {
     r32 dtForFrame;
 
-    v2 Mouse;
+    v2 MousePosition;
+    game_button LeftMouse;
     union
     {
         game_controller Controllers[5];

@@ -103,7 +103,7 @@ PushText(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char 
     Layout->P.y -= Layout->Font->LineAdvance*Layout->Scale;
 }
 
-#pragma optimize("", on)
+#pragma optimize("gts", on)
 internal void
 RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAxis, v2 YAxis,
              r32 Scale, v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f))
@@ -205,7 +205,28 @@ DrawRectangle(game_backbuffer *BackBuffer, rectangle2 Rect, v4 Color)
 
     Color.rgb *= 255.0f;
 
-    if(Color.a)
+    if(Color.a == 1.0f)
+    {
+        u32 DestColor = ((RoundU32(Color.r) << 16) |
+                         (RoundU32(Color.g) << 8) |
+                         (RoundU32(Color.b) << 0));
+
+        u8 *PixelRow = (u8 *)BackBuffer->Memory + BackBuffer->Pitch*YMin;
+        for(s32 Y = YMin;
+            Y < YMax;
+            ++Y)
+        {
+            u32 *Dest = (u32 *)PixelRow + XMin;
+            for(s32 X = XMin;
+                X < XMax;
+                ++X)
+            {
+                *Dest++ = DestColor;
+            }
+            PixelRow += BackBuffer->Pitch;
+        }
+    }
+    else
     {
         Color.rgb *= Color.a;
         r32 SR = Color.r;
@@ -229,27 +250,6 @@ DrawRectangle(game_backbuffer *BackBuffer, rectangle2 Rect, v4 Color)
                 *Dest++ = ((RoundU32(DA*DR + SR) << 16) | 
                            (RoundU32(DA*DG + SG) << 8) | 
                            (RoundU32(DA*DB + SB) << 0));
-            }
-            PixelRow += BackBuffer->Pitch;
-        }
-    }
-    else
-    {
-        u32 DestColor = ((RoundU32(Color.r) << 16) |
-                         (RoundU32(Color.g) << 8) |
-                         (RoundU32(Color.b) << 0));
-
-        u8 *PixelRow = (u8 *)BackBuffer->Memory + BackBuffer->Pitch*YMin;
-        for(s32 Y = YMin;
-            Y < YMax;
-            ++Y)
-        {
-            u32 *Dest = (u32 *)PixelRow + XMin;
-            for(s32 X = XMin;
-                X < XMax;
-                ++X)
-            {
-                *Dest++ = DestColor;
             }
             PixelRow += BackBuffer->Pitch;
         }
@@ -341,6 +341,7 @@ Clear(game_backbuffer *BackBuffer, v4 Color)
     DrawRectangle(BackBuffer, Rect, Color);
 }
 
+// TODO(chris): Sorting!!!
 internal void
 RenderBufferToBackBuffer(render_buffer *RenderBuffer, game_backbuffer *BackBuffer)
 {

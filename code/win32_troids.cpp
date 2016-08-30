@@ -55,7 +55,8 @@ struct win32_backbuffer
     void *Memory;
 };
 
-global_variable v2 GlobalMouse;
+global_variable v2 GlobalMousePosition;
+global_variable game_button GlobalLeftMouse;
 global_variable win32_backbuffer GlobalBackBuffer;
 global_variable b32 GlobalRunning;
 
@@ -155,6 +156,23 @@ CopyBackBufferToWindow(HDC DeviceContext, win32_backbuffer *BackBuffer)
 #endif
 }
 
+inline void
+ProcessButtonInput(game_button *Button)
+{
+    Button->EndedDown = !Button->EndedDown;
+    ++Button->HalfTransitionCount;
+}
+
+inline void
+ProcessAnalogInput(r32 *AnalogInput, b32 WentDown, r32 Value)
+{
+    if(!WentDown)
+    {
+        Value = -Value;
+    }
+    *AnalogInput += Value;
+}
+
 LRESULT WindowProc(HWND Window,
                    UINT Message,
                    WPARAM WParam,
@@ -240,8 +258,14 @@ LRESULT WindowProc(HWND Window,
 
         case WM_MOUSEMOVE:
         {
-            GlobalMouse = {(r32)(LParam & 0xFFFF),
-                           (r32)((LParam >> 16) & 0xFFFF)};
+            GlobalMousePosition = {(r32)(LParam & 0xFFFF),
+                                   (r32)((LParam >> 16) & 0xFFFF)};
+        } break;
+
+        case WM_LBUTTONUP:
+        case WM_LBUTTONDOWN:
+        {
+            ProcessButtonInput(&GlobalLeftMouse);
         } break;
 
         default:
@@ -258,23 +282,6 @@ enum recording_state
     RecordingState_Recording,
     RecordingState_PlayingRecord,
 };
-
-inline void
-ProcessKeyboardMessage(game_button *Button)
-{
-    Button->EndedDown = !Button->EndedDown;
-    ++Button->HalfTransitionCount;
-}
-
-inline void
-ProcessKeyboardMessage(r32 *AnalogInput, b32 WentDown, r32 Value)
-{
-    if(!WentDown)
-    {
-        Value = -Value;
-    }
-    *AnalogInput += Value;
-}
 
 internal read_file_result
 Win32ReadFile(char *FileName)
@@ -847,6 +854,7 @@ int WinMain(HINSTANCE Instance,
                     NewKeyboard->LeftStickY = OldKeyboard->LeftStickY;
                     NewKeyboard->RightStickX = OldKeyboard->RightStickX;
                     NewKeyboard->RightStickY = OldKeyboard->RightStickY;
+                    GlobalLeftMouse.HalfTransitionCount = 0;
 
                     while(PeekMessageA(&Message, Window, 0, 0, PM_REMOVE))
                     {
@@ -865,47 +873,47 @@ int WinMain(HINSTANCE Instance,
                                     {
                                         case VK_UP:
                                         {
-                                            ProcessKeyboardMessage(&NewKeyboard->ActionUp);
+                                            ProcessButtonInput(&NewKeyboard->ActionUp);
                                         } break;
 
                                         case VK_LEFT:
                                         {
-                                            ProcessKeyboardMessage(&NewKeyboard->ActionLeft);
+                                            ProcessButtonInput(&NewKeyboard->ActionLeft);
                                         } break;
 
                                         case VK_DOWN:
                                         {
-                                            ProcessKeyboardMessage(&NewKeyboard->ActionDown);
+                                            ProcessButtonInput(&NewKeyboard->ActionDown);
                                         } break;
 
                                         case VK_RIGHT:
                                         {
-                                            ProcessKeyboardMessage(&NewKeyboard->ActionRight);
+                                            ProcessButtonInput(&NewKeyboard->ActionRight);
                                         } break;
 
                                         case VK_SPACE:
                                         {
-                                            ProcessKeyboardMessage(&NewKeyboard->RightShoulder1);
+                                            ProcessButtonInput(&NewKeyboard->RightShoulder1);
                                         } break;
 
                                         case 'W':
                                         {
-                                            ProcessKeyboardMessage(&NewKeyboard->LeftStickY, WentDown, 1.0f);
+                                            ProcessAnalogInput(&NewKeyboard->LeftStickY, WentDown, 1.0f);
                                         } break;
 
                                         case 'A':
                                         {
-                                            ProcessKeyboardMessage(&NewKeyboard->LeftStickX, WentDown, -1.0f);
+                                            ProcessAnalogInput(&NewKeyboard->LeftStickX, WentDown, -1.0f);
                                         } break;
 
                                         case 'S':
                                         {
-                                            ProcessKeyboardMessage(&NewKeyboard->LeftStickY, WentDown, -1.0f);
+                                            ProcessAnalogInput(&NewKeyboard->LeftStickY, WentDown, -1.0f);
                                         } break;
 
                                         case 'D':
                                         {
-                                            ProcessKeyboardMessage(&NewKeyboard->LeftStickX, WentDown, 1.0f);
+                                            ProcessAnalogInput(&NewKeyboard->LeftStickX, WentDown, 1.0f);
                                         } break;
                                     }
                                     if(WentDown)
@@ -983,7 +991,9 @@ int WinMain(HINSTANCE Instance,
                     }
 
                     ProcessGamePadInput(OldInput, NewInput);
-                    NewInput->Mouse = {GlobalMouse.x, GlobalBackBuffer.Height - GlobalMouse.y};
+                    NewInput->MousePosition = {GlobalMousePosition.x,
+                                               GlobalBackBuffer.Height - GlobalMousePosition.y};
+                    NewInput->LeftMouse = GlobalLeftMouse;
                 }
 
                 switch(RecordingState)
@@ -1145,13 +1155,7 @@ int WinMain(HINSTANCE Instance,
 #if TROIDS_INTERNAL
                 if(DebugCollate)
                 {
-                    // TODO(chris): Figure out why this number keeps going up.
-                    char Text[256];
-                    _snprintf_s(Text, sizeof(Text), "%d\n", GlobalDebugState->EventCount);
-                    OutputDebugStringA(Text);
                     DebugCollate(&GameMemory, NewInput, &GameBackBuffer);
-                    _snprintf_s(Text, sizeof(Text), "%d\n", GlobalDebugState->EventCount);
-                    OutputDebugStringA(Text);
                 }
 #endif
 

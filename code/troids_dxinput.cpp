@@ -941,14 +941,16 @@ ProcessGamePadInput(game_input *OldInput, game_input *NewInput)
                             r32 Deadzone = XBOX_GAMEPAD_TRIGGER_THRESHOLD;
                             NewGamePad->LeftTrigger = 0.0f;
                             NewGamePad->RightTrigger = 0.0f;
+                            u32 TriggerMax = 0xff80;
+                            u32 TriggerMin = 0x0080;
                             if(XboxData.Triggers > (Center + Deadzone))
                             {
-                                NewGamePad->LeftTrigger = ((r32)XboxData.Triggers - Center - Deadzone) / (Center - Deadzone);
+                                NewGamePad->LeftTrigger = ((r32)XboxData.Triggers - Center - Deadzone) / (TriggerMax - Center - Deadzone);
                                 ProcessButton(&OldGamePad->LeftShoulder2, &NewGamePad->LeftShoulder2, 1);
                             }
                             else if(XboxData.Triggers < (Center - Deadzone))
                             {
-                                NewGamePad->RightTrigger = (Center - Deadzone - (r32)XboxData.Triggers) / (Center - Deadzone);
+                                NewGamePad->RightTrigger = (Center - Deadzone - (r32)XboxData.Triggers) / (Center - Deadzone - TriggerMin);
                                 ProcessButton(&OldGamePad->RightShoulder2, &NewGamePad->RightShoulder2, 1);
                             }
                         }
