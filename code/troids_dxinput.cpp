@@ -583,44 +583,44 @@ ProcessGamePadInput(game_input *OldInput, game_input *NewInput)
                             r32 Center = 0xFFFF / 2.0f;
                             s32 Deadzone = 1500;
                         
-                            NewGamePad->LeftStickX = 0.0f;
+                            NewGamePad->LeftStick.x = 0.0f;
                             if(Dualshock4Data.LeftStickX < (Center - Deadzone))
                             {
-                                NewGamePad->LeftStickX = -(Center - Deadzone - (r32)Dualshock4Data.LeftStickX) / (Center - Deadzone);
+                                NewGamePad->LeftStick.x = -(Center - Deadzone - (r32)Dualshock4Data.LeftStickX) / (Center - Deadzone);
                             }
                             else if(Dualshock4Data.LeftStickX > (Center + Deadzone))
                             {
-                                NewGamePad->LeftStickX = ((r32)Dualshock4Data.LeftStickX - Center - Deadzone) / (Center - Deadzone);
+                                NewGamePad->LeftStick.x = ((r32)Dualshock4Data.LeftStickX - Center - Deadzone) / (Center - Deadzone);
                             }
 
-                            NewGamePad->LeftStickY = 0.0f;
+                            NewGamePad->LeftStick.y = 0.0f;
                             if(Dualshock4Data.LeftStickY < (Center - Deadzone))
                             {
-                                NewGamePad->LeftStickY = -(Center - Deadzone - (r32)Dualshock4Data.LeftStickY) / (Center - Deadzone);
+                                NewGamePad->LeftStick.y = -(Center - Deadzone - (r32)Dualshock4Data.LeftStickY) / (Center - Deadzone);
                             }
                             else if(Dualshock4Data.LeftStickY > (Center + Deadzone))
                             {
-                                NewGamePad->LeftStickY = ((r32)Dualshock4Data.LeftStickY - Center - Deadzone) / (Center - Deadzone);
+                                NewGamePad->LeftStick.y = ((r32)Dualshock4Data.LeftStickY - Center - Deadzone) / (Center - Deadzone);
                             }
 
-                            NewGamePad->RightStickX = 0.0f;
+                            NewGamePad->RightStick.x = 0.0f;
                             if(Dualshock4Data.RightStickX < (Center - Deadzone))
                             {
-                                NewGamePad->RightStickX = -(Center - Deadzone - (r32)Dualshock4Data.RightStickX) / (Center - Deadzone);
+                                NewGamePad->RightStick.x = -(Center - Deadzone - (r32)Dualshock4Data.RightStickX) / (Center - Deadzone);
                             }
                             else if(Dualshock4Data.RightStickX > (Center + Deadzone))
                             {
-                                NewGamePad->RightStickX = ((r32)Dualshock4Data.RightStickX - Center - Deadzone) / (Center - Deadzone);
+                                NewGamePad->RightStick.x = ((r32)Dualshock4Data.RightStickX - Center - Deadzone) / (Center - Deadzone);
                             }
 
-                            NewGamePad->RightStickY = 0.0f;
+                            NewGamePad->RightStick.y = 0.0f;
                             if(Dualshock4Data.RightStickY < (Center - Deadzone))
                             {
-                                NewGamePad->RightStickY = -(Center - Deadzone - (r32)Dualshock4Data.RightStickY) / (Center - Deadzone);
+                                NewGamePad->RightStick.y = -(Center - Deadzone - (r32)Dualshock4Data.RightStickY) / (Center - Deadzone);
                             }
                             else if(Dualshock4Data.RightStickY > (Center + Deadzone))
                             {
-                                NewGamePad->RightStickY = ((r32)Dualshock4Data.RightStickY - Center - Deadzone) / (Center - Deadzone);
+                                NewGamePad->RightStick.y = ((r32)Dualshock4Data.RightStickY - Center - Deadzone) / (Center - Deadzone);
                             }
                         }
 
@@ -659,64 +659,64 @@ ProcessGamePadInput(game_input *OldInput, game_input *NewInput)
 
                                 case 0:
                                 {
-                                    NewGamePad->LeftStickX = 0.0f;
-                                    NewGamePad->LeftStickY = 1.0f;
+                                    NewGamePad->LeftStick.x = 0.0f;
+                                    NewGamePad->LeftStick.y = 1.0f;
                                 } break;
 
                                 case 4500:
                                 {
-                                    NewGamePad->LeftStickX = 1.0f;
-                                    NewGamePad->LeftStickY = 1.0f;
+                                    NewGamePad->LeftStick.x = 1.0f;
+                                    NewGamePad->LeftStick.y = 1.0f;
                                 } break;
 
                                 case 9000:
                                 {
-                                    NewGamePad->LeftStickX = 1.0f;
-                                    NewGamePad->LeftStickY = 0.0f;
+                                    NewGamePad->LeftStick.x = 1.0f;
+                                    NewGamePad->LeftStick.y = 0.0f;
                                 } break;
 
                                 case 13500:
                                 {
-                                    NewGamePad->LeftStickX = 1.0f;
-                                    NewGamePad->LeftStickY = -1.0f;
+                                    NewGamePad->LeftStick.x = 1.0f;
+                                    NewGamePad->LeftStick.y = -1.0f;
                                 } break;
 
                                 case 18000:
                                 {
-                                    NewGamePad->LeftStickX = 0.0f;
-                                    NewGamePad->LeftStickY = -1.0f;
+                                    NewGamePad->LeftStick.x = 0.0f;
+                                    NewGamePad->LeftStick.y = -1.0f;
                                 } break;
 
                                 case 22500:
                                 {
-                                    NewGamePad->LeftStickX = -1.0f;
-                                    NewGamePad->LeftStickY = -1.0f;
+                                    NewGamePad->LeftStick.x = -1.0f;
+                                    NewGamePad->LeftStick.y = -1.0f;
                                 } break;
 
                                 case 27000:
                                 {
-                                    NewGamePad->LeftStickX = -1.0f;
-                                    NewGamePad->LeftStickY = 0.0f;
+                                    NewGamePad->LeftStick.x = -1.0f;
+                                    NewGamePad->LeftStick.y = 0.0f;
                                 } break;
 
                                 case 31500:
                                 {
-                                    NewGamePad->LeftStickX = -1.0f;
-                                    NewGamePad->LeftStickY = 1.0f;
+                                    NewGamePad->LeftStick.x = -1.0f;
+                                    NewGamePad->LeftStick.y = 1.0f;
                                 } break;
 
                                 InvalidDefaultCase;
                             }
                         }
 
-                        Assert(NewGamePad->LeftStickX >= -1.0f);
-                        Assert(NewGamePad->LeftStickX <= 1.0f);
-                        Assert(NewGamePad->LeftStickY >= -1.0f);
-                        Assert(NewGamePad->LeftStickY <= 1.0f);
-                        Assert(NewGamePad->RightStickX >= -1.0f);
-                        Assert(NewGamePad->RightStickX <= 1.0f);
-                        Assert(NewGamePad->RightStickY >= -1.0f);
-                        Assert(NewGamePad->RightStickY <= 1.0f);
+                        Assert(NewGamePad->LeftStick.x >= -1.0f);
+                        Assert(NewGamePad->LeftStick.x <= 1.0f);
+                        Assert(NewGamePad->LeftStick.y >= -1.0f);
+                        Assert(NewGamePad->LeftStick.y <= 1.0f);
+                        Assert(NewGamePad->RightStick.x >= -1.0f);
+                        Assert(NewGamePad->RightStick.x <= 1.0f);
+                        Assert(NewGamePad->RightStick.y >= -1.0f);
+                        Assert(NewGamePad->RightStick.y <= 1.0f);
                         Assert(NewGamePad->LeftTrigger >= 0.0f);
                         Assert(NewGamePad->LeftTrigger <= 1.0f);
                         Assert(NewGamePad->RightTrigger >= 0.0f);
@@ -756,24 +756,24 @@ ProcessGamePadInput(game_input *OldInput, game_input *NewInput)
                         {
                             s32 Deadzone = XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE;
                         
-                            NewGamePad->LeftStickX = 0.0f;
+                            NewGamePad->LeftStick.x = 0.0f;
                             if(GamePad->sThumbLX < -Deadzone)
                             {
-                                NewGamePad->LeftStickX = -(r32)(GamePad->sThumbLX + Deadzone) / (S32_MIN + Deadzone);
+                                NewGamePad->LeftStick.x = -(r32)(GamePad->sThumbLX + Deadzone) / (S32_MIN + Deadzone);
                             }
                             else if(GamePad->sThumbLX > Deadzone)
                             {
-                                NewGamePad->LeftStickX = (r32)(GamePad->sThumbLX - Deadzone) / (S32_MAX - Deadzone);
+                                NewGamePad->LeftStick.x = (r32)(GamePad->sThumbLX - Deadzone) / (S32_MAX - Deadzone);
                             }
 
-                            NewGamePad->LeftStickY = 0.0f;
+                            NewGamePad->LeftStick.y = 0.0f;
                             if(GamePad->sThumbLY < -Deadzone)
                             {
-                                NewGamePad->LeftStickY = -(r32)(GamePad->sThumbLY + Deadzone) / (S32_MIN + Deadzone);
+                                NewGamePad->LeftStick.y = -(r32)(GamePad->sThumbLY + Deadzone) / (S32_MIN + Deadzone);
                             }
                             else if(GamePad->sThumbLY > Deadzone)
                             {
-                                NewGamePad->LeftStickY = (r32)(GamePad->sThumbLY - Deadzone) / (S32_MAX - Deadzone);
+                                NewGamePad->LeftStick.y = (r32)(GamePad->sThumbLY - Deadzone) / (S32_MAX - Deadzone);
                             }
                         }
 
@@ -781,24 +781,24 @@ ProcessGamePadInput(game_input *OldInput, game_input *NewInput)
                         {
                             s32 Deadzone = XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE;
 
-                            NewGamePad->RightStickX = 0.0f;
+                            NewGamePad->RightStick.x = 0.0f;
                             if(GamePad->sThumbRX < -Deadzone)
                             {
-                                NewGamePad->RightStickX = -(r32)(GamePad->sThumbRX + Deadzone) / (S32_MIN + Deadzone);
+                                NewGamePad->RightStick.x = -(r32)(GamePad->sThumbRX + Deadzone) / (S32_MIN + Deadzone);
                             }
                             else if(GamePad->sThumbRX > Deadzone)
                             {
-                                NewGamePad->RightStickX = (r32)(GamePad->sThumbRX - Deadzone) / (S32_MAX - Deadzone);
+                                NewGamePad->RightStick.x = (r32)(GamePad->sThumbRX - Deadzone) / (S32_MAX - Deadzone);
                             }
 
-                            NewGamePad->RightStickY = 0.0f;
+                            NewGamePad->RightStick.y = 0.0f;
                             if(GamePad->sThumbRY < -Deadzone)
                             {
-                                NewGamePad->RightStickY = -(r32)(GamePad->sThumbRY + Deadzone) / (S32_MIN + Deadzone);
+                                NewGamePad->RightStick.y = -(r32)(GamePad->sThumbRY + Deadzone) / (S32_MIN + Deadzone);
                             }
                             else if(GamePad->sThumbRY > Deadzone)
                             {
-                                NewGamePad->RightStickY = (r32)(GamePad->sThumbRY - Deadzone) / (S32_MAX - Deadzone);
+                                NewGamePad->RightStick.y = (r32)(GamePad->sThumbRY - Deadzone) / (S32_MAX - Deadzone);
                             }
                         }
                     }
@@ -846,30 +846,30 @@ ProcessGamePadInput(game_input *OldInput, game_input *NewInput)
 
                     if(GamePad->wButtons & XINPUT_GAMEPAD_DPAD_UP)
                     {
-                        NewGamePad->LeftStickY = 1.0f;
+                        NewGamePad->LeftStick.y = 1.0f;
                     }
                     else if(GamePad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN)
                     {
-                        NewGamePad->LeftStickY = 1.0f;
+                        NewGamePad->LeftStick.y = 1.0f;
                     }
                     
                     if(GamePad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT)
                     {
-                        NewGamePad->LeftStickX = -1.0f;
+                        NewGamePad->LeftStick.x = -1.0f;
                     }
                     else if(GamePad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT)
                     {
-                        NewGamePad->LeftStickX = 1.0f;
+                        NewGamePad->LeftStick.x = 1.0f;
                     }
 
-                    Assert(NewGamePad->LeftStickX >= -1.0f);
-                    Assert(NewGamePad->LeftStickX <= 1.0f);
-                    Assert(NewGamePad->LeftStickY >= -1.0f);
-                    Assert(NewGamePad->LeftStickY <= 1.0f);
-                    Assert(NewGamePad->RightStickX >= -1.0f);
-                    Assert(NewGamePad->RightStickX <= 1.0f);
-                    Assert(NewGamePad->RightStickY >= -1.0f);
-                    Assert(NewGamePad->RightStickY <= 1.0f);
+                    Assert(NewGamePad->LeftStick.x >= -1.0f);
+                    Assert(NewGamePad->LeftStick.x <= 1.0f);
+                    Assert(NewGamePad->LeftStick.y >= -1.0f);
+                    Assert(NewGamePad->LeftStick.y <= 1.0f);
+                    Assert(NewGamePad->RightStick.x >= -1.0f);
+                    Assert(NewGamePad->RightStick.x <= 1.0f);
+                    Assert(NewGamePad->RightStick.y >= -1.0f);
+                    Assert(NewGamePad->RightStick.y <= 1.0f);
                     Assert(NewGamePad->LeftTrigger >= 0.0f);
                     Assert(NewGamePad->LeftTrigger <= 1.0f);
                     Assert(NewGamePad->RightTrigger >= 0.0f);
@@ -888,24 +888,24 @@ ProcessGamePadInput(game_input *OldInput, game_input *NewInput)
                                 XboxData.LeftStickY = 0xFFFF - XboxData.LeftStickY;
                                 s32 Deadzone = XBOX_GAMEPAD_LEFT_THUMB_DEADZONE;
                         
-                                NewGamePad->LeftStickX = 0.0f;
+                                NewGamePad->LeftStick.x = 0.0f;
                                 if(XboxData.LeftStickX < (Center - Deadzone))
                                 {
-                                    NewGamePad->LeftStickX = -(Center - Deadzone - (r32)XboxData.LeftStickX) / (Center - Deadzone);
+                                    NewGamePad->LeftStick.x = -(Center - Deadzone - (r32)XboxData.LeftStickX) / (Center - Deadzone);
                                 }
                                 else if(XboxData.LeftStickX > (Center + Deadzone))
                                 {
-                                    NewGamePad->LeftStickX = ((r32)XboxData.LeftStickX - Center - Deadzone) / (Center - Deadzone);
+                                    NewGamePad->LeftStick.x = ((r32)XboxData.LeftStickX - Center - Deadzone) / (Center - Deadzone);
                                 }
 
-                                NewGamePad->LeftStickY = 0.0f;
+                                NewGamePad->LeftStick.y = 0.0f;
                                 if(XboxData.LeftStickY < (Center - Deadzone))
                                 {
-                                    NewGamePad->LeftStickY = -(Center - Deadzone - (r32)XboxData.LeftStickY) / (Center - Deadzone);
+                                    NewGamePad->LeftStick.y = -(Center - Deadzone - (r32)XboxData.LeftStickY) / (Center - Deadzone);
                                 }
                                 else if(XboxData.LeftStickY > (Center + Deadzone))
                                 {
-                                    NewGamePad->LeftStickY = ((r32)XboxData.LeftStickY - Center - Deadzone) / (Center - Deadzone);
+                                    NewGamePad->LeftStick.y = ((r32)XboxData.LeftStickY - Center - Deadzone) / (Center - Deadzone);
                                 }
                             }
 
@@ -914,24 +914,24 @@ ProcessGamePadInput(game_input *OldInput, game_input *NewInput)
                                 XboxData.RightStickY = 0xFFFF - XboxData.RightStickY;
                                 s32 Deadzone = XBOX_GAMEPAD_RIGHT_THUMB_DEADZONE;
 
-                                NewGamePad->RightStickX = 0.0f;
+                                NewGamePad->RightStick.x = 0.0f;
                                 if(XboxData.RightStickX < (Center - Deadzone))
                                 {
-                                    NewGamePad->RightStickX = -(Center - Deadzone - (r32)XboxData.RightStickX) / (Center - Deadzone);
+                                    NewGamePad->RightStick.x = -(Center - Deadzone - (r32)XboxData.RightStickX) / (Center - Deadzone);
                                 }
                                 else if(XboxData.RightStickX > (Center + Deadzone))
                                 {
-                                    NewGamePad->RightStickX = ((r32)XboxData.RightStickX - Center - Deadzone) / (Center - Deadzone);
+                                    NewGamePad->RightStick.x = ((r32)XboxData.RightStickX - Center - Deadzone) / (Center - Deadzone);
                                 }
 
-                                NewGamePad->RightStickY = 0.0f;
+                                NewGamePad->RightStick.y = 0.0f;
                                 if(XboxData.RightStickY < (Center - Deadzone))
                                 {
-                                    NewGamePad->RightStickY = -(Center - Deadzone - (r32)XboxData.RightStickY) / (Center - Deadzone);
+                                    NewGamePad->RightStick.y = -(Center - Deadzone - (r32)XboxData.RightStickY) / (Center - Deadzone);
                                 }
                                 else if(XboxData.RightStickY > (Center + Deadzone))
                                 {
-                                    NewGamePad->RightStickY = ((r32)XboxData.RightStickY - Center - Deadzone) / (Center - Deadzone);
+                                    NewGamePad->RightStick.y = ((r32)XboxData.RightStickY - Center - Deadzone) / (Center - Deadzone);
                                 }
                             }
                         }
@@ -980,64 +980,64 @@ ProcessGamePadInput(game_input *OldInput, game_input *NewInput)
 
                                 case 0:
                                 {
-                                    NewGamePad->LeftStickX = 0.0f;
-                                    NewGamePad->LeftStickY = 1.0f;
+                                    NewGamePad->LeftStick.x = 0.0f;
+                                    NewGamePad->LeftStick.y = 1.0f;
                                 } break;
 
                                 case 4500:
                                 {
-                                    NewGamePad->LeftStickX = 1.0f;
-                                    NewGamePad->LeftStickY = 1.0f;
+                                    NewGamePad->LeftStick.x = 1.0f;
+                                    NewGamePad->LeftStick.y = 1.0f;
                                 } break;
 
                                 case 9000:
                                 {
-                                    NewGamePad->LeftStickX = 1.0f;
-                                    NewGamePad->LeftStickY = 0.0f;
+                                    NewGamePad->LeftStick.x = 1.0f;
+                                    NewGamePad->LeftStick.y = 0.0f;
                                 } break;
 
                                 case 13500:
                                 {
-                                    NewGamePad->LeftStickX = 1.0f;
-                                    NewGamePad->LeftStickY = -1.0f;
+                                    NewGamePad->LeftStick.x = 1.0f;
+                                    NewGamePad->LeftStick.y = -1.0f;
                                 } break;
 
                                 case 18000:
                                 {
-                                    NewGamePad->LeftStickX = 0.0f;
-                                    NewGamePad->LeftStickY = -1.0f;
+                                    NewGamePad->LeftStick.x = 0.0f;
+                                    NewGamePad->LeftStick.y = -1.0f;
                                 } break;
 
                                 case 22500:
                                 {
-                                    NewGamePad->LeftStickX = -1.0f;
-                                    NewGamePad->LeftStickY = -1.0f;
+                                    NewGamePad->LeftStick.x = -1.0f;
+                                    NewGamePad->LeftStick.y = -1.0f;
                                 } break;
 
                                 case 27000:
                                 {
-                                    NewGamePad->LeftStickX = -1.0f;
-                                    NewGamePad->LeftStickY = 0.0f;
+                                    NewGamePad->LeftStick.x = -1.0f;
+                                    NewGamePad->LeftStick.y = 0.0f;
                                 } break;
 
                                 case 31500:
                                 {
-                                    NewGamePad->LeftStickX = -1.0f;
-                                    NewGamePad->LeftStickY = 1.0f;
+                                    NewGamePad->LeftStick.x = -1.0f;
+                                    NewGamePad->LeftStick.y = 1.0f;
                                 } break;
 
                                 InvalidDefaultCase;
                             }
                         }
 
-                        Assert(NewGamePad->LeftStickX >= -1.0f);
-                        Assert(NewGamePad->LeftStickX <= 1.0f);
-                        Assert(NewGamePad->LeftStickY >= -1.0f);
-                        Assert(NewGamePad->LeftStickY <= 1.0f);
-                        Assert(NewGamePad->RightStickX >= -1.0f);
-                        Assert(NewGamePad->RightStickX <= 1.0f);
-                        Assert(NewGamePad->RightStickY >= -1.0f);
-                        Assert(NewGamePad->RightStickY <= 1.0f);
+                        Assert(NewGamePad->LeftStick.x >= -1.0f);
+                        Assert(NewGamePad->LeftStick.x <= 1.0f);
+                        Assert(NewGamePad->LeftStick.y >= -1.0f);
+                        Assert(NewGamePad->LeftStick.y <= 1.0f);
+                        Assert(NewGamePad->RightStick.x >= -1.0f);
+                        Assert(NewGamePad->RightStick.x <= 1.0f);
+                        Assert(NewGamePad->RightStick.y >= -1.0f);
+                        Assert(NewGamePad->RightStick.y <= 1.0f);
                         Assert(NewGamePad->LeftTrigger >= 0.0f);
                         Assert(NewGamePad->LeftTrigger <= 1.0f);
                         Assert(NewGamePad->RightTrigger >= 0.0f);
@@ -1060,44 +1060,44 @@ ProcessGamePadInput(game_input *OldInput, game_input *NewInput)
                             r32 Center = 0xFFFF / 2.0f;
                             r32 Deadzone = 1500;
                         
-                            NewGamePad->LeftStickX = 0.0f;
+                            NewGamePad->LeftStick.x = 0.0f;
                             if(N64Data.StickX < (Center - Deadzone))
                             {
-                                NewGamePad->LeftStickX = -(Center - Deadzone - (r32)N64Data.StickX) / (Center - Deadzone);
+                                NewGamePad->LeftStick.x = -(Center - Deadzone - (r32)N64Data.StickX) / (Center - Deadzone);
                             }
                             else if(N64Data.StickX > (Center + Deadzone))
                             {
-                                NewGamePad->LeftStickX = ((r32)N64Data.StickX - Center - Deadzone) / (Center - Deadzone);
+                                NewGamePad->LeftStick.x = ((r32)N64Data.StickX - Center - Deadzone) / (Center - Deadzone);
                             }
 
-                            NewGamePad->LeftStickY = 0.0f;
+                            NewGamePad->LeftStick.y = 0.0f;
                             if(N64Data.StickY < (Center - Deadzone))
                             {
-                                NewGamePad->LeftStickY = -(Center - Deadzone - (r32)N64Data.StickY) / (Center - Deadzone);
+                                NewGamePad->LeftStick.y = -(Center - Deadzone - (r32)N64Data.StickY) / (Center - Deadzone);
                             }
                             else if(N64Data.StickY > (Center + Deadzone))
                             {
-                                NewGamePad->LeftStickY = ((r32)N64Data.StickY - Center - Deadzone) / (Center - Deadzone);
+                                NewGamePad->LeftStick.y = ((r32)N64Data.StickY - Center - Deadzone) / (Center - Deadzone);
                             }
 
-                            NewGamePad->RightStickX = 0.0f;
+                            NewGamePad->RightStick.x = 0.0f;
                             if(N64Data.CLeft)
                             {
-                                NewGamePad->RightStickX -= 1.0f;
+                                NewGamePad->RightStick.x -= 1.0f;
                             }
                             if(N64Data.CRight)
                             {
-                                NewGamePad->RightStickX += 1.0f;
+                                NewGamePad->RightStick.x += 1.0f;
                             }
 
-                            NewGamePad->RightStickY = 0.0f;
+                            NewGamePad->RightStick.y = 0.0f;
                             if(N64Data.CDown)
                             {
-                                NewGamePad->RightStickY -= 1.0f;
+                                NewGamePad->RightStick.y -= 1.0f;
                             }
                             if(N64Data.CUp)
                             {
-                                NewGamePad->RightStickY += 1.0f;
+                                NewGamePad->RightStick.y += 1.0f;
                             }
                         }
 
@@ -1125,64 +1125,64 @@ ProcessGamePadInput(game_input *OldInput, game_input *NewInput)
 
                                 case 0:
                                 {
-                                    NewGamePad->LeftStickX = 0.0f;
-                                    NewGamePad->LeftStickY = 1.0f;
+                                    NewGamePad->LeftStick.x = 0.0f;
+                                    NewGamePad->LeftStick.y = 1.0f;
                                 } break;
 
                                 case 4500:
                                 {
-                                    NewGamePad->LeftStickX = 1.0f;
-                                    NewGamePad->LeftStickY = 1.0f;
+                                    NewGamePad->LeftStick.x = 1.0f;
+                                    NewGamePad->LeftStick.y = 1.0f;
                                 } break;
 
                                 case 9000:
                                 {
-                                    NewGamePad->LeftStickX = 1.0f;
-                                    NewGamePad->LeftStickY = 0.0f;
+                                    NewGamePad->LeftStick.x = 1.0f;
+                                    NewGamePad->LeftStick.y = 0.0f;
                                 } break;
 
                                 case 13500:
                                 {
-                                    NewGamePad->LeftStickX = 1.0f;
-                                    NewGamePad->LeftStickY = -1.0f;
+                                    NewGamePad->LeftStick.x = 1.0f;
+                                    NewGamePad->LeftStick.y = -1.0f;
                                 } break;
 
                                 case 18000:
                                 {
-                                    NewGamePad->LeftStickX = 0.0f;
-                                    NewGamePad->LeftStickY = -1.0f;
+                                    NewGamePad->LeftStick.x = 0.0f;
+                                    NewGamePad->LeftStick.y = -1.0f;
                                 } break;
 
                                 case 22500:
                                 {
-                                    NewGamePad->LeftStickX = -1.0f;
-                                    NewGamePad->LeftStickY = -1.0f;
+                                    NewGamePad->LeftStick.x = -1.0f;
+                                    NewGamePad->LeftStick.y = -1.0f;
                                 } break;
 
                                 case 27000:
                                 {
-                                    NewGamePad->LeftStickX = -1.0f;
-                                    NewGamePad->LeftStickY = 0.0f;
+                                    NewGamePad->LeftStick.x = -1.0f;
+                                    NewGamePad->LeftStick.y = 0.0f;
                                 } break;
 
                                 case 31500:
                                 {
-                                    NewGamePad->LeftStickX = -1.0f;
-                                    NewGamePad->LeftStickY = 1.0f;
+                                    NewGamePad->LeftStick.x = -1.0f;
+                                    NewGamePad->LeftStick.y = 1.0f;
                                 } break;
 
                                 InvalidDefaultCase;
                             }
                         }
 
-                        Assert(NewGamePad->LeftStickX >= -1.0f);
-                        Assert(NewGamePad->LeftStickX <= 1.0f);
-                        Assert(NewGamePad->LeftStickY >= -1.0f);
-                        Assert(NewGamePad->LeftStickY <= 1.0f);
-                        Assert(NewGamePad->RightStickX >= -1.0f);
-                        Assert(NewGamePad->RightStickX <= 1.0f);
-                        Assert(NewGamePad->RightStickY >= -1.0f);
-                        Assert(NewGamePad->RightStickY <= 1.0f);
+                        Assert(NewGamePad->LeftStick.x >= -1.0f);
+                        Assert(NewGamePad->LeftStick.x <= 1.0f);
+                        Assert(NewGamePad->LeftStick.y >= -1.0f);
+                        Assert(NewGamePad->LeftStick.y <= 1.0f);
+                        Assert(NewGamePad->RightStick.x >= -1.0f);
+                        Assert(NewGamePad->RightStick.x <= 1.0f);
+                        Assert(NewGamePad->RightStick.y >= -1.0f);
+                        Assert(NewGamePad->RightStick.y <= 1.0f);
                         Assert(NewGamePad->LeftTrigger >= 0.0f);
                         Assert(NewGamePad->LeftTrigger <= 1.0f);
                         Assert(NewGamePad->RightTrigger >= 0.0f);

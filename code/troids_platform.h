@@ -11,6 +11,7 @@
 #include <float.h>
 
 #define global_variable static
+#define local_persist static
 #define internal static
 
 typedef uint8_t u8;
@@ -376,10 +377,8 @@ struct game_button
 
 struct game_controller
 {
-    r32 LeftStickX;
-    r32 LeftStickY;
-    r32 RightStickX;
-    r32 RightStickY;
+    v2 LeftStick;
+    v2 RightStick;
     r32 LeftTrigger;
     r32 RightTrigger;
 

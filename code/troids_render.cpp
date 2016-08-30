@@ -361,14 +361,14 @@ Clear(game_backbuffer *BackBuffer, v4 Color)
 struct binary_node
 {
     r32 SortKey;
-    void *Data;
+    u32 Index;
     binary_node *Chain;
     binary_node *Prev;
     binary_node *Next;
 };
 
 inline void
-Insert(memory_arena *Arena, binary_node **NodePtr, r32 SortKey, void *Data)
+Insert(memory_arena *Arena, binary_node **NodePtr, r32 SortKey, u32 Index)
 {
     binary_node *Node;
     if(!(*NodePtr))
@@ -376,7 +376,7 @@ Insert(memory_arena *Arena, binary_node **NodePtr, r32 SortKey, void *Data)
         *NodePtr = PushStruct(Arena, binary_node);
         Node = *NodePtr;
         Node->SortKey = SortKey;
-        Node->Data = Data;
+        Node->Index = Index;
         Node->Chain = 0;
         Node->Prev = 0;
         Node->Next = 0;
@@ -386,16 +386,16 @@ Insert(memory_arena *Arena, binary_node **NodePtr, r32 SortKey, void *Data)
         Node = *NodePtr;
         if(SortKey > Node->SortKey)
         {
-            Insert(Arena, &Node->Next, SortKey, Data);
+            Insert(Arena, &Node->Next, SortKey, Index);
         }
         else if(SortKey < Node->SortKey)
         {
-            Insert(Arena, &Node->Prev, SortKey, Data);
+            Insert(Arena, &Node->Prev, SortKey, Index);
         }
         else
         {
             binary_node *Chain = 0;
-            Insert(Arena, &Chain, SortKey, Data);
+            Insert(Arena, &Chain, SortKey, Index);
             Chain->Chain = Node->Chain;
             Node->Chain = Chain;
         }
@@ -403,17 +403,18 @@ Insert(memory_arena *Arena, binary_node **NodePtr, r32 SortKey, void *Data)
 }
 
 internal void
-RenderTree(binary_node *Node, game_backbuffer *BackBuffer)
+RenderTree(render_buffer *RenderBuffer, binary_node *Node, game_backbuffer *BackBuffer)
 {
     if(Node->Prev)
     {
-        RenderTree(Node->Prev, BackBuffer);
+        RenderTree(RenderBuffer, Node->Prev, BackBuffer);
     }
     for(binary_node *Chain = Node;
         Chain;
         Chain = Chain->Chain)
     {
-        render_command_header *Header = (render_command_header *)Chain->Data;
+        render_command_header *Header = (render_command_header *)((u8 *)RenderBuffer->Arena.Memory +
+                                                                  Chain->Index);
         switch(Header->Command)
         {
             case RenderCommand_Bitmap:
@@ -446,7 +447,7 @@ RenderTree(binary_node *Node, game_backbuffer *BackBuffer)
     }
     if(Node->Next)
     {
-        RenderTree(Node->Next, BackBuffer);
+        RenderTree(RenderBuffer, Node->Next, BackBuffer);
     }
 }
 
@@ -460,31 +461,32 @@ RenderBufferToBackBuffer(render_buffer *RenderBuffer, game_backbuffer *BackBuffe
     while(Cursor != End)
     {
         render_command_header *Header = (render_command_header *)Cursor;
+        u32 Index = (u32)((u8 *)Header - (u8 *)RenderBuffer->Arena.Memory);
         Cursor += sizeof(render_command_header);
         switch(Header->Command)
         {
             case RenderCommand_Bitmap:
             {
                 PackedBufferAdvance(Data, render_bitmap_data, Cursor);
-                Insert(&RenderBuffer->Arena, &SortTree, Data->SortKey, Header);
+                Insert(&RenderBuffer->Arena, &SortTree, Data->SortKey, Index);
             } break;
 
             case RenderCommand_Rectangle:
             {
                 PackedBufferAdvance(Data, render_rectangle_data, Cursor);
-                Insert(&RenderBuffer->Arena, &SortTree, Data->SortKey, Header);
+                Insert(&RenderBuffer->Arena, &SortTree, Data->SortKey, Index);
             } break;
             
             case RenderCommand_Line:
             {
                 PackedBufferAdvance(Data, render_line_data, Cursor);
-                Insert(&RenderBuffer->Arena, &SortTree, Data->SortKey, Header);
+                Insert(&RenderBuffer->Arena, &SortTree, Data->SortKey, Index);
             } break;
             
             case RenderCommand_Clear:
             {
                 PackedBufferAdvance(Data, render_clear_data, Cursor);
-                Insert(&RenderBuffer->Arena, &SortTree, -REAL32_MAX, Header);
+                Insert(&RenderBuffer->Arena, &SortTree, -REAL32_MAX, Index);
             } break;
 
             InvalidDefaultCase;
@@ -492,6 +494,6 @@ RenderBufferToBackBuffer(render_buffer *RenderBuffer, game_backbuffer *BackBuffe
     }
     if(SortTree)
     {
-        RenderTree(SortTree, BackBuffer);
+        RenderTree(RenderBuffer, SortTree, BackBuffer);
     }
 }

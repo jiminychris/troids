@@ -297,6 +297,12 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     PushClear(&TranState->RenderBuffer, V4(0.1f, 0.1f, 0.1f, 1.0f));
 
 
+    DEBUG_GROUP(Controllers)
+    {
+        DEBUG_NAME(Keyboard);
+        DEBUG_VALUE(LeftStick, Input->Keyboard.LeftStick);
+    }
+
 #if 0
     u32 TextLength;
     char Text[256];
@@ -314,68 +320,68 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                       BackBuffer->Height - GameMemory->DebugFont.Ascent*Layout.Scale);
         game_controller *Controller = Input->Controllers + ControllerIndex;
 
-        PushText(&TranState->RenderBuffer, &Layout,
+        DrawText(&TranState->RenderBuffer, &Layout,
                  TextLength, Text);
 
-        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %f", "LeftStickX", Controller->LeftStickX);
-        PushText(&TranState->RenderBuffer, &Layout,
+        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %f", "LeftStickX", Controller->LeftStick.x);
+        DrawText(&TranState->RenderBuffer, &Layout,
                  TextLength, Text);
-        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %f", "LeftStickY", Controller->LeftStickY);
-        PushText(&TranState->RenderBuffer, &Layout,
+        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %f", "LeftStickY", Controller->LeftStick.y);
+        DrawText(&TranState->RenderBuffer, &Layout,
                  TextLength, Text);
-        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %f", "RightStickX", Controller->RightStickX);
-        PushText(&TranState->RenderBuffer, &Layout,
+        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %f", "RightStickX", Controller->RightStick.x);
+        DrawText(&TranState->RenderBuffer, &Layout,
                  TextLength, Text);
-        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %f", "RightStickY", Controller->RightStickY);
-        PushText(&TranState->RenderBuffer, &Layout,
+        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %f", "RightStickY", Controller->RightStick.y);
+        DrawText(&TranState->RenderBuffer, &Layout,
                  TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %f", "LeftTrigger", Controller->LeftTrigger);
-        PushText(&TranState->RenderBuffer, &Layout,
+        DrawText(&TranState->RenderBuffer, &Layout,
                  TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %f", "RightTrigger", Controller->RightTrigger);
-        PushText(&TranState->RenderBuffer, &Layout,
+        DrawText(&TranState->RenderBuffer, &Layout,
                  TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "ActionUp", Controller->ActionUp);
-        PushText(&TranState->RenderBuffer, &Layout,
+        DrawText(&TranState->RenderBuffer, &Layout,
                  TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "ActionLeft", Controller->ActionLeft);
-        PushText(&TranState->RenderBuffer, &Layout,
+        DrawText(&TranState->RenderBuffer, &Layout,
                  TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "ActionDown", Controller->ActionDown);
-        PushText(&TranState->RenderBuffer, &Layout,
+        DrawText(&TranState->RenderBuffer, &Layout,
                  TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "ActionRight", Controller->ActionRight);
-        PushText(&TranState->RenderBuffer, &Layout,
+        DrawText(&TranState->RenderBuffer, &Layout,
                  TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "LeftShoulder1", Controller->LeftShoulder1);
-        PushText(&TranState->RenderBuffer, &Layout,
+        DrawText(&TranState->RenderBuffer, &Layout,
                  TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "RightShoulder1", Controller->RightShoulder1);
-        PushText(&TranState->RenderBuffer, &Layout,
+        DrawText(&TranState->RenderBuffer, &Layout,
                  TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "LeftShoulder2", Controller->LeftShoulder2);
-        PushText(&TranState->RenderBuffer, &Layout,
+        DrawText(&TranState->RenderBuffer, &Layout,
                  TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "RightShoulder2", Controller->RightShoulder2);
-        PushText(&TranState->RenderBuffer, &Layout,
+        DrawText(&TranState->RenderBuffer, &Layout,
                  TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "Select", Controller->Select);
-        PushText(&TranState->RenderBuffer, &Layout,
+        DrawText(&TranState->RenderBuffer, &Layout,
                  TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "Start", Controller->Start);
-        PushText(&TranState->RenderBuffer, &Layout,
+        DrawText(&TranState->RenderBuffer, &Layout,
                  TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "LeftClick", Controller->LeftClick);
-        PushText(&TranState->RenderBuffer, &Layout,
+        DrawText(&TranState->RenderBuffer, &Layout,
                  TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "RightClick", Controller->RightClick);
-        PushText(&TranState->RenderBuffer, &Layout,
+        DrawText(&TranState->RenderBuffer, &Layout,
                  TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "Power", Controller->Power);
-        PushText(&TranState->RenderBuffer, &Layout,
+        DrawText(&TranState->RenderBuffer, &Layout,
                  TextLength, Text);
         TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "CenterClick", Controller->CenterClick);
-        PushText(&TranState->RenderBuffer, &Layout,
+        DrawText(&TranState->RenderBuffer, &Layout,
                  TextLength, Text);
 
         TextLength = _snprintf_s(Text, sizeof(Text), "Game Pad %d", ControllerIndex);
@@ -447,24 +453,24 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     r32 ShipScale = 0.4f;
     r32 BulletScale = 0.5f;
 
-    r32 LeftStickX = Keyboard->LeftStickX ? Keyboard->LeftStickX : ShipController->LeftStickX;
+    r32 LeftStickX = Keyboard->LeftStick.x ? Keyboard->LeftStick.x : ShipController->LeftStick.x;
     r32 Thrust;
-    if(Keyboard->LeftStickY)
+    if(Keyboard->LeftStick.y)
     {
-        Thrust = Clamp01(Keyboard->LeftStickY);
+        Thrust = Clamp01(Keyboard->LeftStick.y);
     }
     else
     {
-        Thrust = Clamp01(ShipController->LeftStickY);
+        Thrust = Clamp01(ShipController->LeftStick.y);
         ShipController->LowFrequencyMotor = Thrust;
     }
 
-    r32 YRotation = Input->dtForFrame*(Keyboard->RightStickX ?
-                                       Keyboard->RightStickX :
-                                       ShipController->RightStickX);
-    r32 XRotation = Input->dtForFrame*(Keyboard->RightStickY ?
-                                       Keyboard->RightStickY :
-                                       ShipController->RightStickY);
+    r32 YRotation = Input->dtForFrame*(Keyboard->RightStick.x ?
+                                       Keyboard->RightStick.x :
+                                       ShipController->RightStick.x);
+    r32 XRotation = Input->dtForFrame*(Keyboard->RightStick.y ?
+                                       Keyboard->RightStick.y :
+                                       ShipController->RightStick.y);
     r32 ZRotation = Input->dtForFrame*((Keyboard->LeftTrigger ?
                                         Keyboard->LeftTrigger :
                                         ShipController->LeftTrigger) -
@@ -503,7 +509,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     State->dP = dP;
 
     v3 AsteroidAcceleration = (0.25f*PixelsPerMeter*
-                               V3(AsteroidController->LeftStickX, AsteroidController->LeftStickY, 0.0f));
+                               V3(AsteroidController->LeftStick.x, AsteroidController->LeftStick.y, 0.0f));
 
     State->Asteroids[0].dP += AsteroidAcceleration*Input->dtForFrame;
     

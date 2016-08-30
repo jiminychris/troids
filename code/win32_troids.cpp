@@ -851,10 +851,10 @@ int WinMain(HINSTANCE Instance,
                         game_button *OldButton = OldKeyboard->Buttons + ButtonIndex;
                         NewButton->EndedDown = OldButton->EndedDown;
                     }
-                    NewKeyboard->LeftStickX = OldKeyboard->LeftStickX;
-                    NewKeyboard->LeftStickY = OldKeyboard->LeftStickY;
-                    NewKeyboard->RightStickX = OldKeyboard->RightStickX;
-                    NewKeyboard->RightStickY = OldKeyboard->RightStickY;
+                    NewKeyboard->LeftStick.x = OldKeyboard->LeftStick.x;
+                    NewKeyboard->LeftStick.y = OldKeyboard->LeftStick.y;
+                    NewKeyboard->RightStick.x = OldKeyboard->RightStick.x;
+                    NewKeyboard->RightStick.y = OldKeyboard->RightStick.y;
                     GlobalLeftMouse.HalfTransitionCount = 0;
 
                     while(PeekMessageA(&Message, Window, 0, 0, PM_REMOVE))
@@ -899,22 +899,22 @@ int WinMain(HINSTANCE Instance,
 
                                         case 'W':
                                         {
-                                            ProcessAnalogInput(&NewKeyboard->LeftStickY, WentDown, 1.0f);
+                                            ProcessAnalogInput(&NewKeyboard->LeftStick.y, WentDown, 1.0f);
                                         } break;
 
                                         case 'A':
                                         {
-                                            ProcessAnalogInput(&NewKeyboard->LeftStickX, WentDown, -1.0f);
+                                            ProcessAnalogInput(&NewKeyboard->LeftStick.x, WentDown, -1.0f);
                                         } break;
 
                                         case 'S':
                                         {
-                                            ProcessAnalogInput(&NewKeyboard->LeftStickY, WentDown, -1.0f);
+                                            ProcessAnalogInput(&NewKeyboard->LeftStick.y, WentDown, -1.0f);
                                         } break;
 
                                         case 'D':
                                         {
-                                            ProcessAnalogInput(&NewKeyboard->LeftStickX, WentDown, 1.0f);
+                                            ProcessAnalogInput(&NewKeyboard->LeftStick.x, WentDown, 1.0f);
                                         } break;
                                     }
                                     if(WentDown)
