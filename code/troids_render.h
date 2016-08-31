@@ -60,7 +60,7 @@ inline void
 PushBitmap(render_buffer *RenderBuffer, loaded_bitmap *Bitmap, v3 Origin, v2 XAxis, v2 YAxis,
            r32 Scale, v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f));
 
-inline void
+inline rectangle2
 PushRectangle(render_buffer *RenderBuffer, v3 P, v2 Dim, v4 Color);
 
 inline void
@@ -77,7 +77,7 @@ struct text_layout
     v4 Color;
 };
 
-internal v2
+internal rectangle2
 DrawText(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char *Text);
 
 internal rectangle2

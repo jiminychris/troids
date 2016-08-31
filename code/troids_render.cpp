@@ -34,7 +34,7 @@ PushBitmap(render_buffer *RenderBuffer, loaded_bitmap *Bitmap, v3 Origin, v2 XAx
     }
 }
 
-inline void
+inline rectangle2
 PushRectangle(render_buffer *RenderBuffer, v3 P, v2 Dim, v4 Color)
 {
     PushRenderHeader(&RenderBuffer->Arena, RenderCommand_Rectangle);
@@ -43,6 +43,7 @@ PushRectangle(render_buffer *RenderBuffer, v3 P, v2 Dim, v4 Color)
     Data->Rect = Rect;
     Data->Color = Color;
     Data->SortKey = P.z;
+    return(Rect);
 }
 
 // TODO(chris): How do I sort lines that move through z? This goes for bitmaps and rectangles also.
@@ -74,13 +75,16 @@ GetTextAdvance(loaded_font *Font, char A, char B)
 }
 
 // TODO(chris): Clean this up. Make fonts and font layout more systematic.
-internal v2
+internal rectangle2
 DrawText(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char *Text)
 {
-    v2 Result;
+    rectangle2 Result;
     r32 XInit = Layout->P.x;
     char Prev = 0;
     char *At = Text;
+    r32 Ascent = Layout->Scale*Layout->Font->Ascent;
+    r32 Descent = Layout->Scale*(Layout->Font->Height - Layout->Font->Ascent);
+    r32 LineAdvance = Layout->Scale*Layout->Font->LineAdvance;
     for(u32 AtIndex = 0;
         AtIndex < TextLength;
         ++AtIndex)
@@ -101,9 +105,10 @@ DrawText(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char 
         Prev = *At++;
         Layout->P.x += Layout->Scale*GetTextAdvance(Layout->Font, Prev, *At);
     }
-    Result = V2(Layout->P.x - XInit, Layout->Scale*Layout->Font->Height);
+    Result = MinMax(V2(XInit, Layout->P.y - Descent),
+                    V2(Layout->P.x, Layout->P.y + Ascent));
     Layout->P.x = XInit;
-    Layout->P.y -= Layout->Font->LineAdvance*Layout->Scale;
+    Layout->P.y -= LineAdvance;
     
     return(Result);
 }
@@ -113,9 +118,8 @@ DrawButton(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, cha
 {
     rectangle2 Result;
     v2 PInit = Layout->P;
-    v2 ButtonDim = DrawText(RenderBuffer, Layout, TextLength, Text);
-    Result = TopLeftDim(V2(PInit.x, PInit.y + Layout->Font->Ascent*Layout->Scale), ButtonDim);
-    PushRectangle(RenderBuffer, V3(Result.Min, HUD_Z), ButtonDim, V4(1, 0, 1, 1));
+    Result = DrawText(RenderBuffer, Layout, TextLength, Text);
+    PushRectangle(RenderBuffer, V3(Result.Min, HUD_Z), GetDim(Result), V4(1, 0, 1, 1));
     
     return(Result);
 }

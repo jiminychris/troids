@@ -336,7 +336,10 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     temporary_memory RenderMemory = BeginTemporaryMemory(&TranState->RenderBuffer.Arena);
     PushClear(&TranState->RenderBuffer, V4(0.1f, 0.1f, 0.1f, 1.0f));
 
-
+    {DEBUG_GROUP("Profiler");
+        DEBUG_FRAME_TIMELINE();
+        DEBUG_PROFILER();
+    }
     {DEBUG_GROUP("Controllers");
         {DEBUG_GROUP("Keyboard");
             LogController(&Input->Keyboard);
@@ -354,91 +357,6 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             LogController(Input->GamePads + 3);
         }
     }
-
-#if 0
-    u32 TextLength;
-    char Text[256];
-    text_layout Layout;
-    Layout.Scale = 0.3f;
-    Layout.Font = &GameMemory->DebugFont;
-    Layout.Color = V4(1, 1, 1, 1);
-    TextLength = _snprintf_s(Text, sizeof(Text), "Keyboard");
-        
-    for(u32 ControllerIndex = 0;
-        ControllerIndex < ArrayCount(Input->Controllers);
-        ++ControllerIndex)
-    {
-        Layout.P = V2(BackBuffer->Width*((r32)ControllerIndex/(r32)ArrayCount(Input->Controllers)),
-                      BackBuffer->Height - GameMemory->DebugFont.Ascent*Layout.Scale);
-        game_controller *Controller = Input->Controllers + ControllerIndex;
-
-        DrawText(&TranState->RenderBuffer, &Layout,
-                 TextLength, Text);
-
-        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %f", "LeftStickX", Controller->LeftStick.x);
-        DrawText(&TranState->RenderBuffer, &Layout,
-                 TextLength, Text);
-        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %f", "LeftStickY", Controller->LeftStick.y);
-        DrawText(&TranState->RenderBuffer, &Layout,
-                 TextLength, Text);
-        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %f", "RightStickX", Controller->RightStick.x);
-        DrawText(&TranState->RenderBuffer, &Layout,
-                 TextLength, Text);
-        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %f", "RightStickY", Controller->RightStick.y);
-        DrawText(&TranState->RenderBuffer, &Layout,
-                 TextLength, Text);
-        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %f", "LeftTrigger", Controller->LeftTrigger);
-        DrawText(&TranState->RenderBuffer, &Layout,
-                 TextLength, Text);
-        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %f", "RightTrigger", Controller->RightTrigger);
-        DrawText(&TranState->RenderBuffer, &Layout,
-                 TextLength, Text);
-        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "ActionUp", Controller->ActionUp);
-        DrawText(&TranState->RenderBuffer, &Layout,
-                 TextLength, Text);
-        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "ActionLeft", Controller->ActionLeft);
-        DrawText(&TranState->RenderBuffer, &Layout,
-                 TextLength, Text);
-        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "ActionDown", Controller->ActionDown);
-        DrawText(&TranState->RenderBuffer, &Layout,
-                 TextLength, Text);
-        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "ActionRight", Controller->ActionRight);
-        DrawText(&TranState->RenderBuffer, &Layout,
-                 TextLength, Text);
-        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "LeftShoulder1", Controller->LeftShoulder1);
-        DrawText(&TranState->RenderBuffer, &Layout,
-                 TextLength, Text);
-        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "RightShoulder1", Controller->RightShoulder1);
-        DrawText(&TranState->RenderBuffer, &Layout,
-                 TextLength, Text);
-        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "LeftShoulder2", Controller->LeftShoulder2);
-        DrawText(&TranState->RenderBuffer, &Layout,
-                 TextLength, Text);
-        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "RightShoulder2", Controller->RightShoulder2);
-        DrawText(&TranState->RenderBuffer, &Layout,
-                 TextLength, Text);
-        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "Select", Controller->Select);
-        DrawText(&TranState->RenderBuffer, &Layout,
-                 TextLength, Text);
-        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "Start", Controller->Start);
-        DrawText(&TranState->RenderBuffer, &Layout,
-                 TextLength, Text);
-        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "LeftClick", Controller->LeftClick);
-        DrawText(&TranState->RenderBuffer, &Layout,
-                 TextLength, Text);
-        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "RightClick", Controller->RightClick);
-        DrawText(&TranState->RenderBuffer, &Layout,
-                 TextLength, Text);
-        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "Power", Controller->Power);
-        DrawText(&TranState->RenderBuffer, &Layout,
-                 TextLength, Text);
-        TextLength = _snprintf_s(Text, sizeof(Text), "%-15s %d", "CenterClick", Controller->CenterClick);
-        DrawText(&TranState->RenderBuffer, &Layout,
-                 TextLength, Text);
-
-        TextLength = _snprintf_s(Text, sizeof(Text), "Game Pad %d", ControllerIndex);
-    }
-#endif
 
     game_controller *Keyboard = &Input->Keyboard;
     game_controller *ShipController = Input->GamePads + 0;

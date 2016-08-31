@@ -18,7 +18,9 @@ enum debug_event_type
     DebugEventType_GroupBegin,
     DebugEventType_GroupEnd,
     DebugEventType_Name,
+    DebugEventType_Summary,
     DebugEventType_Profiler,
+    DebugEventType_FrameTimeline,
     DebugEventType_b32,
     DebugEventType_u8,
     DebugEventType_u16,
@@ -59,7 +61,6 @@ struct debug_event
 
 struct debug_persistent_event
 {
-    debug_event_type Type;
     union
     {
         b32 Value_b32;
@@ -76,6 +77,12 @@ struct debug_persistent_event
         v2 Value_v2;
     };
     char *GUID;
+
+    union
+    {
+        debug_persistent_event *NextInHash;
+        debug_persistent_event *NextFree;
+    };
 };
 
 struct profiler_element
@@ -140,11 +147,12 @@ struct debug_state
     memory_arena Arena;
     u32 EventCount;
     u32 FrameIndex;
-    u32 LastFrameIndex;
+    u32 ViewingFrameIndex;
     debug_event Events[MAX_DEBUG_EVENTS];
     debug_frame Frames[MAX_DEBUG_FRAMES];
 
-    debug_persistent_event *PersistentEventHash;
+    debug_persistent_event *PersistentEventHash[256];
+    debug_persistent_event *FirstFreePersistentEvent;
 
     loaded_font Font;
 };
@@ -229,6 +237,15 @@ LOG_DEBUG_TYPE(b32)
      
 #define DEBUG_VALUE(Name, Value) LogDebugValue(#Name, Value);
 
+inline void
+LogDebugFeature__(debug_event_type Type)
+{
+    debug_event *Event = NextDebugEvent();
+    Event->Type = Type;
+}
+#define DEBUG_PROFILER(...) LogDebugFeature__(DebugEventType_Profiler);
+#define DEBUG_FRAME_TIMELINE(...) LogDebugFeature__(DebugEventType_FrameTimeline);
+
 #define COLLATE_DEBUG_TYPE(TypeInit)                                    \
     case(DebugEventType_##TypeInit):                                    \
     {                                                                   \
@@ -248,6 +265,8 @@ LOG_DEBUG_TYPE(b32)
 #define DEBUG_GROUP(...)
 #define DEBUG_NAME(...)
 #define DEBUG_VALUE(...)
+#define DEBUG_PROFILER(...)
+#define DEBUG_FRAME_TIMELINE(...)
 #endif
 
 #define TROIDS_DEBUG_H

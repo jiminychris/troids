@@ -261,8 +261,20 @@ InitializeArena(memory_arena *Arena, memory_size SizeInit, void *MemoryInit)
     Arena->Memory = MemoryInit;
 }
 
+inline b32 IsSet(u32 Flags, u32 Bit)
+{
+    b32 Result = (Flags & Bit);
+    return(Result);
+}
+
+enum push_flags
+{
+    None = 0,
+    PushFlag_Zero = 1 << 0,
+};
+
 inline void *
-PushSize(memory_arena *Arena, memory_size Size)
+PushSize(memory_arena *Arena, memory_size Size, u32 Flags = 0)
 {
     void *Result = 0;
     if((Arena->Used + Size) > Arena->Size)
@@ -273,13 +285,23 @@ PushSize(memory_arena *Arena, memory_size Size)
     {
         Result = (u8 *)Arena->Memory + Arena->Used;
         Arena->Used += Size;
+        if(IsSet(Flags, PushFlag_Zero))
+        {
+            u8 *End = (u8 *)Arena->Memory + Arena->Used;
+            for(u8 *At = (u8 *)Result;
+                At < End;
+                ++At)
+            {
+                *At = 0;
+            }
+        }
     }
 
     return(Result);
 }
 
-#define PushStruct(Arena, type) (type *)PushSize(Arena, sizeof(type))
-#define PushArray(Arena, Count, type) (type *)PushSize(Arena, Count*sizeof(type))
+#define PushStruct(Arena, type, ...) (type *)PushSize(Arena, sizeof(type), __VA_ARGS__)
+#define PushArray(Arena, Count, type, ...) (type *)PushSize(Arena, Count*sizeof(type), __VA_ARGS__)
 
 inline memory_arena
 SubArena(memory_arena *Arena, memory_size Size)
@@ -473,6 +495,21 @@ CatStrings(u32 DestSize, char *DestInit,
     *Dest = 0;
 
     u32 Result = (u32)(Dest - DestInit);
+    return Result;
+}
+
+inline b32
+StringsMatch(char *A, char *B)
+{
+    b32 Result = true;
+    while(*A || *B)
+    {
+        if(*A++ != *B++)
+        {
+            Result = false;
+            break;
+        }
+    } 
     return Result;
 }
 

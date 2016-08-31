@@ -356,6 +356,24 @@ MinDim(v2 Min, v2 Dim)
 }
 
 inline rectangle2
+MinMax(v2 Min, v2 Max)
+{
+    rectangle2 Result;
+    Result.Min = Min;
+    Result.Max = Max;
+    return(Result);
+}
+
+inline v2
+GetDim(rectangle2 Rect)
+{
+    v2 Result;
+    Result.x = Rect.Max.x - Rect.Min.x;
+    Result.y = Rect.Max.y - Rect.Min.y;
+    return(Result);
+}
+
+inline rectangle2
 TopLeftDim(v2 TopLeft, v2 Dim)
 {
     rectangle2 Result;
