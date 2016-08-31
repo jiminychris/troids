@@ -433,12 +433,36 @@ int WinMain(HINSTANCE Instance,
 
             game_memory GameMemory;
 
+            GameMemory.PermanentMemorySize = Megabytes(256);
+            GameMemory.TemporaryMemorySize = Gigabytes(2);
+#if TROIDS_INTERNAL
+            GameMemory.DebugMemorySize = Gigabytes(2);
+#endif
+            u64 TotalMemorySize = (GameMemory.PermanentMemorySize +
+                                   GameMemory.TemporaryMemorySize
+#if TROIDS_INTERNAL
+                                   + GameMemory.DebugMemorySize
+#endif
+                                   );
+            GameMemory.PermanentMemory = VirtualAlloc(0, TotalMemorySize,
+                                                      MEM_COMMIT|MEM_RESERVE,
+                                                      PAGE_READWRITE);
+            GameMemory.TemporaryMemory = (u8 *)GameMemory.PermanentMemory + GameMemory.PermanentMemorySize;
+#if TROIDS_INTERNAL
+            GameMemory.DebugMemory = (u8 *)GameMemory.TemporaryMemory + GameMemory.TemporaryMemorySize;
+            GlobalDebugState = (debug_state *)GameMemory.DebugMemory;
+            InitializeArena(&GlobalDebugState->Arena,
+                            GameMemory.DebugMemorySize - sizeof(debug_state),
+                            (u8 *)GameMemory.DebugMemory + sizeof(debug_state));
+        
+#endif
+
 #if TROIDS_INTERNAL
             for(u32 GlyphIndex = 0;
-                GlyphIndex < ArrayCount(GameMemory.DebugFont.Glyphs);
+                GlyphIndex < ArrayCount(GlobalDebugState->Font.Glyphs);
                 ++GlyphIndex)
             {
-                GameMemory.DebugFont.Glyphs[GlyphIndex] = {};
+                GlobalDebugState->Font.Glyphs[GlyphIndex] = {};
             }
             // TODO(chris): All font stuff should move into a packed asset file sometime.
             {               
@@ -482,9 +506,9 @@ int WinMain(HINSTANCE Instance,
 
                 TEXTMETRIC Metrics;
                 GetTextMetrics(FontDC, &Metrics);
-                GameMemory.DebugFont.Height = (r32)Metrics.tmHeight;
-                GameMemory.DebugFont.Ascent = (r32)Metrics.tmAscent;
-                GameMemory.DebugFont.LineAdvance = (GameMemory.DebugFont.Height +
+                GlobalDebugState->Font.Height = (r32)Metrics.tmHeight;
+                GlobalDebugState->Font.Ascent = (r32)Metrics.tmAscent;
+                GlobalDebugState->Font.LineAdvance = (GlobalDebugState->Font.Height +
                                                     (r32)Metrics.tmExternalLeading);
 
                 char FirstChar = ' ';
@@ -499,14 +523,14 @@ int WinMain(HINSTANCE Instance,
                 {
                     ABCFLOAT *FirstABCWidth = ABCWidths + GlyphIndex - FirstChar;
                     r32 FirstGlyphAdvance = FirstABCWidth->abcfB + FirstABCWidth->abcfC;
-                    GameMemory.DebugFont.KerningTable[GlyphIndex][0] = FirstGlyphAdvance;
+                    GlobalDebugState->Font.KerningTable[GlyphIndex][0] = FirstGlyphAdvance;
                     for(char SecondGlyphIndex = FirstChar;
                         SecondGlyphIndex <= LastChar;
                         ++SecondGlyphIndex)
                     {
                         ABCFLOAT *SecondABCWidth = ABCWidths + SecondGlyphIndex - FirstChar;
                             
-                        GameMemory.DebugFont.KerningTable[GlyphIndex][SecondGlyphIndex] =
+                        GlobalDebugState->Font.KerningTable[GlyphIndex][SecondGlyphIndex] =
                             FirstGlyphAdvance + SecondABCWidth->abcfA;
                     }
                     if(GlyphIndex == ' ') continue;
@@ -541,7 +565,7 @@ int WinMain(HINSTANCE Instance,
                         ScanRow += FontBuffer.Pitch;
                     }
 
-                    loaded_bitmap *DebugGlyph = GameMemory.DebugFont.Glyphs + GlyphIndex;
+                    loaded_bitmap *DebugGlyph = GlobalDebugState->Font.Glyphs + GlyphIndex;
                     s32 Height = MaxY - MinY + 1;
                     s32 Width = MaxX - MinX + 1;
                     DebugGlyph->Height = Height + 2;
@@ -615,10 +639,10 @@ int WinMain(HINSTANCE Instance,
                         ++KerningPairIndex)
                     {
                         KERNINGPAIR *KerningPair = KerningPairs + KerningPairIndex;
-                        if((KerningPair->wFirst < ArrayCount(GameMemory.DebugFont.KerningTable)) &&
-                           (KerningPair->wSecond < ArrayCount(GameMemory.DebugFont.KerningTable[0])))
+                        if((KerningPair->wFirst < ArrayCount(GlobalDebugState->Font.KerningTable)) &&
+                           (KerningPair->wSecond < ArrayCount(GlobalDebugState->Font.KerningTable[0])))
                         {
-                            GameMemory.DebugFont.KerningTable[KerningPair->wFirst][KerningPair->wSecond] +=
+                            GlobalDebugState->Font.KerningTable[KerningPair->wFirst][KerningPair->wSecond] +=
                                 (r32)KerningPair->iKernAmount;
                         }
                     }
@@ -631,30 +655,6 @@ int WinMain(HINSTANCE Instance,
 #endif
             
             ReleaseDC(Window, DeviceContext);
-
-            GameMemory.PermanentMemorySize = Megabytes(256);
-            GameMemory.TemporaryMemorySize = Gigabytes(2);
-#if TROIDS_INTERNAL
-            GameMemory.DebugMemorySize = Gigabytes(2);
-#endif
-            u64 TotalMemorySize = (GameMemory.PermanentMemorySize +
-                                   GameMemory.TemporaryMemorySize
-#if TROIDS_INTERNAL
-                                   + GameMemory.DebugMemorySize
-#endif
-                                   );
-            GameMemory.PermanentMemory = VirtualAlloc(0, TotalMemorySize,
-                                                      MEM_COMMIT|MEM_RESERVE,
-                                                      PAGE_READWRITE);
-            GameMemory.TemporaryMemory = (u8 *)GameMemory.PermanentMemory + GameMemory.PermanentMemorySize;
-#if TROIDS_INTERNAL
-            GameMemory.DebugMemory = (u8 *)GameMemory.TemporaryMemory + GameMemory.TemporaryMemorySize;
-            GlobalDebugState = (debug_state *)GameMemory.DebugMemory;
-            InitializeArena(&GlobalDebugState->Arena,
-                            GameMemory.DebugMemorySize - sizeof(debug_state),
-                            (u8 *)GameMemory.DebugMemory + sizeof(debug_state));
-        
-#endif
 
             GameMemory.PlatformReadFile = Win32ReadFile;
             

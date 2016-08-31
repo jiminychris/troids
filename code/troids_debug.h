@@ -12,12 +12,13 @@
 
 enum debug_event_type
 {
+    DebugEventType_FrameMarker,
     DebugEventType_CodeBegin,
     DebugEventType_CodeEnd,
-    DebugEventType_FrameMarker,
-    DebugEventType_Profiler,
-    DebugEventType_Group,
+    DebugEventType_GroupBegin,
+    DebugEventType_GroupEnd,
     DebugEventType_Name,
+    DebugEventType_Profiler,
     DebugEventType_b32,
     DebugEventType_u8,
     DebugEventType_u16,
@@ -56,7 +57,28 @@ struct debug_event
     char *Name;
 };
 
-struct debug_element
+struct debug_persistent_event
+{
+    debug_event_type Type;
+    union
+    {
+        b32 Value_b32;
+        u8 Value_u8;
+        u16 Value_u16;
+        u32 Value_u32;
+        u64 Value_u64;
+        s8 Value_s8;
+        s16 Value_s16;
+        s32 Value_s32;
+        s64 Value_s64;
+        r32 Value_r32;
+        r64 Value_r64;
+        v2 Value_v2;
+    };
+    char *GUID;
+};
+
+struct profiler_element
 {
     u32 Line;
     u64 BeginTicks;
@@ -64,7 +86,36 @@ struct debug_element
     char *File;
     char *Name;
     
-    debug_element *Next;
+    profiler_element *Next;
+};
+
+struct debug_node
+{
+    debug_event_type Type;
+    union
+    {
+        b32 Value_b32;
+        u8 Value_u8;
+        u16 Value_u16;
+        u32 Value_u32;
+        u64 Value_u64;
+        s8 Value_s8;
+        s16 Value_s16;
+        s32 Value_s32;
+        s64 Value_s64;
+        r32 Value_r32;
+        r64 Value_r64;
+        v2 Value_v2;
+    };
+    union
+    {
+        char *Name;
+        char *GUID;
+    };
+    
+    debug_node *Next;
+    debug_node *Parent;
+    debug_node *Child;
 };
 
 #define MAX_DEBUG_FRAMES 128
@@ -74,8 +125,11 @@ struct debug_frame
     u64 BeginTicks;
     u64 EndTicks;
 
-    debug_element *FirstElement;
-    debug_element *LastElement;
+    debug_node *FirstNode;
+    debug_node *CurrentNode;
+    
+    profiler_element *FirstElement;
+    profiler_element *LastElement;
 };
 
 struct debug_state
@@ -89,12 +143,16 @@ struct debug_state
     u32 LastFrameIndex;
     debug_event Events[MAX_DEBUG_EVENTS];
     debug_frame Frames[MAX_DEBUG_FRAMES];
+
+    debug_persistent_event *PersistentEventHash;
+
+    loaded_font Font;
 };
 
 global_variable debug_state *GlobalDebugState;
 
 inline debug_event *
-NextDebugEvent(debug_state *DebugState)
+NextDebugEvent()
 {
     Assert(GlobalDebugState->EventCount < ArrayCount(GlobalDebugState->Events));
     debug_event *Result = GlobalDebugState->Events + GlobalDebugState->EventCount++;
@@ -105,7 +163,7 @@ struct debug_timer
 {
     debug_timer(char *FileInit, u32 LineInit, char *NameInit)
     {
-        debug_event *Event = NextDebugEvent(GlobalDebugState);
+        debug_event *Event = NextDebugEvent();
         Event->Type = DebugEventType_CodeBegin;
         Event->Value_u64 = __rdtsc();
         Event->File = FileInit;
@@ -114,9 +172,24 @@ struct debug_timer
     }
     ~debug_timer(void)
     {
-        debug_event *Event = NextDebugEvent(GlobalDebugState);
+        debug_event *Event = NextDebugEvent();
         Event->Type = DebugEventType_CodeEnd;
         Event->Value_u64 = __rdtsc();
+    }
+};
+
+struct debug_group
+{
+    debug_group(char *GUID)
+    {
+        debug_event *Event = NextDebugEvent();
+        Event->Type = DebugEventType_GroupBegin;
+        Event->Name = GUID;
+    }
+    ~debug_group(void)
+    {
+        debug_event *Event = NextDebugEvent();
+        Event->Type = DebugEventType_GroupEnd;
     }
 };
 
@@ -125,30 +198,48 @@ struct debug_timer
 #define TIMED_BLOCK(Name) TIMED_BLOCK_(Name, __FILE__, __LINE__, __COUNTER__)
 #define FRAME_MARKER(FrameSeconds)                                      \
     {                                                                   \
-        debug_event *Event = NextDebugEvent(GlobalDebugState);          \
+        debug_event *Event = NextDebugEvent();          \
         Event->Type = DebugEventType_FrameMarker;                       \
         Event->ElapsedSeconds = FrameSeconds;                           \
         Event->Value_u64 = __rdtsc();                                   \
     }
-inline void
-LogDebugValue(char *Name, v2 Value)
-{
-    debug_event *Event = NextDebugEvent(GlobalDebugState);
-    Event->Type = DebugEventType_v2;
-    Event->Name = Name;
-    Event->Value_v2 = Value;
-}
-#define DEBUG_GROUP(NameInit)                               \
-    local_persist b32 NameInit = false;                     \
-    debug_event *Event = NextDebugEvent(GlobalDebugState);  \
-    Event->Type = DebugEventType_Group;                     \
-    Event->Name = #NameInit;                                \
-    Event->Value_b32 = NameInit;
-#define DEBUG_NAME(NameInit)                                            \
-    debug_event *Event = NextDebugEvent(GlobalDebugState);              \
-    Event->Type = DebugEventType_Name;                                  \
+
+#define DEBUG_GROUP__(Name, File, Line, Counter) debug_group Group_##Counter(Name##"|"##File##"|"###Line)
+#define DEBUG_GROUP_(Name, File, Line, Counter) DEBUG_GROUP__(Name, File, Line, Counter)
+#define DEBUG_GROUP(Name) DEBUG_GROUP_(Name, __FILE__, __LINE__, __COUNTER__)
+
+#define DEBUG_NAME(NameInit)                    \
+    debug_event *Event = NextDebugEvent();      \
+    Event->Type = DebugEventType_Name;          \
     Event->Name = #NameInit;                                                 
-#define DEBUG_VALUE(NameInit, Value) LogDebugValue(#NameInit, Value)
+
+#define LOG_DEBUG_TYPE(TypeInit)                    \
+    inline void                                     \
+    LogDebugValue(char *Name, TypeInit Value)       \
+    {                                               \
+        debug_event *Event = NextDebugEvent();      \
+        Event->Name = Name;                         \
+        Event->Type = DebugEventType_##TypeInit;    \
+        Event->Value_##TypeInit = Value;            \
+    }
+
+LOG_DEBUG_TYPE(v2)
+LOG_DEBUG_TYPE(r32)
+LOG_DEBUG_TYPE(b32)
+     
+#define DEBUG_VALUE(Name, Value) LogDebugValue(#Name, Value);
+
+#define COLLATE_DEBUG_TYPE(TypeInit)                                    \
+    case(DebugEventType_##TypeInit):                                    \
+    {                                                                   \
+        debug_node *Node = AllocateDebugNode(Frame, Event->Type, Event->Name); \
+        Node->Value_##TypeInit = Event->Value_##TypeInit;               \
+    } break;
+#define COLLATE_DEBUG_TYPES(Frame, Event)       \
+    COLLATE_DEBUG_TYPE(v2)                      \
+    COLLATE_DEBUG_TYPE(r32)                     \
+    COLLATE_DEBUG_TYPE(b32)                     \
+
 #else
 #define TIMED_BLOCK__(...)
 #define TIMED_BLOCK_(...)
@@ -156,6 +247,7 @@ LogDebugValue(char *Name, v2 Value)
 #define FRAME_MARKER(...)
 #define DEBUG_GROUP(...)
 #define DEBUG_NAME(...)
+#define DEBUG_VALUE(...)
 #endif
 
 #define TROIDS_DEBUG_H

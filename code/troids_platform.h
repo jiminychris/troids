@@ -13,6 +13,7 @@
 #define global_variable static
 #define local_persist static
 #define internal static
+#define introspect
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -240,7 +241,6 @@ struct game_memory
 #if TROIDS_INTERNAL
     u64 DebugMemorySize;
     void *DebugMemory;
-    loaded_font DebugFont;
 #endif
 
     platform_read_file *PlatformReadFile;
@@ -369,7 +369,7 @@ struct loaded_obj
     obj_face *Faces;
 };
 
-struct game_button
+introspect struct game_button
 {
     b32 EndedDown;
     u32 HalfTransitionCount;
