@@ -6,59 +6,17 @@
    $Notice: $
    ======================================================================== */
 
-inline debug_node *
-AllocateDebugNode(debug_frame *Frame, debug_event_type Type)
-{
-    memory_arena *DebugArena = &GlobalDebugState->Arena;
-    debug_node *Node = PushStruct(DebugArena, debug_node);
-    if(!Frame->CurrentNode)
-    {
-        Frame->FirstNode = Node;
-        Node->Parent = 0;
-    }
-    else if((Frame->CurrentNode->Type == DebugEventType_GroupBegin ||
-             Frame->CurrentNode->Type == DebugEventType_Summary) &&
-            !Frame->CurrentNode->Child)
-    {
-        Frame->CurrentNode->Child = Node;
-        Node->Parent = Frame->CurrentNode;
-    }
-    else
-    {
-        Frame->CurrentNode->Next = Node;
-        Node->Parent = Frame->CurrentNode->Parent;
-    }
-    Node->Type = Type;
-
-    Node->Next = Node->Child = 0;
-    Frame->CurrentNode = Node;
-
-    return(Node);
-}
-
-inline debug_node *
-AllocateDebugNode(debug_frame *Frame, debug_event_type Type, char *GUID)
-{
-    debug_node *Node = AllocateDebugNode(Frame, Type);
-    Node->GUID = GUID;
-
-    return(Node);
-}
-
-struct debug_persistent_hash_result
+struct debug_node_hash_result
 {
     u32 NameLength;
-    debug_persistent_event *Event;
+    u32 HashValue;
 };
 
-internal debug_persistent_hash_result
-GetPersistentEvent(char *GUID)
+internal debug_node_hash_result
+HashNode(char *GUID)
 {
-    // TODO(chris): Pass in sub arena instead?
-    memory_arena *Arena = &GlobalDebugState->Arena;
-
-    debug_persistent_hash_result Result = {};
-    u32 HashValue = 0;
+    Assert(GUID);
+    debug_node_hash_result Result = {};
     u32 PipeCount = 0;
     for(char *At = GUID;
         *At;
@@ -72,37 +30,107 @@ GetPersistentEvent(char *GUID)
                 Result.NameLength = (u32)(At - GUID);
             }
         }
-        HashValue += HashValue*65521 + *At;
+        Result.HashValue += Result.HashValue*65521 + *At;
     }
-    u32 Index = HashValue & (ArrayCount(GlobalDebugState->PersistentEventHash) - 1);
-    Assert(Index < ArrayCount(GlobalDebugState->PersistentEventHash));
-    debug_persistent_event *FirstInHash = GlobalDebugState->PersistentEventHash[Index];
-    for(debug_persistent_event *Chain = FirstInHash;
+    return(Result);
+}
+
+inline debug_node_hash_result
+HashNode(debug_node *Node)
+{
+    Assert(Node);
+    debug_node_hash_result Result = HashNode(Node->GUID);
+    return(Result);
+}
+
+inline u32
+GetNodeNameLength(debug_node *Node)
+{
+    u32 Result = HashNode(Node).NameLength;
+
+    return(Result);
+}
+
+internal debug_node *
+GetNode(u32 HashCount, debug_node **NodeHash, char *GUID, debug_event_type Type)
+{
+    debug_node *Result = 0;
+    
+    // TODO(chris): Pass in sub arena instead?
+    memory_arena *Arena = &GlobalDebugState->Arena;
+
+    u32 HashValue = HashNode(GUID).HashValue;
+    u32 Index = HashValue & (HashCount - 1);
+    Assert(Index < HashCount);
+
+    debug_node *FirstInHash = NodeHash[Index];
+    for(debug_node *Chain = FirstInHash;
         Chain;
         Chain = Chain->NextInHash)
     {
         if(StringsMatch(GUID, Chain->GUID))
         {
-            Result.Event = Chain;
+            Result = Chain;
             break;
         }
     }
-    if(!Result.Event)
+    if(!Result)
     {
-        if(GlobalDebugState->FirstFreePersistentEvent)
+        if(GlobalDebugState->FirstFreeNode)
         {
-            Result.Event = GlobalDebugState->FirstFreePersistentEvent;
-            GlobalDebugState->FirstFreePersistentEvent = Result.Event->NextFree;
+            Result = GlobalDebugState->FirstFreeNode;
+            GlobalDebugState->FirstFreeNode = Result->NextFree;
         }
         else
         {
-            Result.Event = PushStruct(Arena, debug_persistent_event, PushFlag_Zero);
+            Result = PushStruct(Arena, debug_node, PushFlag_Zero);
         }
+        Result->Type = Type;
         // TODO(chris): Does this need to be copied? Probably only if it's not a literal.
-        Result.Event->GUID = GUID;
-        Result.Event->NextInHash = FirstInHash;
-        GlobalDebugState->PersistentEventHash[Index] = Result.Event;
+        Result->GUID = GUID;
+        Result->NextInHash = FirstInHash;
+        NodeHash[Index] = Result;
     }
+    return(Result);
+}
+
+inline debug_node *
+GetNode(u32 HashCount, debug_node **NodeHash, char *GUID)
+{
+    debug_node *Result = GetNode(HashCount, NodeHash, GUID, DebugEventType_Name);
+
+    return(Result);
+}
+
+inline debug_node *
+GetNode(u32 HashCount, debug_node **NodeHash, debug_event *Event)
+{
+    debug_node *Result = GetNode(HashCount, NodeHash, Event->Name, Event->Type);
+
+    return(Result);
+}
+
+inline debug_node *
+GetNode(debug_frame *Frame, char *GUID)
+{
+    debug_node *Result = GetNode(ArrayCount(Frame->NodeHash), Frame->NodeHash, GUID);
+
+    return(Result);
+}
+
+inline debug_node *
+GetNode(debug_frame *Frame, debug_event *Event)
+{
+    debug_node *Result = GetNode(ArrayCount(Frame->NodeHash), Frame->NodeHash, Event);
+
+    return(Result);
+}
+
+inline debug_node *
+GetNode(debug_event *Event)
+{
+    debug_node *Result = GetNode(ArrayCount(GlobalDebugState->NodeHash), GlobalDebugState->NodeHash, Event);
+
     return(Result);
 }
 
@@ -112,34 +140,33 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
 {
     u32 TextLength;
     char Text[256];
+    if(!Input->LeftMouse.EndedDown)
+    {
+        GlobalDebugState->HotNode = 0;
+    }
+    u32 NameLength = GetNodeNameLength(Node);
     switch(Node->Type)
     {
-
+        // TODO(chris): Better way to do this?
         case DebugEventType_Summary:
         case DebugEventType_GroupBegin:
         {
             rectangle2 HitBox;
-            debug_persistent_event *Event;
             if(Node->Type == DebugEventType_GroupBegin)
             {
-                debug_persistent_hash_result HashResult = GetPersistentEvent(Node->GUID);
-                Event = HashResult.Event;
-                HitBox = DrawText(RenderBuffer, Layout, HashResult.NameLength, Node->GUID);
+                HitBox = DrawText(RenderBuffer, Layout, NameLength, Node->GUID);
             }
             else
             {
-                debug_persistent_hash_result HashResult = GetPersistentEvent("Summary");
-                Event = HashResult.Event;
                 TextLength = _snprintf_s(Text, sizeof(Text), "Frame time: %fms",
                                          Frame->ElapsedSeconds*1000);
                 HitBox = DrawText(RenderBuffer, Layout, TextLength, Text);
             }
-        
             if(Inside(HitBox, Input->MousePosition) && WentDown(Input->LeftMouse))
             {
-                Event->Value_b32 = !Event->Value_b32;
+                Node->Value_b32 = !Node->Value_b32;
             }
-            b32 Expanded = Event->Value_b32;
+            b32 Expanded = Node->Value_b32;
             if(Node->Child && Expanded)
             {
                 r32 XPop = Layout->P.x;
@@ -151,21 +178,30 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
 
         case DebugEventType_Name:
         {
-            TextLength = _snprintf_s(Text, sizeof(Text), "%s", Node->Name);
-            DrawText(RenderBuffer, Layout, TextLength, Text);
+            DrawText(RenderBuffer, Layout, NameLength, Node->Name);
         } break;
 
         case DebugEventType_v2:
         {
-            TextLength = _snprintf_s(Text, sizeof(Text), "%s: <%f, %f>", Node->Name,
-                                     Node->Value_v2.x, Node->Value_v2.y);
+            debug_node *FrameNode = GetNode(Frame, Node->GUID);
+            TextLength = _snprintf_s(Text, sizeof(Text), "%.*s: <%f, %f>", NameLength, Node->Name,
+                                     FrameNode->Value_v2.x, FrameNode->Value_v2.y);
             DrawText(RenderBuffer, Layout, TextLength, Text);
         } break;
 
         case DebugEventType_b32:
         {
-            TextLength = _snprintf_s(Text, sizeof(Text), "%s: %s", Node->Name,
-                                     Node->Value_b32 ? "true" : "false");
+            debug_node *FrameNode = GetNode(Frame, Node->GUID);
+            TextLength = _snprintf_s(Text, sizeof(Text), "%.*s: %s", NameLength, Node->Name,
+                                     FrameNode->Value_b32 ? "true" : "false");
+            DrawText(RenderBuffer, Layout, TextLength, Text);
+        } break;
+
+        case DebugEventType_r32:
+        {
+            debug_node *FrameNode = GetNode(Frame, Node->GUID);
+            TextLength = _snprintf_s(Text, sizeof(Text), "%.*s: %f", NameLength, Node->Name,
+                                     FrameNode->Value_r32);
             DrawText(RenderBuffer, Layout, TextLength, Text);
         } break;
 
@@ -176,6 +212,11 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
             r32 Descent = (Layout->Font->Height - Layout->Font->Ascent)*Layout->Scale;
             r32 Height = Ascent + Descent;
             r32 LineAdvance = Layout->Font->LineAdvance*Layout->Scale;
+
+            if(GlobalDebugState->HotNode == Node)
+            {
+                int A = 0;
+            }
             for(u32 FrameIndex = 0;
                 FrameIndex < ArrayCount(GlobalDebugState->Frames);
                 ++FrameIndex)
@@ -194,8 +235,13 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
                 rectangle2 HitBox = PushRectangle(RenderBuffer,
                                                   V3(Layout->P.x, Layout->P.y - Descent, HUD_Z),
                                                   V2(Width, Height), Color);
-                if(Inside(HitBox, Input->MousePosition) && Input->LeftMouse.EndedDown)
+                if((GlobalDebugState->HotNode == Node) && InsideX(HitBox, Input->MousePosition))
                 {
+                    GlobalDebugState->ViewingFrameIndex = FrameIndex;
+                }
+                else if(WentDown(Input->LeftMouse) && Inside(HitBox, Input->MousePosition))
+                {
+                    GlobalDebugState->HotNode = Node;
                     GlobalDebugState->ViewingFrameIndex = FrameIndex;
                 }
                 Layout->P.x += Width;
@@ -302,6 +348,23 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
     }
 }
 
+inline void
+LinkNode(debug_node *Node, debug_node **Prev, debug_node **GroupBeginStack, u32 GroupBeginStackCount)
+{
+    if(GroupBeginStackCount)
+    {
+        debug_node *Parent = GroupBeginStack[GroupBeginStackCount-1];
+        if(!Parent->Child)
+        {
+            Parent->Child = Node;
+        }
+    }
+    if(*Prev) (*Prev)->Next = Node;
+    *Prev = Node;
+    Node->Next = Node->Child = 0;
+
+}
+
 extern "C" DEBUG_COLLATE(DebugCollate)
 {
     debug_frame *Frame = GlobalDebugState->Frames + GlobalDebugState->FrameIndex;
@@ -318,8 +381,12 @@ extern "C" DEBUG_COLLATE(DebugCollate)
     temporary_memory RenderMemory = BeginTemporaryMemory(&TranState->RenderBuffer.Arena);
     // TODO(chris): Handle events that cross a frame boundary (i.e. threads)
     u32 CodeBeginStackCount = 0;
-    debug_event CodeBeginStack[MAX_DEBUG_EVENTS];
-
+    u32 CodeBeginStack[MAX_DEBUG_EVENTS];
+    
+    u32 GroupBeginStackCount = 0;
+    debug_node *GroupBeginStack[MAX_DEBUG_EVENTS];
+    debug_node *Prev = &GlobalDebugState->NodeSentinel;
+    
     for(u32 EventIndex = 0;
         EventIndex < GlobalDebugState->EventCount;
         ++EventIndex)
@@ -329,18 +396,17 @@ extern "C" DEBUG_COLLATE(DebugCollate)
         {
             case(DebugEventType_CodeBegin):
             {
-                debug_event *StackEvent = CodeBeginStack + CodeBeginStackCount;
-                *StackEvent = *Event;
-                ++CodeBeginStackCount;
+                Assert(CodeBeginStackCount < ArrayCount(CodeBeginStack));
+                CodeBeginStack[CodeBeginStackCount++] = EventIndex;
             } break;
 
             case(DebugEventType_CodeEnd):
             {
                 if(!GlobalDebugState->Paused)
                 {
-                    Assert(CodeBeginStackCount > 0);
-                    --CodeBeginStackCount;
-                    debug_event *BeginEvent = CodeBeginStack + CodeBeginStackCount;
+                    Assert(CodeBeginStackCount);
+                    debug_event *BeginEvent = (GlobalDebugState->Events +
+                                               CodeBeginStack[--CodeBeginStackCount]);
 
                     // TODO(chris): This needs to get freed eventually.
                     profiler_element *Element = PushStruct(DebugArena, profiler_element);
@@ -373,45 +439,52 @@ extern "C" DEBUG_COLLATE(DebugCollate)
                     // NOTE(chris): Trick only works if MAX_DEBUG_FRAMES is a power of two.
                     GlobalDebugState->FrameIndex = (GlobalDebugState->FrameIndex+1)&(MAX_DEBUG_FRAMES-1);
                     Frame = GlobalDebugState->Frames + GlobalDebugState->FrameIndex;
+                    // TODO(chris): Recycle these nodes.
+                    for(u32 NodeIndex = 0;
+                        NodeIndex < ArrayCount(Frame->NodeHash);
+                        ++NodeIndex)
+                    {
+                        Frame->NodeHash[NodeIndex] = 0;
+                    }
                     Frame->BeginTicks = Event->Value_u64;
                     Frame->LastElement = 0;
                 }
-                Frame->CurrentNode = Frame->FirstNode =
-                    AllocateDebugNode(Frame, DebugEventType_Summary);
+                GroupBeginStackCount = 0;
+                Prev = &GlobalDebugState->NodeSentinel;
             } break;
 
             case(DebugEventType_GroupBegin):
-            case(DebugEventType_Name):
+            case(DebugEventType_Summary):
             {
-                debug_node *Node = AllocateDebugNode(Frame, Event->Type, Event->Name);
+                debug_node *Node = GetNode(Event);
+                LinkNode(Node, &Prev, GroupBeginStack, GroupBeginStackCount);
+                Prev = 0;
+
+                Assert(GroupBeginStackCount < ArrayCount(GroupBeginStack));
+                GroupBeginStack[GroupBeginStackCount++] = Node;
             } break;
 
             case(DebugEventType_GroupEnd):
             {
-                Assert(Frame->CurrentNode);
-                Frame->CurrentNode = Frame->CurrentNode->Parent;
+                Assert(GroupBeginStackCount);
+                Prev = GroupBeginStack[--GroupBeginStackCount];
             } break;
 
-            case(DebugEventType_Profiler):
-            case(DebugEventType_FrameTimeline):
-            {
-                debug_node *Node = AllocateDebugNode(Frame, Event->Type);
-            } break;
-
-            COLLATE_DEBUG_TYPES(Frame, Event)
+            COLLATE_BLANK_TYPES;
+            COLLATE_VALUE_TYPES;
         }
     }
     GlobalDebugState->EventCount = 0;
 
     Frame = GlobalDebugState->Frames + GlobalDebugState->ViewingFrameIndex;
-    if(Frame->FirstNode)
+    if(GlobalDebugState->NodeSentinel.Next)
     {
         text_layout Layout;
         Layout.Font = &GlobalDebugState->Font;
         Layout.Scale = 0.5f;
         Layout.P = V2(0, BackBuffer->Height - Layout.Font->Ascent*Layout.Scale);
         Layout.Color = V4(1, 1, 1, 1);
-        DrawNodes(RenderBuffer, &Layout, Frame, Frame->FirstNode, Input);
+        DrawNodes(RenderBuffer, &Layout, Frame, GlobalDebugState->NodeSentinel.Next, Input);
     }
 
     RenderBufferToBackBuffer(RenderBuffer, BackBuffer);

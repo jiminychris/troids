@@ -59,6 +59,8 @@ struct debug_event
     char *Name;
 };
 
+// TODO(chris): All node info should be persistent.
+#if 0
 struct debug_persistent_event
 {
     union
@@ -84,6 +86,7 @@ struct debug_persistent_event
         debug_persistent_event *NextFree;
     };
 };
+#endif
 
 struct profiler_element
 {
@@ -121,8 +124,13 @@ struct debug_node
     };
     
     debug_node *Next;
-    debug_node *Parent;
     debug_node *Child;
+
+    union
+    {
+        debug_node *NextInHash;
+        debug_node *NextFree;
+    };
 };
 
 #define MAX_DEBUG_FRAMES 128
@@ -132,8 +140,9 @@ struct debug_frame
     u64 BeginTicks;
     u64 EndTicks;
 
-    debug_node *FirstNode;
-    debug_node *CurrentNode;
+    // NOTE(chris): Per-frame hash for nodes.
+    // TODO(chris): These need to be freed when frame is freed.
+    debug_node *NodeHash[256];
     
     profiler_element *FirstElement;
     profiler_element *LastElement;
@@ -151,8 +160,11 @@ struct debug_state
     debug_event Events[MAX_DEBUG_EVENTS];
     debug_frame Frames[MAX_DEBUG_FRAMES];
 
-    debug_persistent_event *PersistentEventHash[256];
-    debug_persistent_event *FirstFreePersistentEvent;
+    debug_node NodeSentinel;
+    debug_node *HotNode;
+
+    debug_node *NodeHash[256];
+    debug_node *FirstFreeNode;
 
     loaded_font Font;
 };
@@ -212,9 +224,13 @@ struct debug_group
         Event->Value_u64 = __rdtsc();                                   \
     }
 
-#define DEBUG_GROUP__(Name, File, Line, Counter) debug_group Group_##Counter(Name##"|"##File##"|"###Line)
-#define DEBUG_GROUP_(Name, File, Line, Counter) DEBUG_GROUP__(Name, File, Line, Counter)
-#define DEBUG_GROUP(Name) DEBUG_GROUP_(Name, __FILE__, __LINE__, __COUNTER__)
+#define DEBUG_GUID__(Name, File, Line) Name##"|"##File##"|"###Line
+#define DEBUG_GUID_(Name, File, Line) DEBUG_GUID__(Name, File, Line)
+#define DEBUG_GUID(Name) DEBUG_GUID_(Name, __FILE__, __LINE__)
+
+#define DEBUG_GROUP__(Name, Counter) debug_group Group_##Counter(DEBUG_GUID(Name))
+#define DEBUG_GROUP_(Name, Counter) DEBUG_GROUP__(Name, Counter)
+#define DEBUG_GROUP(Name) DEBUG_GROUP_(Name, __COUNTER__)
 
 #define DEBUG_NAME(NameInit)                    \
     debug_event *Event = NextDebugEvent();      \
@@ -235,27 +251,38 @@ LOG_DEBUG_TYPE(v2)
 LOG_DEBUG_TYPE(r32)
 LOG_DEBUG_TYPE(b32)
      
-#define DEBUG_VALUE(Name, Value) LogDebugValue(#Name, Value);
+#define DEBUG_VALUE(Name, Value) LogDebugValue(DEBUG_GUID(Name), Value);
 
-inline void
-LogDebugFeature__(debug_event_type Type)
-{
-    debug_event *Event = NextDebugEvent();
-    Event->Type = Type;
-}
-#define DEBUG_PROFILER(...) LogDebugFeature__(DebugEventType_Profiler);
-#define DEBUG_FRAME_TIMELINE(...) LogDebugFeature__(DebugEventType_FrameTimeline);
+#define LOG_DEBUG_FEATURE(TypeInit)             \
+    {                                           \
+        debug_event *Event = NextDebugEvent();  \
+        Event->Type = TypeInit;                 \
+        Event->Name = DEBUG_GUID(#TypeInit);     \
+    }
+#define DEBUG_PROFILER(...) LOG_DEBUG_FEATURE(DebugEventType_Profiler)
+#define DEBUG_FRAME_TIMELINE(...) LOG_DEBUG_FEATURE(DebugEventType_FrameTimeline)
+#define DEBUG_SUMMARY(...) LOG_DEBUG_FEATURE(DebugEventType_Summary)
 
-#define COLLATE_DEBUG_TYPE(TypeInit)                                    \
+#define COLLATE_BLANK_TYPES                                             \
+    case(DebugEventType_Name):                                          \
+    case(DebugEventType_Profiler):                                      \
+    case(DebugEventType_FrameTimeline):                                 \
+    {                                                                   \
+        debug_node *Node = GetNode(Event);                              \
+        LinkNode(Node, &Prev, GroupBeginStack, GroupBeginStackCount);   \
+    } break;
+#define COLLATE_VALUE_TYPE(TypeInit)                                    \
     case(DebugEventType_##TypeInit):                                    \
     {                                                                   \
-        debug_node *Node = AllocateDebugNode(Frame, Event->Type, Event->Name); \
-        Node->Value_##TypeInit = Event->Value_##TypeInit;               \
-    } break;
-#define COLLATE_DEBUG_TYPES(Frame, Event)       \
-    COLLATE_DEBUG_TYPE(v2)                      \
-    COLLATE_DEBUG_TYPE(r32)                     \
-    COLLATE_DEBUG_TYPE(b32)                     \
+        debug_node *Node = GetNode(Event);                              \
+        LinkNode(Node, &Prev, GroupBeginStack, GroupBeginStackCount);   \
+        debug_node *FrameNode = GetNode(Frame, Event);                  \
+        FrameNode->Value_##TypeInit = Event->Value_##TypeInit;          \
+    }
+#define COLLATE_VALUE_TYPES                     \
+    COLLATE_VALUE_TYPE(v2)                      \
+    COLLATE_VALUE_TYPE(r32)                     \
+    COLLATE_VALUE_TYPE(b32)
 
 #else
 #define TIMED_BLOCK__(...)

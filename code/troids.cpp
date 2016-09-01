@@ -248,45 +248,27 @@ LoadObj(char *FileName, memory_arena *Arena)
     return(Result);
 }
 
-inline void
-LogController(game_controller *Controller)
-{
-    DEBUG_VALUE(LeftStick, Controller->LeftStick);
-    DEBUG_VALUE(RightStick, Controller->RightStick);
-    DEBUG_VALUE(LeftTrigger, Controller->LeftTrigger);
-    DEBUG_VALUE(RightTrigger, Controller->RightTrigger);
-#if 0
-    DEBUG_VALUE(ActionUp, Controller->ActionUp);
-    DEBUG_VALUE(ActionLeft, Controller->ActionLeft);
-    DEBUG_VALUE(ActionDown, Controller->ActionDown);
-    DEBUG_VALUE(ActionRight, Controller->ActionRight);
-    DEBUG_VALUE(LeftShoulder1, Controller->LeftShoulder1);
-    DEBUG_VALUE(RightShoulder1, Controller->RightShoulder1);
-    DEBUG_VALUE(LeftShoulder2, Controller->LeftShoulder2);
-    DEBUG_VALUE(RightShoulder2, Controller->RightShoulder2);
-    DEBUG_VALUE(Select, Controller->Select);
-    DEBUG_VALUE(Start, Controller->Start);
-    DEBUG_VALUE(LeftClick, Controller->LeftClick);
-    DEBUG_VALUE(RightClick, Controller->RightClick);
-    DEBUG_VALUE(Power, Controller->Power);
-    DEBUG_VALUE(CenterClick, Controller->CenterClick);
-#else
-    DEBUG_VALUE(ActionUp, Controller->ActionUp.EndedDown);
-    DEBUG_VALUE(ActionLeft, Controller->ActionLeft.EndedDown);
-    DEBUG_VALUE(ActionDown, Controller->ActionDown.EndedDown);
-    DEBUG_VALUE(ActionRight, Controller->ActionRight.EndedDown);
-    DEBUG_VALUE(LeftShoulder1, Controller->LeftShoulder1.EndedDown);
-    DEBUG_VALUE(RightShoulder1, Controller->RightShoulder1.EndedDown);
-    DEBUG_VALUE(LeftShoulder2, Controller->LeftShoulder2.EndedDown);
-    DEBUG_VALUE(RightShoulder2, Controller->RightShoulder2.EndedDown);
-    DEBUG_VALUE(Select, Controller->Select.EndedDown);
-    DEBUG_VALUE(Start, Controller->Start.EndedDown);
-    DEBUG_VALUE(LeftClick, Controller->LeftClick.EndedDown);
-    DEBUG_VALUE(RightClick, Controller->RightClick.EndedDown);
-    DEBUG_VALUE(Power, Controller->Power.EndedDown);
-    DEBUG_VALUE(CenterClick, Controller->CenterClick.EndedDown);
-#endif
-}
+#define LOG_CONTROLLER(Controller)                                      \
+    {                                                                   \
+        DEBUG_VALUE("LeftStick", (Controller)->LeftStick);              \
+        DEBUG_VALUE("RightStick", (Controller)->RightStick);            \
+        DEBUG_VALUE("LeftTrigger", (Controller)->LeftTrigger);          \
+        DEBUG_VALUE("RightTrigger", (Controller)->RightTrigger);        \
+        DEBUG_VALUE("ActionUp", (Controller)->ActionUp.EndedDown);      \
+        DEBUG_VALUE("ActionLeft", (Controller)->ActionLeft.EndedDown);  \
+        DEBUG_VALUE("ActionDown", (Controller)->ActionDown.EndedDown);  \
+        DEBUG_VALUE("ActionRight", (Controller)->ActionRight.EndedDown); \
+        DEBUG_VALUE("LeftShoulder1", (Controller)->LeftShoulder1.EndedDown); \
+        DEBUG_VALUE("RightShoulder1", (Controller)->RightShoulder1.EndedDown); \
+        DEBUG_VALUE("LeftShoulder2", (Controller)->LeftShoulder2.EndedDown); \
+        DEBUG_VALUE("RightShoulder2", (Controller)->RightShoulder2.EndedDown); \
+        DEBUG_VALUE("Select", (Controller)->Select.EndedDown);          \
+        DEBUG_VALUE("Start", (Controller)->Start.EndedDown);            \
+        DEBUG_VALUE("LeftClick", (Controller)->LeftClick.EndedDown);    \
+        DEBUG_VALUE("RightClick", (Controller)->RightClick.EndedDown);  \
+        DEBUG_VALUE("Power", (Controller)->Power.EndedDown);            \
+        DEBUG_VALUE("CenterClick", (Controller)->CenterClick.EndedDown); \
+    }
 
 extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 {
@@ -336,25 +318,27 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     temporary_memory RenderMemory = BeginTemporaryMemory(&TranState->RenderBuffer.Arena);
     PushClear(&TranState->RenderBuffer, V4(0.1f, 0.1f, 0.1f, 1.0f));
 
+    DEBUG_SUMMARY();
     {DEBUG_GROUP("Profiler");
+        DEBUG_NAME("Hello world!");
         DEBUG_FRAME_TIMELINE();
         DEBUG_PROFILER();
     }
     {DEBUG_GROUP("Controllers");
         {DEBUG_GROUP("Keyboard");
-            LogController(&Input->Keyboard);
+            LOG_CONTROLLER(&Input->Keyboard);
         }
         {DEBUG_GROUP("Game Pad 0");
-            LogController(Input->GamePads + 0);
+            LOG_CONTROLLER(Input->GamePads + 0);
         }
         {DEBUG_GROUP("Game Pad 1");
-            LogController(Input->GamePads + 1);
+            LOG_CONTROLLER(Input->GamePads + 1);
         }
         {DEBUG_GROUP("Game Pad 2");
-            LogController(Input->GamePads + 2);
+            LOG_CONTROLLER(Input->GamePads + 2);
         }
         {DEBUG_GROUP("Game Pad 3");
-            LogController(Input->GamePads + 3);
+            LOG_CONTROLLER(Input->GamePads + 3);
         }
     }
 
