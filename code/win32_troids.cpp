@@ -363,7 +363,7 @@ int WinMain(HINSTANCE Instance,
     WindowClass.cbWndExtra = 0;
     WindowClass.hInstance = Instance;
     WindowClass.hIcon = 0;
-    WindowClass.hCursor = 0;
+    WindowClass.hCursor = LoadCursor(0, IDC_ARROW);
     WindowClass.hbrBackground = 0;
     WindowClass.lpszMenuName = 0;
     WindowClass.lpszClassName = "TroidsWindowClass";

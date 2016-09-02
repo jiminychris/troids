@@ -336,6 +336,16 @@ operator*(v4 A, r32 C)
     return(Result);
 }
 
+inline u32
+InvertColor(u32 PackedColor)
+{
+    u32 Result = (((255-((PackedColor >> 16) & 0xFF)) << 16) |
+                  ((255-((PackedColor >> 8) & 0xFF)) << 8) |
+                  ((255-((PackedColor >> 0) & 0xFF)) << 0) |
+                  (255 << 24));
+    return(Result);
+}
+
 inline rectangle2
 CenterDim(v2 Center, v2 Dim)
 {

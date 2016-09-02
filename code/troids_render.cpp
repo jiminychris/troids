@@ -125,6 +125,7 @@ DrawButton(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, cha
 }
 
 #pragma optimize("gts", on)
+// TODO(chris): SIMD this!
 internal void
 RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAxis, v2 YAxis,
              r32 Scale, v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f))
@@ -215,6 +216,7 @@ RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 X
     }
 }
 
+// TODO(chris): SIMD this!
 internal void
 RenderRectangle(game_backbuffer *BackBuffer, rectangle2 Rect, v4 Color)
 {
@@ -226,7 +228,7 @@ RenderRectangle(game_backbuffer *BackBuffer, rectangle2 Rect, v4 Color)
 
     Color.rgb *= 255.0f;
 
-    if(Color.a == 1.0f)
+    if(Color.a == 1.0f || IsInvertedColor(Color))
     {
         u32 DestColor = ((RoundU32(Color.r) << 16) |
                          (RoundU32(Color.g) << 8) |
@@ -242,6 +244,10 @@ RenderRectangle(game_backbuffer *BackBuffer, rectangle2 Rect, v4 Color)
                 X < XMax;
                 ++X)
             {
+                if(IsInvertedColor(Color))
+                {
+                    DestColor = InvertColor(*Dest);
+                }
                 *Dest++ = DestColor;
             }
             PixelRow += BackBuffer->Pitch;

@@ -21,6 +21,7 @@ enum debug_event_type
     DebugEventType_Summary,
     DebugEventType_Profiler,
     DebugEventType_FrameTimeline,
+    DebugEventType_DebugMemory,
     DebugEventType_b32,
     DebugEventType_u8,
     DebugEventType_u16,
@@ -33,6 +34,7 @@ enum debug_event_type
     DebugEventType_r32,
     DebugEventType_r64,
     DebugEventType_v2,
+    DebugEventType_memory_arena,
 };
 
 struct debug_event
@@ -54,6 +56,7 @@ struct debug_event
         r32 Value_r32;
         r64 Value_r64;
         v2 Value_v2;
+        memory_arena Value_memory_arena;
     };
     char *File;
     char *Name;
@@ -95,8 +98,12 @@ struct profiler_element
     u64 EndTicks;
     char *File;
     char *Name;
-    
-    profiler_element *Next;
+
+    union
+    {
+        profiler_element *Next;
+        profiler_element *NextFree;
+    };
 };
 
 struct debug_node
@@ -116,6 +123,7 @@ struct debug_node
         r32 Value_r32;
         r64 Value_r64;
         v2 Value_v2;
+        memory_arena Value_memory_arena;
     };
     union
     {
@@ -141,7 +149,6 @@ struct debug_frame
     u64 EndTicks;
 
     // NOTE(chris): Per-frame hash for nodes.
-    // TODO(chris): These need to be freed when frame is freed.
     debug_node *NodeHash[256];
     
     profiler_element *FirstElement;
@@ -165,6 +172,8 @@ struct debug_state
 
     debug_node *NodeHash[256];
     debug_node *FirstFreeNode;
+
+    profiler_element *FirstFreeProfilerElement;
 
     loaded_font Font;
 };
@@ -235,21 +244,7 @@ struct debug_group
 #define DEBUG_NAME(NameInit)                    \
     debug_event *Event = NextDebugEvent();      \
     Event->Type = DebugEventType_Name;          \
-    Event->Name = #NameInit;                                                 
-
-#define LOG_DEBUG_TYPE(TypeInit)                    \
-    inline void                                     \
-    LogDebugValue(char *Name, TypeInit Value)       \
-    {                                               \
-        debug_event *Event = NextDebugEvent();      \
-        Event->Name = Name;                         \
-        Event->Type = DebugEventType_##TypeInit;    \
-        Event->Value_##TypeInit = Value;            \
-    }
-
-LOG_DEBUG_TYPE(v2)
-LOG_DEBUG_TYPE(r32)
-LOG_DEBUG_TYPE(b32)
+    Event->Name = DEBUG_GUID(NameInit);                                                 
      
 #define DEBUG_VALUE(Name, Value) LogDebugValue(DEBUG_GUID(Name), Value);
 
@@ -259,14 +254,16 @@ LOG_DEBUG_TYPE(b32)
         Event->Type = TypeInit;                 \
         Event->Name = DEBUG_GUID(#TypeInit);     \
     }
-#define DEBUG_PROFILER(...) LOG_DEBUG_FEATURE(DebugEventType_Profiler)
-#define DEBUG_FRAME_TIMELINE(...) LOG_DEBUG_FEATURE(DebugEventType_FrameTimeline)
-#define DEBUG_SUMMARY(...) LOG_DEBUG_FEATURE(DebugEventType_Summary)
+#define DEBUG_PROFILER() LOG_DEBUG_FEATURE(DebugEventType_Profiler)
+#define DEBUG_FRAME_TIMELINE() LOG_DEBUG_FEATURE(DebugEventType_FrameTimeline)
+#define DEBUG_SUMMARY() LOG_DEBUG_FEATURE(DebugEventType_Summary)
+#define DEBUG_MEMORY() LOG_DEBUG_FEATURE(DebugEventType_DebugMemory)
 
 #define COLLATE_BLANK_TYPES                                             \
     case(DebugEventType_Name):                                          \
     case(DebugEventType_Profiler):                                      \
     case(DebugEventType_FrameTimeline):                                 \
+    case(DebugEventType_DebugMemory):                                   \
     {                                                                   \
         debug_node *Node = GetNode(Event);                              \
         LinkNode(Node, &Prev, GroupBeginStack, GroupBeginStackCount);   \
@@ -279,10 +276,24 @@ LOG_DEBUG_TYPE(b32)
         debug_node *FrameNode = GetNode(Frame, Event);                  \
         FrameNode->Value_##TypeInit = Event->Value_##TypeInit;          \
     }
+#define LOG_DEBUG_TYPE(TypeInit)                    \
+    inline void                                     \
+    LogDebugValue(char *Name, TypeInit Value)       \
+    {                                               \
+        debug_event *Event = NextDebugEvent();      \
+        Event->Name = Name;                         \
+        Event->Type = DebugEventType_##TypeInit;    \
+        Event->Value_##TypeInit = Value;            \
+    }
 #define COLLATE_VALUE_TYPES                     \
     COLLATE_VALUE_TYPE(v2)                      \
     COLLATE_VALUE_TYPE(r32)                     \
-    COLLATE_VALUE_TYPE(b32)
+    COLLATE_VALUE_TYPE(b32)                     \
+    COLLATE_VALUE_TYPE(memory_arena)
+LOG_DEBUG_TYPE(v2)
+LOG_DEBUG_TYPE(r32)
+LOG_DEBUG_TYPE(b32)
+LOG_DEBUG_TYPE(memory_arena)
 
 #else
 #define TIMED_BLOCK__(...)

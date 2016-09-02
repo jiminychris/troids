@@ -56,6 +56,14 @@ struct render_buffer
     memory_arena Arena;
 };
 
+#define INVERTED_COLOR V4(0, 0, 0, -REAL32_MAX)
+inline b32
+IsInvertedColor(v4 Color)
+{
+    b32 Result = (Color.a == -REAL32_MAX);
+    return(Result);
+}
+
 inline void
 PushBitmap(render_buffer *RenderBuffer, loaded_bitmap *Bitmap, v3 Origin, v2 XAxis, v2 YAxis,
            r32 Scale, v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f));

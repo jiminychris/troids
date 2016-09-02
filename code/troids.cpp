@@ -319,8 +319,11 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     PushClear(&TranState->RenderBuffer, V4(0.1f, 0.1f, 0.1f, 1.0f));
 
     DEBUG_SUMMARY();
+    DEBUG_MEMORY();
+    {DEBUG_GROUP("Memory");
+        DEBUG_VALUE("TranArena", TranState->TranArena);
+    }
     {DEBUG_GROUP("Profiler");
-        DEBUG_NAME("Hello world!");
         DEBUG_FRAME_TIMELINE();
         DEBUG_PROFILER();
     }
@@ -600,7 +603,11 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     }
 #endif
 
-    RenderBufferToBackBuffer(&TranState->RenderBuffer, BackBuffer);
+
+    {
+        TIMED_BLOCK(RenderGame);
+        RenderBufferToBackBuffer(&TranState->RenderBuffer, BackBuffer);
+    }
     EndTemporaryMemory(RenderMemory);
 }
 

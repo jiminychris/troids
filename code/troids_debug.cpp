@@ -181,6 +181,23 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
             DrawText(RenderBuffer, Layout, NameLength, Node->Name);
         } break;
 
+        case DebugEventType_DebugMemory:
+        {
+            TextLength = _snprintf_s(Text, sizeof(Text), "Debug Arena: %llu / %llu",
+                                     GlobalDebugState->Arena.Used,
+                                     GlobalDebugState->Arena.Size);
+            DrawText(RenderBuffer, Layout, TextLength, Text);
+        } break;
+
+        case DebugEventType_memory_arena:
+        {
+            debug_node *FrameNode = GetNode(Frame, Node->GUID);
+            TextLength = _snprintf_s(Text, sizeof(Text), "%.*s: %llu / %llu", NameLength, Node->Name,
+                                     FrameNode->Value_memory_arena.Used,
+                                     FrameNode->Value_memory_arena.Size);
+            DrawText(RenderBuffer, Layout, TextLength, Text);
+        } break;
+
         case DebugEventType_v2:
         {
             debug_node *FrameNode = GetNode(Frame, Node->GUID);
@@ -267,7 +284,8 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
 
             v2 TotalDim = V2(1900, 300);
             rectangle2 ProfileRect = TopLeftDim(V2(Layout->P.x, Layout->P.y), TotalDim);
-            PushRectangle(RenderBuffer, V3(ProfileRect.Min, HUD_Z), TotalDim, V4(0, 0, 0, 0.1f));
+            PushRectangle(RenderBuffer, V3(ProfileRect.Min, HUD_Z), TotalDim,
+                          INVERTED_COLOR);
             r32 InverseTotalCycles = 1.0f / (Frame->EndTicks - Frame->BeginTicks);
             for(profiler_element *Element = Frame->FirstElement;
                 Element;
@@ -279,7 +297,8 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
                 r32 Width = CyclesPassed*InverseTotalCycles*TotalDim.x;
                 v2 RegionDim = V2(Width, TotalDim.y);
                 rectangle2 RegionRect = TopLeftDim(V2(Left, ProfileRect.Max.y), RegionDim);
-                PushRectangle(RenderBuffer, V3(RegionRect.Min, HUD_Z+1.0f), RegionDim, Colors[ColorIndex++]);
+                PushRectangle(RenderBuffer, V3(RegionRect.Min, HUD_Z+1.0f), RegionDim,
+                              Colors[ColorIndex++]);
                 TextLength = _snprintf_s(Text, sizeof(Text), "%s %s %u %lu",
                                          Element->Name, Element->File,
                                          Element->Line, CyclesPassed);
@@ -367,6 +386,7 @@ LinkNode(debug_node *Node, debug_node **Prev, debug_node **GroupBeginStack, u32 
 
 extern "C" DEBUG_COLLATE(DebugCollate)
 {
+    TIMED_BLOCK(DebugCollation);
     debug_frame *Frame = GlobalDebugState->Frames + GlobalDebugState->FrameIndex;
     transient_state *TranState = (transient_state *)GameMemory->TemporaryMemory;
     if(!GlobalDebugState->IsInitialized)
@@ -409,7 +429,17 @@ extern "C" DEBUG_COLLATE(DebugCollate)
                                                CodeBeginStack[--CodeBeginStackCount]);
 
                     // TODO(chris): This needs to get freed eventually.
-                    profiler_element *Element = PushStruct(DebugArena, profiler_element);
+                    
+                    profiler_element *Element = GlobalDebugState->FirstFreeProfilerElement;
+                    if(Element)
+                    {
+                        GlobalDebugState->FirstFreeProfilerElement = Element->NextFree;
+                    }
+                    else
+                    {
+                        Element = PushStruct(DebugArena, profiler_element);
+                    }
+
                     if(Frame->LastElement)
                     {
                         Frame->LastElement = Frame->LastElement->Next = Element;
@@ -425,6 +455,7 @@ extern "C" DEBUG_COLLATE(DebugCollate)
                     Element->EndTicks = Event->Value_u64;
                     Element->File = BeginEvent->File;
                     Element->Name = BeginEvent->Name;
+//                    Element->Next = 0;
                 }
             } break;
 
@@ -439,12 +470,29 @@ extern "C" DEBUG_COLLATE(DebugCollate)
                     // NOTE(chris): Trick only works if MAX_DEBUG_FRAMES is a power of two.
                     GlobalDebugState->FrameIndex = (GlobalDebugState->FrameIndex+1)&(MAX_DEBUG_FRAMES-1);
                     Frame = GlobalDebugState->Frames + GlobalDebugState->FrameIndex;
-                    // TODO(chris): Recycle these nodes.
                     for(u32 NodeIndex = 0;
                         NodeIndex < ArrayCount(Frame->NodeHash);
                         ++NodeIndex)
                     {
+                        for(debug_node *Chain = Frame->NodeHash[NodeIndex];
+                            Chain;
+                            )
+                        {
+                            debug_node *Next = Chain->NextInHash;
+                            Chain->NextFree = GlobalDebugState->FirstFreeNode;
+                            GlobalDebugState->FirstFreeNode = Chain;
+                            Chain = Next;
+                        }
                         Frame->NodeHash[NodeIndex] = 0;
+                    }
+                    for(profiler_element *Element = Frame->FirstElement;
+                        Element;
+                        )
+                    {
+                        profiler_element *Next = Element->Next;
+                        Element->NextFree = GlobalDebugState->FirstFreeProfilerElement;
+                        GlobalDebugState->FirstFreeProfilerElement = Element;
+                        Element = Next;
                     }
                     Frame->BeginTicks = Event->Value_u64;
                     Frame->LastElement = 0;
@@ -474,7 +522,14 @@ extern "C" DEBUG_COLLATE(DebugCollate)
             COLLATE_VALUE_TYPES;
         }
     }
-    GlobalDebugState->EventCount = 0;
+    for(GlobalDebugState->EventCount = 0;
+        GlobalDebugState->EventCount < CodeBeginStackCount;
+        ++GlobalDebugState->EventCount)
+    {
+        GlobalDebugState->Events[GlobalDebugState->EventCount] =
+            GlobalDebugState->Events[CodeBeginStack[GlobalDebugState->EventCount]];
+    }
+    u32 EventCount = GlobalDebugState->EventCount;
 
     Frame = GlobalDebugState->Frames + GlobalDebugState->ViewingFrameIndex;
     if(GlobalDebugState->NodeSentinel.Next)
@@ -491,7 +546,7 @@ extern "C" DEBUG_COLLATE(DebugCollate)
     // TODO(chris): This is for preventing recursive debug events. The debug system logs its own
     // draw events, which in turn get drawn and are logged again... etc. Replace this with a better
     // system. Or just ignore all render function logs.
-    GlobalDebugState->EventCount = 0;
+    GlobalDebugState->EventCount = EventCount;
 
     EndTemporaryMemory(RenderMemory);
 #endif
