@@ -74,9 +74,14 @@ GetTextAdvance(loaded_font *Font, char A, char B)
     return(Result);
 }
 
+enum draw_text_flags
+{
+    DrawTextFlags_NoLineAdvance = 1 << 0,
+};
+
 // TODO(chris): Clean this up. Make fonts and font layout more systematic.
 internal rectangle2
-DrawText(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char *Text)
+DrawText(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char *Text, u32 Flags)
 {
     rectangle2 Result;
     r32 XInit = Layout->P.x;
@@ -107,21 +112,55 @@ DrawText(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char 
     }
     Result = MinMax(V2(XInit, Layout->P.y - Descent),
                     V2(Layout->P.x, Layout->P.y + Ascent));
-    Layout->P.x = XInit;
-    Layout->P.y -= LineAdvance;
+    if(!IsSet(Flags, DrawTextFlags_NoLineAdvance))
+    {
+        Layout->P.x = XInit;
+        Layout->P.y -= LineAdvance;
+    }
     
     return(Result);
 }
 
 internal rectangle2
-DrawButton(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char *Text)
+DrawButton(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char *Text,
+           v4 Color = INVERTED_COLOR)
 {
     rectangle2 Result;
     v2 PInit = Layout->P;
     Result = DrawText(RenderBuffer, Layout, TextLength, Text);
-    PushRectangle(RenderBuffer, V3(Result.Min, HUD_Z), GetDim(Result), V4(1, 0, 1, 1));
+    PushRectangle(RenderBuffer, V3(Result.Min, HUD_Z), GetDim(Result), Color);
     
     return(Result);
+}
+
+internal void
+DrawFillBar(render_buffer *RenderBuffer, text_layout *Layout, r32 Used, r32 Max, u32 Precision = 0)
+{
+    char Text[256];
+    u32 TextLength = _snprintf_s(Text, sizeof(Text), "%.*f / %.*f", Precision, Used, Precision, Max);
+    rectangle2 TextRect = DrawText(RenderBuffer, Layout, TextLength, Text);
+    r32 Percentage = Used / Max;
+
+    v2 SizeDim;
+    v2 UsedDim;
+    v2 P = TextRect.Min;
+    SizeDim.y = UsedDim.y = GetDim(TextRect).y;
+    SizeDim.x = RenderBuffer->Width - P.x - 10.0f;
+    UsedDim.x = SizeDim.x*Percentage;
+    PushRectangle(RenderBuffer, V3(P, HUD_Z + 1000), SizeDim, INVERTED_COLOR);
+    PushRectangle(RenderBuffer, V3(P, HUD_Z + 2000), UsedDim, V4(0, 1, 0, 1));
+}
+
+internal void
+DrawFillBar(render_buffer *RenderBuffer, text_layout *Layout, u32 Used, u32 Max)
+{
+    DrawFillBar(RenderBuffer, Layout, (r32)Used, (r32)Max);
+}
+
+internal void
+DrawFillBar(render_buffer *RenderBuffer, text_layout *Layout, u64 Used, u64 Max)
+{
+    DrawFillBar(RenderBuffer, Layout, (r32)Used, (r32)Max);
 }
 
 #pragma optimize("gts", on)

@@ -53,6 +53,8 @@ struct render_clear_data
 
 struct render_buffer
 {
+    u32 Width;
+    u32 Height;
     memory_arena Arena;
 };
 
@@ -86,7 +88,7 @@ struct text_layout
 };
 
 internal rectangle2
-DrawText(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char *Text);
+DrawText(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char *Text, u32 Flags = 0);
 
 internal rectangle2
 DrawButton(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char *Text);

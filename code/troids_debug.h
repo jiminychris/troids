@@ -8,7 +8,7 @@
    ======================================================================== */
 
 #if TROIDS_INTERNAL
-#define MAX_DEBUG_EVENTS 8192
+#define MAX_DEBUG_EVENTS 1024
 
 enum debug_event_type
 {
@@ -22,6 +22,8 @@ enum debug_event_type
     DebugEventType_Profiler,
     DebugEventType_FrameTimeline,
     DebugEventType_DebugMemory,
+    DebugEventType_DebugEvents,
+    DebugEventType_FillBar,
     DebugEventType_b32,
     DebugEventType_u8,
     DebugEventType_u16,
@@ -188,32 +190,48 @@ NextDebugEvent()
     return(Result);
 }
 
+inline void
+BeginTimedBlock(char *NameInit, char *FileInit, u32 LineInit)
+{
+    debug_event *Event = NextDebugEvent();
+    Event->Type = DebugEventType_CodeBegin;
+    Event->Value_u64 = __rdtsc();
+    Event->File = FileInit;
+    Event->Line = LineInit;
+    Event->Name = NameInit;
+}
+#define BEGIN_TIMED_BLOCK(Name) BeginTimedBlock(#Name, __FILE__, __LINE__)
+
+inline void
+EndTimedBlock()
+{
+    debug_event *Event = NextDebugEvent();
+    Event->Type = DebugEventType_CodeEnd;
+    Event->Value_u64 = __rdtsc();
+}
+#define END_TIMED_BLOCK() EndTimedBlock()
+
 struct debug_timer
 {
-    debug_timer(char *FileInit, u32 LineInit, char *NameInit)
+    debug_timer(char *NameInit, char *FileInit, u32 LineInit)
     {
-        debug_event *Event = NextDebugEvent();
-        Event->Type = DebugEventType_CodeBegin;
-        Event->Value_u64 = __rdtsc();
-        Event->File = FileInit;
-        Event->Line = LineInit;
-        Event->Name = NameInit;
+        BeginTimedBlock(NameInit, FileInit, LineInit);
     }
     ~debug_timer(void)
     {
-        debug_event *Event = NextDebugEvent();
-        Event->Type = DebugEventType_CodeEnd;
-        Event->Value_u64 = __rdtsc();
+        EndTimedBlock();
     }
 };
 
 struct debug_group
 {
-    debug_group(char *GUID)
+    debug_event *BeginEvent;
+    
+    debug_group(char *GUID, debug_event_type Type = DebugEventType_GroupBegin)
     {
-        debug_event *Event = NextDebugEvent();
-        Event->Type = DebugEventType_GroupBegin;
-        Event->Name = GUID;
+        BeginEvent = NextDebugEvent();
+        BeginEvent->Type = Type;
+        BeginEvent->Name = GUID;
     }
     ~debug_group(void)
     {
@@ -222,7 +240,7 @@ struct debug_group
     }
 };
 
-#define TIMED_BLOCK__(Name, File, Line, Counter) debug_timer Timer_##Counter(File, Line, #Name)
+#define TIMED_BLOCK__(Name, File, Line, Counter) debug_timer Timer_##Counter(#Name, File, Line)
 #define TIMED_BLOCK_(Name, File, Line, Counter) TIMED_BLOCK__(Name, File, Line, Counter)
 #define TIMED_BLOCK(Name) TIMED_BLOCK_(Name, __FILE__, __LINE__, __COUNTER__)
 #define FRAME_MARKER(FrameSeconds)                                      \
@@ -237,9 +255,12 @@ struct debug_group
 #define DEBUG_GUID_(Name, File, Line) DEBUG_GUID__(Name, File, Line)
 #define DEBUG_GUID(Name) DEBUG_GUID_(Name, __FILE__, __LINE__)
 
-#define DEBUG_GROUP__(Name, Counter) debug_group Group_##Counter(DEBUG_GUID(Name))
-#define DEBUG_GROUP_(Name, Counter) DEBUG_GROUP__(Name, Counter)
-#define DEBUG_GROUP(Name) DEBUG_GROUP_(Name, __COUNTER__)
+#define DEBUG_GROUP__(Name, Type, Counter) debug_group Group_##Counter(DEBUG_GUID(Name), Type)
+#define DEBUG_GROUP_(Name, Type, Counter) DEBUG_GROUP__(Name, Type, Counter)
+#define DEBUG_GROUP(Name) DEBUG_GROUP_(Name, DebugEventType_GroupBegin, __COUNTER__)
+#define DEBUG_SPECIAL_GROUP(Name, Type) DEBUG_GROUP_(Name, Type, __COUNTER__)
+
+#define DEBUG_SUMMARY() DEBUG_SPECIAL_GROUP("DEBUG Summary", DebugEventType_Summary);
 
 #define DEBUG_NAME(NameInit)                    \
     debug_event *Event = NextDebugEvent();      \
@@ -247,6 +268,13 @@ struct debug_group
     Event->Name = DEBUG_GUID(NameInit);                                                 
      
 #define DEBUG_VALUE(Name, Value) LogDebugValue(DEBUG_GUID(Name), Value);
+#define DEBUG_FILL_BAR(NameInit, Used, Max)         \
+    {                                               \
+        debug_event *Event = NextDebugEvent();      \
+        Event->Name = DEBUG_GUID(NameInit);         \
+        Event->Type = DebugEventType_FillBar;       \
+        Event->Value_v2 = V2((r32)Used, (r32)Max);  \
+    }
 
 #define LOG_DEBUG_FEATURE(TypeInit)             \
     {                                           \
@@ -256,14 +284,15 @@ struct debug_group
     }
 #define DEBUG_PROFILER() LOG_DEBUG_FEATURE(DebugEventType_Profiler)
 #define DEBUG_FRAME_TIMELINE() LOG_DEBUG_FEATURE(DebugEventType_FrameTimeline)
-#define DEBUG_SUMMARY() LOG_DEBUG_FEATURE(DebugEventType_Summary)
 #define DEBUG_MEMORY() LOG_DEBUG_FEATURE(DebugEventType_DebugMemory)
+#define DEBUG_EVENTS() LOG_DEBUG_FEATURE(DebugEventType_DebugEvents)
 
 #define COLLATE_BLANK_TYPES                                             \
     case(DebugEventType_Name):                                          \
     case(DebugEventType_Profiler):                                      \
     case(DebugEventType_FrameTimeline):                                 \
     case(DebugEventType_DebugMemory):                                   \
+    case(DebugEventType_DebugEvents):                                   \
     {                                                                   \
         debug_node *Node = GetNode(Event);                              \
         LinkNode(Node, &Prev, GroupBeginStack, GroupBeginStackCount);   \
@@ -299,6 +328,8 @@ LOG_DEBUG_TYPE(memory_arena)
 #define TIMED_BLOCK__(...)
 #define TIMED_BLOCK_(...)
 #define TIMED_BLOCK(...)
+#define BEGIN_TIMED_BLOCK(...)
+#define END_TIMED_BLOCK(...)
 #define FRAME_MARKER(...)
 #define DEBUG_GROUP(...)
 #define DEBUG_NAME(...)

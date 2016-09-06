@@ -310,6 +310,8 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                         (u8 *)GameMemory->TemporaryMemory + sizeof(transient_state));
 
         TranState->RenderBuffer.Arena = SubArena(&TranState->TranArena, Megabytes(1));
+        TranState->RenderBuffer.Width = BackBuffer->Width;
+        TranState->RenderBuffer.Height = BackBuffer->Height;
         
         State->HeadMesh = LoadObj("head.obj", &TranState->TranArena);
 
@@ -319,7 +321,10 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     PushClear(&TranState->RenderBuffer, V4(0.1f, 0.1f, 0.1f, 1.0f));
 
     DEBUG_SUMMARY();
-    DEBUG_MEMORY();
+    {DEBUG_GROUP("Debug System");
+        DEBUG_MEMORY();
+        DEBUG_EVENTS();
+    }   
     {DEBUG_GROUP("Memory");
         DEBUG_VALUE("TranArena", TranState->TranArena);
     }

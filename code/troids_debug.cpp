@@ -181,21 +181,57 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
             DrawText(RenderBuffer, Layout, NameLength, Node->Name);
         } break;
 
-        case DebugEventType_DebugMemory:
+        case DebugEventType_FillBar:
+        case DebugEventType_DebugEvents:
         {
-            TextLength = _snprintf_s(Text, sizeof(Text), "Debug Arena: %llu / %llu",
-                                     GlobalDebugState->Arena.Used,
-                                     GlobalDebugState->Arena.Size);
-            DrawText(RenderBuffer, Layout, TextLength, Text);
+            r32 Used, Max;
+            char *Name;
+            char DebugEventsName[] = "Debug Events";
+            if(Node->Type == DebugEventType_DebugEvents)
+            {
+                Used = (r32)GlobalDebugState->EventCount;
+                Max = (r32)ArrayCount(GlobalDebugState->Events);
+                Name = DebugEventsName;
+                NameLength = sizeof(DebugEventsName);
+            }
+            else
+            {
+                debug_node *FrameNode = GetNode(Frame, Node->GUID);
+                Used = FrameNode->Value_v2.x;
+                Max = FrameNode->Value_v2.y;
+                Name = Node->Name;
+            }
+
+            r32 XInit = Layout->P.x;
+            TextLength = _snprintf_s(Text, sizeof(Text), "%.*s: ", NameLength, Name);
+            DrawText(RenderBuffer, Layout, TextLength, Text, DrawTextFlags_NoLineAdvance);
+            DrawFillBar(RenderBuffer, Layout, Used, Max);
+            Layout->P.x = XInit;
         } break;
 
+        case DebugEventType_DebugMemory:
         case DebugEventType_memory_arena:
         {
-            debug_node *FrameNode = GetNode(Frame, Node->GUID);
-            TextLength = _snprintf_s(Text, sizeof(Text), "%.*s: %llu / %llu", NameLength, Node->Name,
-                                     FrameNode->Value_memory_arena.Used,
-                                     FrameNode->Value_memory_arena.Size);
-            DrawText(RenderBuffer, Layout, TextLength, Text);
+            memory_arena *Arena;
+            char *Name;
+            char DebugArenaName[] = "Debug Arena";
+            if(Node->Type == DebugEventType_DebugMemory)
+            {
+                Arena = &GlobalDebugState->Arena;
+                Name = DebugArenaName;
+                NameLength = sizeof(DebugArenaName);
+            }
+            else
+            {
+                debug_node *FrameNode = GetNode(Frame, Node->GUID);
+                Arena = &FrameNode->Value_memory_arena;
+                Name = Node->Name;
+            }
+            r32 XInit = Layout->P.x;
+            TextLength = _snprintf_s(Text, sizeof(Text), "%.*s: ", NameLength, Name);
+            DrawText(RenderBuffer, Layout, TextLength, Text, DrawTextFlags_NoLineAdvance);
+            DrawFillBar(RenderBuffer, Layout, Arena->Used, Arena->Size);
+            Layout->P.x = XInit;
         } break;
 
         case DebugEventType_v2:
@@ -229,7 +265,30 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
             r32 Descent = (Layout->Font->Height - Layout->Font->Ascent)*Layout->Scale;
             r32 Height = Ascent + Descent;
             r32 LineAdvance = Layout->Font->LineAdvance*Layout->Scale;
+            r32 TotalWidth = RenderBuffer->Width - XInit - 10.0f;
+            r32 Width = TotalWidth / (r32)ArrayCount(GlobalDebugState->Frames);
 
+            char *ButtonText;
+            if(GlobalDebugState->Paused)
+            {
+                char Unpause[] = "Unpause";
+                ButtonText = Unpause;
+                TextLength = sizeof(Unpause);
+            }
+            else
+            {
+                char Pause[] = "Pause";
+                ButtonText = Pause;
+                TextLength = sizeof(Pause);
+            }
+            rectangle2 ButtonRect = DrawButton(RenderBuffer, Layout, TextLength, ButtonText,
+                                               V4(0, 0.5f, 1, 1));
+    
+            if(Inside(ButtonRect, Input->MousePosition) && WentDown(Input->LeftMouse))
+            {
+                GlobalDebugState->Paused = !GlobalDebugState->Paused;
+            }
+            
             if(GlobalDebugState->HotNode == Node)
             {
                 int A = 0;
@@ -248,7 +307,6 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
                 {
                     Color = V4(1, 0, 0, 1);
                 }
-                r32 Width = 10.0f;
                 rectangle2 HitBox = PushRectangle(RenderBuffer,
                                                   V3(Layout->P.x, Layout->P.y - Descent, HUD_Z),
                                                   V2(Width, Height), Color);
@@ -282,7 +340,7 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
                 };
 #if 1
 
-            v2 TotalDim = V2(1900, 300);
+            v2 TotalDim = V2(RenderBuffer->Width - Layout->P.x - 10.0f, 300);
             rectangle2 ProfileRect = TopLeftDim(V2(Layout->P.x, Layout->P.y), TotalDim);
             PushRectangle(RenderBuffer, V3(ProfileRect.Min, HUD_Z), TotalDim,
                           INVERTED_COLOR);
@@ -308,6 +366,8 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
                     DrawText(RenderBuffer, Layout, TextLength, Text);
                 }
             }
+
+            // TODO(chris): Code block hierarchy!
 #else
             for(u32 FrameIndex = 0;
                 FrameIndex < MAX_DEBUG_FRAMES;
@@ -339,26 +399,7 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
                 }
             }
 #endif
-            char *ButtonText;
-            if(GlobalDebugState->Paused)
-            {
-                char Unpause[] = "Unpause";
-                ButtonText = Unpause;
-                TextLength = sizeof(Unpause);
-            }
-            else
-            {
-                char Pause[] = "Pause";
-                ButtonText = Pause;
-                TextLength = sizeof(Pause);
-            }
             Layout->P = V2(ProfileRect.Min.x, ProfileRect.Min.y - Layout->Font->Ascent*Layout->Scale);
-            rectangle2 ButtonRect = DrawButton(RenderBuffer, Layout, TextLength, ButtonText);
-    
-            if(Inside(ButtonRect, Input->MousePosition) && WentDown(Input->LeftMouse))
-            {
-                GlobalDebugState->Paused = !GlobalDebugState->Paused;
-            }
         } break;
     }
     if(Node->Next)
@@ -386,7 +427,7 @@ LinkNode(debug_node *Node, debug_node **Prev, debug_node **GroupBeginStack, u32 
 
 extern "C" DEBUG_COLLATE(DebugCollate)
 {
-    TIMED_BLOCK(DebugCollation);
+    BEGIN_TIMED_BLOCK(DEBUGCollation);
     debug_frame *Frame = GlobalDebugState->Frames + GlobalDebugState->FrameIndex;
     transient_state *TranState = (transient_state *)GameMemory->TemporaryMemory;
     if(!GlobalDebugState->IsInitialized)
@@ -406,7 +447,7 @@ extern "C" DEBUG_COLLATE(DebugCollate)
     u32 GroupBeginStackCount = 0;
     debug_node *GroupBeginStack[MAX_DEBUG_EVENTS];
     debug_node *Prev = &GlobalDebugState->NodeSentinel;
-    
+
     for(u32 EventIndex = 0;
         EventIndex < GlobalDebugState->EventCount;
         ++EventIndex)
@@ -422,12 +463,12 @@ extern "C" DEBUG_COLLATE(DebugCollate)
 
             case(DebugEventType_CodeEnd):
             {
+                Assert(CodeBeginStackCount);
+                debug_event *BeginEvent = (GlobalDebugState->Events +
+                                           CodeBeginStack[--CodeBeginStackCount]);
+
                 if(!GlobalDebugState->Paused)
                 {
-                    Assert(CodeBeginStackCount);
-                    debug_event *BeginEvent = (GlobalDebugState->Events +
-                                               CodeBeginStack[--CodeBeginStackCount]);
-
                     // TODO(chris): This needs to get freed eventually.
                     
                     profiler_element *Element = GlobalDebugState->FirstFreeProfilerElement;
@@ -518,18 +559,18 @@ extern "C" DEBUG_COLLATE(DebugCollate)
                 Prev = GroupBeginStack[--GroupBeginStackCount];
             } break;
 
+            case(DebugEventType_FillBar):
+            {
+                debug_node *Node = GetNode(Event);
+                LinkNode(Node, &Prev, GroupBeginStack, GroupBeginStackCount);
+                debug_node *FrameNode = GetNode(Frame, Event);
+                FrameNode->Value_v2 = Event->Value_v2;
+            } break;
+
             COLLATE_BLANK_TYPES;
             COLLATE_VALUE_TYPES;
         }
     }
-    for(GlobalDebugState->EventCount = 0;
-        GlobalDebugState->EventCount < CodeBeginStackCount;
-        ++GlobalDebugState->EventCount)
-    {
-        GlobalDebugState->Events[GlobalDebugState->EventCount] =
-            GlobalDebugState->Events[CodeBeginStack[GlobalDebugState->EventCount]];
-    }
-    u32 EventCount = GlobalDebugState->EventCount;
 
     Frame = GlobalDebugState->Frames + GlobalDebugState->ViewingFrameIndex;
     if(GlobalDebugState->NodeSentinel.Next)
@@ -542,11 +583,23 @@ extern "C" DEBUG_COLLATE(DebugCollate)
         DrawNodes(RenderBuffer, &Layout, Frame, GlobalDebugState->NodeSentinel.Next, Input);
     }
 
+    for(GlobalDebugState->EventCount = 0;
+        GlobalDebugState->EventCount < CodeBeginStackCount;
+        ++GlobalDebugState->EventCount)
+    {
+        GlobalDebugState->Events[GlobalDebugState->EventCount] =
+            GlobalDebugState->Events[CodeBeginStack[GlobalDebugState->EventCount]];
+    }
+    END_TIMED_BLOCK();
+
+    BEGIN_TIMED_BLOCK(DEBUGRender);
+    u32 EventCount = GlobalDebugState->EventCount;
     RenderBufferToBackBuffer(RenderBuffer, BackBuffer);
     // TODO(chris): This is for preventing recursive debug events. The debug system logs its own
     // draw events, which in turn get drawn and are logged again... etc. Replace this with a better
     // system. Or just ignore all render function logs.
     GlobalDebugState->EventCount = EventCount;
+    END_TIMED_BLOCK();
 
     EndTemporaryMemory(RenderMemory);
 #endif
