@@ -169,7 +169,7 @@ internal void
 RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAxis, v2 YAxis,
              r32 Scale, v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f))
 {
-    TIMED_BLOCK(RenderBitmap);
+    IGNORED_TIMED_BLOCK(RenderBitmap);
     Color.rgb *= Color.a;
     XAxis *= Scale*Bitmap->Width;
     YAxis *= Scale*Bitmap->Height;
@@ -259,7 +259,7 @@ RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 X
 internal void
 RenderRectangle(game_backbuffer *BackBuffer, rectangle2 Rect, v4 Color)
 {
-    TIMED_BLOCK(RenderRectangle);
+    IGNORED_TIMED_BLOCK(RenderRectangle);
     s32 XMin = Clamp(0, RoundS32(Rect.Min.x), BackBuffer->Width);
     s32 YMin = Clamp(0, RoundS32(Rect.Min.y), BackBuffer->Height);
     s32 XMax = Clamp(0, RoundS32(Rect.Max.x), BackBuffer->Width);

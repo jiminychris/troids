@@ -106,6 +106,8 @@ struct profiler_element
         profiler_element *Next;
         profiler_element *NextFree;
     };
+    profiler_element *Parent;
+    profiler_element *Child;
 };
 
 struct debug_node
@@ -154,7 +156,7 @@ struct debug_frame
     debug_node *NodeHash[256];
     
     profiler_element *FirstElement;
-    profiler_element *LastElement;
+    profiler_element *CurrentElement;
 };
 
 struct debug_state
@@ -164,7 +166,7 @@ struct debug_state
     b32 Paused;
     memory_arena Arena;
     u32 EventCount;
-    u32 FrameIndex;
+    u32 CollatingFrameIndex;
     u32 ViewingFrameIndex;
     debug_event Events[MAX_DEBUG_EVENTS];
     debug_frame Frames[MAX_DEBUG_FRAMES];
@@ -287,7 +289,7 @@ struct debug_group
 #define DEBUG_MEMORY() LOG_DEBUG_FEATURE(DebugEventType_DebugMemory)
 #define DEBUG_EVENTS() LOG_DEBUG_FEATURE(DebugEventType_DebugEvents)
 
-#define COLLATE_BLANK_TYPES                                             \
+#define COLLATE_BLANK_TYPES(Event, Prev, GroupBeginStackCount, GroupBeginStack) \
     case(DebugEventType_Name):                                          \
     case(DebugEventType_Profiler):                                      \
     case(DebugEventType_FrameTimeline):                                 \
@@ -297,7 +299,7 @@ struct debug_group
         debug_node *Node = GetNode(Event);                              \
         LinkNode(Node, &Prev, GroupBeginStack, GroupBeginStackCount);   \
     } break;
-#define COLLATE_VALUE_TYPE(TypeInit)                                    \
+#define COLLATE_VALUE_TYPE(TypeInit, Frame, Event, Prev, GroupBeginStackCount, GroupBeginStack) \
     case(DebugEventType_##TypeInit):                                    \
     {                                                                   \
         debug_node *Node = GetNode(Event);                              \
@@ -314,11 +316,11 @@ struct debug_group
         Event->Type = DebugEventType_##TypeInit;    \
         Event->Value_##TypeInit = Value;            \
     }
-#define COLLATE_VALUE_TYPES                     \
-    COLLATE_VALUE_TYPE(v2)                      \
-    COLLATE_VALUE_TYPE(r32)                     \
-    COLLATE_VALUE_TYPE(b32)                     \
-    COLLATE_VALUE_TYPE(memory_arena)
+#define COLLATE_VALUE_TYPES(Frame, Event, Prev, GroupBeginStackCount, GroupBeginStack) \
+    COLLATE_VALUE_TYPE(v2, Frame, Event, Prev, GroupBeginStackCount, GroupBeginStack) \
+    COLLATE_VALUE_TYPE(r32, Frame, Event, Prev, GroupBeginStackCount, GroupBeginStack) \
+    COLLATE_VALUE_TYPE(b32, Frame, Event, Prev, GroupBeginStackCount, GroupBeginStack) \
+    COLLATE_VALUE_TYPE(memory_arena, Frame, Event, Prev, GroupBeginStackCount, GroupBeginStack)
 LOG_DEBUG_TYPE(v2)
 LOG_DEBUG_TYPE(r32)
 LOG_DEBUG_TYPE(b32)
@@ -337,6 +339,7 @@ LOG_DEBUG_TYPE(memory_arena)
 #define DEBUG_PROFILER(...)
 #define DEBUG_FRAME_TIMELINE(...)
 #endif
+#define IGNORED_TIMED_BLOCK(...)
 
 #define TROIDS_DEBUG_H
 #endif

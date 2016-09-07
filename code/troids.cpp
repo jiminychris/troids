@@ -275,6 +275,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 #if TROIDS_INTERNAL
     GlobalDebugState = (debug_state *)GameMemory->DebugMemory;
 #endif
+    TIMED_BLOCK(GameUpdateAndRender);
     game_state *State = (game_state *)GameMemory->PermanentMemory;
     if(!State->IsInitialized)
     {
@@ -587,7 +588,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     }
 #endif
 
-#if 1
+#if 0
     for(u32 FaceIndex = 1;
         FaceIndex < State->HeadMesh.FaceCount;
         ++FaceIndex)
