@@ -155,7 +155,7 @@ struct debug_frame
     // NOTE(chris): Per-frame hash for nodes.
     debug_node *NodeHash[256];
     
-    profiler_element *FirstElement;
+    profiler_element ProfilerSentinel;
     profiler_element *CurrentElement;
 };
 
@@ -202,7 +202,7 @@ BeginTimedBlock(char *NameInit, char *FileInit, u32 LineInit)
     Event->Line = LineInit;
     Event->Name = NameInit;
 }
-#define BEGIN_TIMED_BLOCK(Name) BeginTimedBlock(#Name, __FILE__, __LINE__)
+#define BEGIN_TIMED_BLOCK(Name) BeginTimedBlock(Name, __FILE__, __LINE__)
 
 inline void
 EndTimedBlock()
@@ -242,9 +242,10 @@ struct debug_group
     }
 };
 
-#define TIMED_BLOCK__(Name, File, Line, Counter) debug_timer Timer_##Counter(#Name, File, Line)
+#define TIMED_BLOCK__(Name, File, Line, Counter) debug_timer Timer_##Counter(Name, File, Line)
 #define TIMED_BLOCK_(Name, File, Line, Counter) TIMED_BLOCK__(Name, File, Line, Counter)
 #define TIMED_BLOCK(Name) TIMED_BLOCK_(Name, __FILE__, __LINE__, __COUNTER__)
+#define TIMED_FUNCTION() TIMED_BLOCK_(__FUNCTION__, __FILE__, __LINE__, __COUNTER__)
 #define FRAME_MARKER(FrameSeconds)                                      \
     {                                                                   \
         debug_event *Event = NextDebugEvent();          \
@@ -327,9 +328,8 @@ LOG_DEBUG_TYPE(b32)
 LOG_DEBUG_TYPE(memory_arena)
 
 #else
-#define TIMED_BLOCK__(...)
-#define TIMED_BLOCK_(...)
 #define TIMED_BLOCK(...)
+#define TIMED_FUNCTION(...)
 #define BEGIN_TIMED_BLOCK(...)
 #define END_TIMED_BLOCK(...)
 #define FRAME_MARKER(...)
@@ -340,6 +340,7 @@ LOG_DEBUG_TYPE(memory_arena)
 #define DEBUG_FRAME_TIMELINE(...)
 #endif
 #define IGNORED_TIMED_BLOCK(...)
+#define IGNORED_TIMED_FUNCTION(...)
 
 #define TROIDS_DEBUG_H
 #endif

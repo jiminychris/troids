@@ -93,66 +93,105 @@ ToggleFullscreen(HWND Window)
 inline void
 CopyBackBufferToWindow(HDC DeviceContext, win32_backbuffer *BackBuffer)
 {
-#if 0
-    StretchDIBits(DeviceContext,
-                  0,
-                  0,
-                  GlobalBackBuffer.Width,
-                  GlobalBackBuffer.Height,
-                  0,
-                  0,
-                  GlobalBackBuffer.Width,
-                  GlobalBackBuffer.Height,
-                  GlobalBackBuffer.Memory,
-                  &GlobalBackBuffer.Info,
-                  DIB_RGB_COLORS,
-                  SRCCOPY);
+    TIMED_FUNCTION();
+#if 1
+    {
+        TIMED_BLOCK("StretchDIBits");
+        StretchDIBits(DeviceContext,
+                      0,
+                      0,
+                      GlobalBackBuffer.Width,
+                      GlobalBackBuffer.Height,
+                      0,
+                      0,
+                      GlobalBackBuffer.Width,
+                      GlobalBackBuffer.Height,
+                      GlobalBackBuffer.Memory,
+                      &GlobalBackBuffer.Info,
+                      DIB_RGB_COLORS,
+                      SRCCOPY);
+    }
 #else
 
 #if 0
+    {
+        TIMED_BLOCK("glDrawPixels");
 //    glClearColor(1.0f, 0.0f, 1.0f, 0.0f);
 //    glClear(GL_COLOR_BUFFER_BIT);
-    glDrawPixels(BackBuffer->Width, BackBuffer->Height, GL_BGRA_EXT, GL_UNSIGNED_BYTE,
-                 BackBuffer->Memory);
+        glDrawPixels(BackBuffer->Width, BackBuffer->Height, GL_BGRA_EXT, GL_UNSIGNED_BYTE,
+                     BackBuffer->Memory);
+    }
 #else
-    glViewport(0, 0, BackBuffer->Width, BackBuffer->Height);
+    {
+        TIMED_BLOCK("GLCommands");
+        {
+            TIMED_BLOCK("glViewport");
+            glViewport(0, 0, BackBuffer->Width, BackBuffer->Height);
+        }
 
-    glBindTexture(GL_TEXTURE_2D, 1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, BackBuffer->Width, BackBuffer->Height,
-                 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, BackBuffer->Memory);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        {
+            TIMED_BLOCK("GL_TEXTURE_2D");
+            {
+                TIMED_BLOCK("glBindTexture");
+                glBindTexture(GL_TEXTURE_2D, 1);
+            }
+            {
+                TIMED_BLOCK("glTexImage2D");
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, BackBuffer->Width, BackBuffer->Height,
+                             0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, BackBuffer->Memory);
+            }
+            {
+                TIMED_BLOCK("glTexParameteri(MAG)");
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            }
+            {
+                TIMED_BLOCK("glTexParameteri(MIN)");
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            }
 
-    glEnable(GL_TEXTURE_2D);
-    
-    glBegin(GL_TRIANGLES);
+            {
+                TIMED_BLOCK("glEnable");
+                glEnable(GL_TEXTURE_2D);
+            }
+        }
 
-    // NOTE(chris): Lower triangle
-    glTexCoord2f(0.0f, 0.0f);
-    glVertex2f(-1.0f, -1.0f);
+        {
+            TIMED_BLOCK("GL_TRIANGLES");
+            glBegin(GL_TRIANGLES);
 
-    glTexCoord2f(1.0f, 0.0f);
-    glVertex2f(1.0f, -1.0f);
+            // NOTE(chris): Lower triangle
+            glTexCoord2f(0.0f, 0.0f);
+            glVertex2f(-1.0f, -1.0f);
 
-    glTexCoord2f(0.0f, 1.0f);
-    glVertex2f(-1.0f, 1.0f);
+            glTexCoord2f(1.0f, 0.0f);
+            glVertex2f(1.0f, -1.0f);
 
-    // NOTE(chris): Upper triangle
-    glTexCoord2f(1.0f, 1.0f);
-    glVertex2f(1.0f, 1.0f);
+            glTexCoord2f(0.0f, 1.0f);
+            glVertex2f(-1.0f, 1.0f);
 
-    glTexCoord2f(0.0f, 1.0f);
-    glVertex2f(-1.0f, 1.0f);
+            // NOTE(chris): Upper triangle
+            glTexCoord2f(1.0f, 1.0f);
+            glVertex2f(1.0f, 1.0f);
 
-    glTexCoord2f(1.0f, 0.0f);
-    glVertex2f(1.0f, -1.0f);
+            glTexCoord2f(0.0f, 1.0f);
+            glVertex2f(-1.0f, 1.0f);
 
-    glEnd();
+            glTexCoord2f(1.0f, 0.0f);
+            glVertex2f(1.0f, -1.0f);
 
-    glBindTexture(GL_TEXTURE_2D, 0);
-    
+            glEnd();
+        }
+
+        {
+            TIMED_BLOCK("glBindTexture");
+            glBindTexture(GL_TEXTURE_2D, 0);
+        }
+    }
 #endif
-    SwapBuffers(DeviceContext);
+    {
+        TIMED_BLOCK("SwapBuffers");
+        SwapBuffers(DeviceContext);
+    }
 #endif
 }
 
@@ -833,7 +872,7 @@ int WinMain(HINSTANCE Instance,
             while(GlobalRunning)
             {                
                 {
-                    TIMED_BLOCK(Input);
+                    TIMED_BLOCK("Input");
 
                     game_input *Temp = NewInput;
                     NewInput = OldInput;
@@ -1188,7 +1227,7 @@ int WinMain(HINSTANCE Instance,
 #endif
                 }
 #endif
-                
+
                 HDC DeviceContext = GetDC(Window);
                 CopyBackBufferToWindow(DeviceContext, &GlobalBackBuffer);
                 ReleaseDC(Window, DeviceContext);

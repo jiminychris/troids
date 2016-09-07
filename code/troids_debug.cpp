@@ -267,27 +267,6 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
             r32 LineAdvance = Layout->Font->LineAdvance*Layout->Scale;
             r32 TotalWidth = RenderBuffer->Width - XInit - 10.0f;
             r32 Width = TotalWidth / (r32)ArrayCount(GlobalDebugState->Frames);
-
-            char *ButtonText;
-            if(GlobalDebugState->Paused)
-            {
-                char Unpause[] = "Unpause";
-                ButtonText = Unpause;
-                TextLength = sizeof(Unpause);
-            }
-            else
-            {
-                char Pause[] = "Pause";
-                ButtonText = Pause;
-                TextLength = sizeof(Pause);
-            }
-            rectangle2 ButtonRect = DrawButton(RenderBuffer, Layout, TextLength, ButtonText,
-                                               V4(0, 0.5f, 1, 1));
-    
-            if(Inside(ButtonRect, Input->MousePosition) && WentDown(Input->LeftMouse))
-            {
-                GlobalDebugState->Paused = !GlobalDebugState->Paused;
-            }
             
             for(u32 FrameIndex = 0;
                 FrameIndex < ArrayCount(GlobalDebugState->Frames);
@@ -329,6 +308,42 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
 
         case DebugEventType_Profiler:
         {
+            // TODO(chris): More formatting stuff to stop needing to do this kind of thing?
+            r32 PopX = Layout->P.x;
+            char *ButtonText;
+            if(GlobalDebugState->Paused)
+            {
+                char Unpause[] = "Unpause";
+                ButtonText = Unpause;
+                TextLength = sizeof(Unpause);
+            }
+            else
+            {
+                char Pause[] = "Pause";
+                ButtonText = Pause;
+                TextLength = sizeof(Pause);
+            }
+            r32 ButtonY = Layout->P.y;
+            rectangle2 ButtonRect = DrawButton(RenderBuffer, Layout, TextLength, ButtonText,
+                                               V4(0, 0.5f, 1, 1), 2.0f);
+    
+            if(Inside(ButtonRect, Input->MousePosition) && WentDown(Input->LeftMouse))
+            {
+                GlobalDebugState->Paused = !GlobalDebugState->Paused;
+            }
+
+            Layout->P.y = ButtonY;
+            Layout->P.x = ButtonRect.Max.x + 5.0f;
+            char Top[] = "Top";
+            ButtonRect = DrawButton(RenderBuffer, Layout, sizeof(Top), Top,
+                                    V4(0, 0.5f, 1, 1), 2.0f);
+            if(Inside(ButtonRect, Input->MousePosition) && WentDown(Input->LeftMouse))
+            {
+                Frame->CurrentElement = &Frame->ProfilerSentinel;
+            }
+
+            Layout->P.x = PopX;
+            
             u32 ColorIndex = 0;
             v4 Colors[7] =
                 {
@@ -340,27 +355,32 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
                     V4(0, 1, 1, 1),
                     V4(1, 0.5f, 0, 1),
                 };
-#if 1
-
             v2 TotalDim = V2(RenderBuffer->Width - Layout->P.x - 10.0f, 200);
             rectangle2 ProfileRect = TopLeftDim(V2(Layout->P.x, Layout->P.y), TotalDim);
             PushRectangle(RenderBuffer, V3(ProfileRect.Min, HUD_Z), TotalDim,
                           INVERTED_COLOR);
-            r32 InverseTotalCycles = 1.0f / (Frame->EndTicks - Frame->BeginTicks);
+            r32 InverseTotalCycles = 1.0f / (Frame->CurrentElement->EndTicks -
+                                             Frame->CurrentElement->BeginTicks);
             u32 Depth = 0;
             u32 MaxDepth = 1;
             b32 FinishedChildren = false;
             r32 LayerHeight = TotalDim.y/(MaxDepth + 1);
-            r32 FrameRatePosition = Input->dtForFrame / Frame->ElapsedSeconds;
-            if(FrameRatePosition < 1.0f)
+            r64 TicksToSeconds = Frame->ElapsedSeconds/(Frame->EndTicks - Frame->BeginTicks);
+            r64 SecondsToTicks = 1.0f / TicksToSeconds;
+            r64 FrameRateTickTarget = (r64)Frame->BeginTicks + Input->dtForFrame*SecondsToTicks;
+            r32 FrameRateRelativePosition = (r32)Unlerp((r64)Frame->CurrentElement->BeginTicks,
+                                                        FrameRateTickTarget,
+                                                        (r64)Frame->CurrentElement->EndTicks);
+            
+            if(FrameRateRelativePosition < 1.0f)
             {
-                v3 FrameRateMarkP = V3(ProfileRect.Min.x + FrameRatePosition*TotalDim.x,
+                v3 FrameRateMarkP = V3(ProfileRect.Min.x + FrameRateRelativePosition*TotalDim.x,
                                        ProfileRect.Min.y - 10.0f,
                                        HUD_Z+2000);
                 PushRectangle(RenderBuffer, FrameRateMarkP, V2(2.0f, TotalDim.y + 20.0f),
                               V4(1, 0, 1, 1));
             }
-            for(profiler_element *Element = Frame->FirstElement;
+            for(profiler_element *Element = Frame->CurrentElement->Child;
                 Element;
                 )
             {
@@ -382,7 +402,9 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
                     }
                     u64 CyclesPassed = Element->EndTicks - Element->BeginTicks;
 
-                    r32 Left = ProfileRect.Min.x + (Element->BeginTicks-Frame->BeginTicks)*InverseTotalCycles*TotalDim.x;
+                    r32 Left = (ProfileRect.Min.x +
+                                ((Element->BeginTicks-Frame->CurrentElement->BeginTicks)*
+                                 InverseTotalCycles*TotalDim.x));
                     r32 Width = CyclesPassed*InverseTotalCycles*TotalDim.x;
                     v2 RegionDim = V2(Width, Height);
                     rectangle2 RegionRect = MinDim(V2(Left, ProfileRect.Min.y + Depth*Height),
@@ -400,6 +422,10 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
                     if(Inside(RegionRect, Input->MousePosition))
                     {
                         DrawText(RenderBuffer, Layout, TextLength, Text);
+                        if(WentDown(Input->LeftMouse) && Element->Child)
+                        {
+                            Frame->CurrentElement = Element;
+                        }
                     }
                     
                     if(Element->Next)
@@ -410,45 +436,15 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
                     else
                     {
                         Element = Element->Parent;
-                        FinishedChildren = true;
-                        --Depth;
+                        if(Element)
+                        {
+                            FinishedChildren = true;
+                            --Depth;
+                        }
                     }
 
                 }
             }
-
-            // TODO(chris): Code block hierarchy!
-#else
-            for(u32 FrameIndex = 0;
-                FrameIndex < MAX_DEBUG_FRAMES;
-                ++FrameIndex)
-            {
-                if(FrameIndex == GlobalDebugState->CollatingFrameIndex)
-                {
-                    // TODO(chris): This frame is being populated right now.
-                }
-                else
-                {
-                    Frame = GlobalDebugState->Frames + FrameIndex;
-                    TextLength = _snprintf_s(Text, sizeof(Text), "Frame time: %fms",
-                                             Frame->ElapsedSeconds*1000);
-                    PushText(RenderBuffer, Layout, TextLength, Text);
-
-                    rectangle2 ProfileRect = TopLeftDim(V2(10, (r32)BackBuffer->Height - 10), V2(800, 300));
-                    for(debug_element *Element = Frame->FirstElement;
-                        Element;
-                        Element = Element->Next)
-                    {
-                        u64 CyclesPassed = Element->EndTicks - Element->BeginTicks;
-
-                        TextLength = _snprintf_s(Text, sizeof(Text), "%s %s %u %lu",
-                                                 Element->Name, Element->File,
-                                                 Element->Line, CyclesPassed);
-                        PushText(RenderBuffer, Layout, TextLength, Text);
-                    }
-                }
-            }
-#endif
             Layout->P = V2(ProfileRect.Min.x, ProfileRect.Min.y - Layout->Font->Ascent*Layout->Scale);
         } break;
     }
@@ -477,12 +473,14 @@ LinkNode(debug_node *Node, debug_node **Prev, debug_node **GroupBeginStack, u32 
 
 extern "C" DEBUG_COLLATE(DebugCollate)
 {
-    BEGIN_TIMED_BLOCK(DEBUGCollation);
+    TIMED_FUNCTION();
     debug_frame *Frame = GlobalDebugState->Frames + GlobalDebugState->CollatingFrameIndex;
     transient_state *TranState = (transient_state *)GameMemory->TemporaryMemory;
     if(!GlobalDebugState->IsInitialized)
     {
         GlobalDebugState->IsInitialized = true;
+        Frame->CurrentElement = &Frame->ProfilerSentinel;
+        Frame->ProfilerSentinel.EndTicks = 0;
     }
 
 #if TROIDS_PROFILE
@@ -525,11 +523,7 @@ extern "C" DEBUG_COLLATE(DebugCollate)
                     Element->Next = 0;
                     Element->Child = 0;
 
-                    if(!Frame->CurrentElement)
-                    {
-                        Frame->FirstElement = Element;
-                    }
-                    else if(Frame->CurrentElement->EndTicks)
+                    if(Frame->CurrentElement->EndTicks)
                     {
                         Frame->CurrentElement->Next = Element;
                         Element->Parent = Frame->CurrentElement->Parent;
@@ -562,6 +556,9 @@ extern "C" DEBUG_COLLATE(DebugCollate)
                 {
                     Frame->ElapsedSeconds = Event->ElapsedSeconds;
                     Frame->EndTicks = Event->Value_u64;
+                    Frame->CurrentElement = &Frame->ProfilerSentinel;
+                    Frame->CurrentElement->BeginTicks = Frame->BeginTicks;
+                    Frame->CurrentElement->EndTicks = Frame->EndTicks;
                     GlobalDebugState->ViewingFrameIndex = GlobalDebugState->CollatingFrameIndex;
 
                     // NOTE(chris): Trick only works if MAX_DEBUG_FRAMES is a power of two.
@@ -582,8 +579,8 @@ extern "C" DEBUG_COLLATE(DebugCollate)
                         }
                         Frame->NodeHash[NodeIndex] = 0;
                     }
-                    for(profiler_element *Element = Frame->FirstElement;
-                        Element;
+                    for(profiler_element *Element = Frame->ProfilerSentinel.Child;
+                        Element && Element != &Frame->ProfilerSentinel;
                         )
                     {
                         if(Element->Child)
@@ -611,7 +608,8 @@ extern "C" DEBUG_COLLATE(DebugCollate)
                         }
                     }
                     Frame->BeginTicks = Event->Value_u64;
-                    Frame->CurrentElement = 0;
+                    Frame->CurrentElement = &Frame->ProfilerSentinel;
+                    Frame->CurrentElement->EndTicks = 0;
                 }
                 GroupBeginStackCount = 0;
                 PrevNode = &GlobalDebugState->NodeSentinel;
@@ -669,9 +667,8 @@ extern "C" DEBUG_COLLATE(DebugCollate)
 #else
     GlobalDebugState->EventCount = 0;
 #endif
-    END_TIMED_BLOCK();
 
-    BEGIN_TIMED_BLOCK(DEBUGRender);
+    BEGIN_TIMED_BLOCK("DEBUGRender");
     u32 EventCount = GlobalDebugState->EventCount;
     RenderBufferToBackBuffer(RenderBuffer, BackBuffer);
     // TODO(chris): This is for preventing recursive debug events. The debug system logs its own

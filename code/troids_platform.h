@@ -191,6 +191,26 @@ Maximum(r32 A, r32 B)
     return(A);
 }
 
+inline r64
+Minimum(r64 A, r64 B)
+{
+    if(B < A)
+    {
+        A = B;
+    }
+    return(A);
+}
+
+inline r64
+Maximum(r64 A, r64 B)
+{
+    if(B > A)
+    {
+        A = B;
+    }
+    return(A);
+}
+
 #define Assert(Expr) {if(!(Expr)) int A = *((int *)0);}
 #define InvalidCodePath Assert(!"Invalid code path");
 #define InvalidDefaultCase default: Assert(!"Invalid default case"); break;

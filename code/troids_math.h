@@ -74,10 +74,24 @@ Clamp(r32 Min, r32 A, r32 Max)
     return(Result);
 }
 
+inline r64
+Clamp(r64 Min, r64 A, r64 Max)
+{
+    r64 Result = Maximum(Min, Minimum(Max, A));
+    return(Result);
+}
+
 inline r32
 Clamp01(r32 A)
 {
     r32 Result = Clamp(0.0f, A, 1.0f);
+    return(Result);
+}
+
+inline r64
+Clamp01(r64 A)
+{
+    r64 Result = Clamp(0.0, A, 1.0);
     return(Result);
 }
 
@@ -374,6 +388,15 @@ MinMax(v2 Min, v2 Max)
     return(Result);
 }
 
+inline rectangle2
+AddBorder(rectangle2 Rect, r32 Border)
+{
+    rectangle2 Result;
+    Result.Min = V2(Rect.Min.x - Border, Rect.Min.y - Border);
+    Result.Max = V2(Rect.Max.x + Border, Rect.Max.y + Border);
+    return(Result);
+}
+
 inline v2
 GetDim(rectangle2 Rect)
 {
@@ -424,8 +447,15 @@ Inside(rectangle2 Rect, v2 Point)
 inline r32
 Unlerp(r32 A, r32 X, r32 B)
 {
-    r32 Range = B - A;
     r32 Result = (X - A) / (B - A);
+    Result = Clamp01(Result);
+    return(Result);
+}
+
+inline r64
+Unlerp(r64 A, r64 X, r64 B)
+{
+    r64 Result = (X - A) / (B - A);
     Result = Clamp01(Result);
     return(Result);
 }

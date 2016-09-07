@@ -88,7 +88,8 @@ DrawText(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char 
     char Prev = 0;
     char *At = Text;
     r32 Ascent = Layout->Scale*Layout->Font->Ascent;
-    r32 Descent = Layout->Scale*(Layout->Font->Height - Layout->Font->Ascent);
+    r32 Height = Layout->Scale*Layout->Font->Height;
+    r32 Descent = Height - Ascent;
     r32 LineAdvance = Layout->Scale*Layout->Font->LineAdvance;
     for(u32 AtIndex = 0;
         AtIndex < TextLength;
@@ -103,9 +104,10 @@ DrawText(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char 
             PushRectangle(&TranState->RenderBuffer, CenterDim(P, Scale*(XAxis + YAxis)),
                           V4(1.0f, 0.0f, 1.0f, 1.0f));
 #endif
-            PushBitmap(RenderBuffer, Glyph, V3(Layout->P, TEXT_Z-1),
-                       XAxis, YAxis, Layout->Scale*1.1f, V4(0, 0, 0, 1));
-            PushBitmap(RenderBuffer, Glyph, V3(Layout->P, TEXT_Z), XAxis, YAxis, Layout->Scale);
+            PushBitmap(RenderBuffer, Glyph, V3(Layout->P + Height*V2(0.05f, -0.05f), TEXT_Z-1),
+                       XAxis, YAxis, Layout->Scale, V4(0, 0, 0, 1));
+            PushBitmap(RenderBuffer, Glyph, V3(Layout->P, TEXT_Z),
+                       XAxis, YAxis, Layout->Scale);
         }
         Prev = *At++;
         Layout->P.x += Layout->Scale*GetTextAdvance(Layout->Font, Prev, *At);
@@ -123,11 +125,13 @@ DrawText(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char 
 
 internal rectangle2
 DrawButton(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char *Text,
-           v4 Color = INVERTED_COLOR)
+           v4 Color = INVERTED_COLOR, r32 Border = 0.0f)
 {
     rectangle2 Result;
     v2 PInit = Layout->P;
-    Result = DrawText(RenderBuffer, Layout, TextLength, Text);
+    Layout->P.x += Border;
+    Layout->P.y -= Border;
+    Result = AddBorder(DrawText(RenderBuffer, Layout, TextLength, Text), Border);
     PushRectangle(RenderBuffer, V3(Result.Min, HUD_Z), GetDim(Result), Color);
     
     return(Result);
@@ -169,7 +173,7 @@ internal void
 RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAxis, v2 YAxis,
              r32 Scale, v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f))
 {
-    IGNORED_TIMED_BLOCK(RenderBitmap);
+    IGNORED_TIMED_FUNCTION();
     Color.rgb *= Color.a;
     XAxis *= Scale*Bitmap->Width;
     YAxis *= Scale*Bitmap->Height;
@@ -259,7 +263,7 @@ RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 X
 internal void
 RenderRectangle(game_backbuffer *BackBuffer, rectangle2 Rect, v4 Color)
 {
-    IGNORED_TIMED_BLOCK(RenderRectangle);
+    IGNORED_TIMED_FUNCTION();
     s32 XMin = Clamp(0, RoundS32(Rect.Min.x), BackBuffer->Width);
     s32 YMin = Clamp(0, RoundS32(Rect.Min.y), BackBuffer->Height);
     s32 XMax = Clamp(0, RoundS32(Rect.Max.x), BackBuffer->Width);
