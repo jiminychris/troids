@@ -94,7 +94,7 @@ inline void
 CopyBackBufferToWindow(HDC DeviceContext, win32_backbuffer *BackBuffer)
 {
     TIMED_FUNCTION();
-#if 1
+#if 0
     {
         TIMED_BLOCK("StretchDIBits");
         StretchDIBits(DeviceContext,

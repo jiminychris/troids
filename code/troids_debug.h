@@ -8,7 +8,7 @@
    ======================================================================== */
 
 #if TROIDS_INTERNAL
-#define MAX_DEBUG_EVENTS 1024
+#define MAX_DEBUG_EVENTS 4096
 
 enum debug_event_type
 {
@@ -42,7 +42,11 @@ enum debug_event_type
 struct debug_event
 {
     u32 Line;
-    r32 ElapsedSeconds;
+    union
+    {
+        r32 ElapsedSeconds;
+        u32 Iterations;
+    };
     debug_event_type Type;
     union
     {
@@ -96,6 +100,7 @@ struct debug_persistent_event
 struct profiler_element
 {
     u32 Line;
+    u32 Iterations;
     u64 BeginTicks;
     u64 EndTicks;
     char *File;
@@ -193,16 +198,17 @@ NextDebugEvent()
 }
 
 inline void
-BeginTimedBlock(char *NameInit, char *FileInit, u32 LineInit)
+BeginTimedBlock(char *NameInit, u32 Iterations, char *FileInit, u32 LineInit)
 {
     debug_event *Event = NextDebugEvent();
     Event->Type = DebugEventType_CodeBegin;
     Event->Value_u64 = __rdtsc();
+    Event->Iterations = Iterations;
     Event->File = FileInit;
     Event->Line = LineInit;
     Event->Name = NameInit;
 }
-#define BEGIN_TIMED_BLOCK(Name) BeginTimedBlock(Name, __FILE__, __LINE__)
+#define BEGIN_TIMED_BLOCK(Name) BeginTimedBlock(Name, 1, __FILE__, __LINE__)
 
 inline void
 EndTimedBlock()
@@ -215,9 +221,9 @@ EndTimedBlock()
 
 struct debug_timer
 {
-    debug_timer(char *NameInit, char *FileInit, u32 LineInit)
+    debug_timer(char *NameInit, u32 Iterations, char *FileInit, u32 LineInit)
     {
-        BeginTimedBlock(NameInit, FileInit, LineInit);
+        BeginTimedBlock(NameInit, Iterations, FileInit, LineInit);
     }
     ~debug_timer(void)
     {
@@ -242,10 +248,12 @@ struct debug_group
     }
 };
 
-#define TIMED_BLOCK__(Name, File, Line, Counter) debug_timer Timer_##Counter(Name, File, Line)
-#define TIMED_BLOCK_(Name, File, Line, Counter) TIMED_BLOCK__(Name, File, Line, Counter)
-#define TIMED_BLOCK(Name) TIMED_BLOCK_(Name, __FILE__, __LINE__, __COUNTER__)
-#define TIMED_FUNCTION() TIMED_BLOCK_(__FUNCTION__, __FILE__, __LINE__, __COUNTER__)
+#define TIMED_BLOCK__(Name, Iterations, File, Line, Counter) debug_timer Timer_##Counter(Name, Iterations, File, Line)
+#define TIMED_BLOCK_(Name, Iterations, File, Line, Counter) TIMED_BLOCK__(Name, Iterations, File, Line, Counter)
+#define TIMED_BLOCK(Name) TIMED_BLOCK_(Name, 1, __FILE__, __LINE__, __COUNTER__)
+#define TIMED_LOOP(Name, Iterations) TIMED_BLOCK_(Name, Iterations, __FILE__, __LINE__, __COUNTER__)
+#define TIMED_LOOP_FUNCTION(Iterations) TIMED_BLOCK_(__FUNCTION__, Iterations, __FILE__, __LINE__, __COUNTER__)
+#define TIMED_FUNCTION() TIMED_BLOCK_(__FUNCTION__, 1, __FILE__, __LINE__, __COUNTER__)
 #define FRAME_MARKER(FrameSeconds)                                      \
     {                                                                   \
         debug_event *Event = NextDebugEvent();          \
@@ -321,13 +329,16 @@ struct debug_group
     COLLATE_VALUE_TYPE(v2, Frame, Event, Prev, GroupBeginStackCount, GroupBeginStack) \
     COLLATE_VALUE_TYPE(r32, Frame, Event, Prev, GroupBeginStackCount, GroupBeginStack) \
     COLLATE_VALUE_TYPE(b32, Frame, Event, Prev, GroupBeginStackCount, GroupBeginStack) \
+    COLLATE_VALUE_TYPE(u32, Frame, Event, Prev, GroupBeginStackCount, GroupBeginStack) \
     COLLATE_VALUE_TYPE(memory_arena, Frame, Event, Prev, GroupBeginStackCount, GroupBeginStack)
 LOG_DEBUG_TYPE(v2)
 LOG_DEBUG_TYPE(r32)
 LOG_DEBUG_TYPE(b32)
+LOG_DEBUG_TYPE(u32)
 LOG_DEBUG_TYPE(memory_arena)
 
 #else
+#define TIMED_LOOP(...)
 #define TIMED_BLOCK(...)
 #define TIMED_FUNCTION(...)
 #define BEGIN_TIMED_BLOCK(...)

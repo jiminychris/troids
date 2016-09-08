@@ -415,12 +415,28 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
                     {
                         ColorIndex = 0;
                     }
-                    TextLength = _snprintf_s(Text, sizeof(Text), "%s %s %u %lu",
-                                             Element->Name, Element->File,
-                                             Element->Line, CyclesPassed);
+                    if(Element->Iterations > 1)
+                    {
+                        TextLength = _snprintf_s(Text, sizeof(Text), "%s %s(%u) %llucy/%lu=%llu",
+                                                 Element->Name, Element->File,
+                                                 Element->Line, CyclesPassed,
+                                                 Element->Iterations, CyclesPassed/Element->Iterations);
+                    }
+                    else
+                    {
+                        TextLength = _snprintf_s(Text, sizeof(Text), "%s %s(%u) %llucy",
+                                                 Element->Name, Element->File,
+                                                 Element->Line, CyclesPassed);
+                    }
                     Layout->P = V2(Left, RegionRect.Max.y - Layout->Font->Ascent*Layout->Scale);
                     if(Inside(RegionRect, Input->MousePosition))
                     {
+                        rectangle2 HoverRect =
+                            DrawText(RenderBuffer, Layout, TextLength, Text, DrawTextFlags_Measure);
+                        if(HoverRect.Max.x > RenderBuffer->Width)
+                        {
+                            Layout->P.x = RenderBuffer->Width - GetDim(HoverRect).x;
+                        }
                         DrawText(RenderBuffer, Layout, TextLength, Text);
                         if(WentDown(Input->LeftMouse) && Element->Child)
                         {
@@ -516,6 +532,7 @@ extern "C" DEBUG_COLLATE(DebugCollate)
                     }
                     
                     Element->Line = Event->Line;
+                    Element->Iterations = Event->Iterations;
                     Element->BeginTicks = Event->Value_u64;
                     Element->EndTicks = 0;
                     Element->File = Event->File;
