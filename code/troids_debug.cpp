@@ -507,185 +507,188 @@ extern "C" DEBUG_COLLATE(DebugCollate)
     render_buffer *RenderBuffer = &TranState->RenderBuffer;
     temporary_memory RenderMemory = BeginTemporaryMemory(&TranState->RenderBuffer.Arena);
     // TODO(chris): Handle events that cross a frame boundary (i.e. threads)
-    
-    u32 GroupBeginStackCount = 0;
-    debug_node *GroupBeginStack[MAX_DEBUG_EVENTS];
-    debug_node *PrevNode = &GlobalDebugState->NodeSentinel;
-
-    for(u32 EventIndex = 0;
-        EventIndex < GlobalDebugState->EventCount;
-        ++EventIndex)
     {
-        debug_event *Event = GlobalDebugState->Events + EventIndex;
-        switch(Event->Type)
+        TIMED_BLOCK("CollateEvents");
+        u32 GroupBeginStackCount = 0;
+        debug_node *GroupBeginStack[MAX_DEBUG_EVENTS];
+        debug_node *PrevNode = &GlobalDebugState->NodeSentinel;
+
+        for(u32 EventIndex = 0;
+            EventIndex < GlobalDebugState->EventCount;
+            ++EventIndex)
         {
-            case(DebugEventType_CodeBegin):
+            debug_event *Event = GlobalDebugState->Events + EventIndex;
+            switch(Event->Type)
             {
-                if(!GlobalDebugState->Paused)
+                case(DebugEventType_CodeBegin):
                 {
-                    profiler_element *Element = GlobalDebugState->FirstFreeProfilerElement;
-                    if(Element)
+                    if(!GlobalDebugState->Paused)
                     {
-                        GlobalDebugState->FirstFreeProfilerElement = Element->NextFree;
-                    }
-                    else
-                    {
-                        Element = PushStruct(DebugArena, profiler_element);
-                    }
-                    
-                    Element->Line = Event->Line;
-                    Element->Iterations = Event->Iterations;
-                    Element->BeginTicks = Event->Value_u64;
-                    Element->EndTicks = 0;
-                    Element->File = Event->File;
-                    Element->Name = Event->Name;
-                    Element->Next = 0;
-                    Element->Child = 0;
-
-                    if(Frame->CurrentElement->EndTicks)
-                    {
-                        Frame->CurrentElement->Next = Element;
-                        Element->Parent = Frame->CurrentElement->Parent;
-                    }
-                    else
-                    {
-                        Frame->CurrentElement->Child = Element;
-                        Element->Parent = Frame->CurrentElement;
-                    }
-                    Frame->CurrentElement = Element;
-                }
-            } break;
-
-            case(DebugEventType_CodeEnd):
-            {
-                if(!GlobalDebugState->Paused)
-                {
-                    Assert(Frame->CurrentElement);
-                    if(Frame->CurrentElement->EndTicks)
-                    {
-                        Frame->CurrentElement = Frame->CurrentElement->Parent;
-                    }
-                    Frame->CurrentElement->EndTicks = Event->Value_u64;
-                }
-            } break;
-
-            case(DebugEventType_FrameMarker):
-            {
-                if(!GlobalDebugState->Paused)
-                {
-                    Frame->ElapsedSeconds = Event->ElapsedSeconds;
-                    Frame->EndTicks = Event->Value_u64;
-                    Frame->CurrentElement = &Frame->ProfilerSentinel;
-                    Frame->CurrentElement->BeginTicks = Frame->BeginTicks;
-                    Frame->CurrentElement->EndTicks = Frame->EndTicks;
-                    GlobalDebugState->ViewingFrameIndex = GlobalDebugState->CollatingFrameIndex;
-
-                    // NOTE(chris): Trick only works if MAX_DEBUG_FRAMES is a power of two.
-                    GlobalDebugState->CollatingFrameIndex = (GlobalDebugState->CollatingFrameIndex+1)&(MAX_DEBUG_FRAMES-1);
-                    Frame = GlobalDebugState->Frames + GlobalDebugState->CollatingFrameIndex;
-                    for(u32 NodeIndex = 0;
-                        NodeIndex < ArrayCount(Frame->NodeHash);
-                        ++NodeIndex)
-                    {
-                        for(debug_node *Chain = Frame->NodeHash[NodeIndex];
-                            Chain;
-                            )
+                        profiler_element *Element = GlobalDebugState->FirstFreeProfilerElement;
+                        if(Element)
                         {
-                            debug_node *Next = Chain->NextInHash;
-                            Chain->NextFree = GlobalDebugState->FirstFreeNode;
-                            GlobalDebugState->FirstFreeNode = Chain;
-                            Chain = Next;
-                        }
-                        Frame->NodeHash[NodeIndex] = 0;
-                    }
-                    for(profiler_element *Element = Frame->ProfilerSentinel.Child;
-                        Element && Element != &Frame->ProfilerSentinel;
-                        )
-                    {
-                        if(Element->Child)
-                        {
-                            Element = Element->Child;
+                            GlobalDebugState->FirstFreeProfilerElement = Element->NextFree;
                         }
                         else
                         {
-                            profiler_element *Next = Element->Next;
-                            profiler_element *Parent = Element->Parent;
-                            Element->NextFree = GlobalDebugState->FirstFreeProfilerElement;
-                            GlobalDebugState->FirstFreeProfilerElement = Element;
-                            if(Next)
+                            Element = PushStruct(DebugArena, profiler_element);
+                        }
+                    
+                        Element->Line = Event->Line;
+                        Element->Iterations = Event->Iterations;
+                        Element->BeginTicks = Event->Value_u64;
+                        Element->EndTicks = 0;
+                        Element->File = Event->File;
+                        Element->Name = Event->Name;
+                        Element->Next = 0;
+                        Element->Child = 0;
+
+                        if(Frame->CurrentElement->EndTicks)
+                        {
+                            Frame->CurrentElement->Next = Element;
+                            Element->Parent = Frame->CurrentElement->Parent;
+                        }
+                        else
+                        {
+                            Frame->CurrentElement->Child = Element;
+                            Element->Parent = Frame->CurrentElement;
+                        }
+                        Frame->CurrentElement = Element;
+                    }
+                } break;
+
+                case(DebugEventType_CodeEnd):
+                {
+                    if(!GlobalDebugState->Paused)
+                    {
+                        Assert(Frame->CurrentElement);
+                        if(Frame->CurrentElement->EndTicks)
+                        {
+                            Frame->CurrentElement = Frame->CurrentElement->Parent;
+                        }
+                        Assert(Frame->CurrentElement != &Frame->ProfilerSentinel);
+                        Frame->CurrentElement->EndTicks = Event->Value_u64;
+                    }
+                } break;
+
+                case(DebugEventType_FrameMarker):
+                {
+                    if(!GlobalDebugState->Paused)
+                    {
+                        Frame->ElapsedSeconds = Event->ElapsedSeconds;
+                        Frame->EndTicks = Event->Value_u64;
+                        Frame->CurrentElement = &Frame->ProfilerSentinel;
+                        Frame->CurrentElement->BeginTicks = Frame->BeginTicks;
+                        Frame->CurrentElement->EndTicks = Frame->EndTicks;
+                        GlobalDebugState->ViewingFrameIndex = GlobalDebugState->CollatingFrameIndex;
+
+                        // NOTE(chris): Trick only works if MAX_DEBUG_FRAMES is a power of two.
+                        GlobalDebugState->CollatingFrameIndex = (GlobalDebugState->CollatingFrameIndex+1)&(MAX_DEBUG_FRAMES-1);
+                        Frame = GlobalDebugState->Frames + GlobalDebugState->CollatingFrameIndex;
+                        for(u32 NodeIndex = 0;
+                            NodeIndex < ArrayCount(Frame->NodeHash);
+                            ++NodeIndex)
+                        {
+                            for(debug_node *Chain = Frame->NodeHash[NodeIndex];
+                                Chain;
+                                )
                             {
-                                Element = Next;
+                                debug_node *Next = Chain->NextInHash;
+                                Chain->NextFree = GlobalDebugState->FirstFreeNode;
+                                GlobalDebugState->FirstFreeNode = Chain;
+                                Chain = Next;
+                            }
+                            Frame->NodeHash[NodeIndex] = 0;
+                        }
+                        for(profiler_element *Element = Frame->ProfilerSentinel.Child;
+                            Element && Element != &Frame->ProfilerSentinel;
+                            )
+                        {
+                            if(Element->Child)
+                            {
+                                Element = Element->Child;
                             }
                             else
                             {
-                                Element = Parent;
-                                if(Parent)
+                                profiler_element *Next = Element->Next;
+                                profiler_element *Parent = Element->Parent;
+                                Element->NextFree = GlobalDebugState->FirstFreeProfilerElement;
+                                GlobalDebugState->FirstFreeProfilerElement = Element;
+                                if(Next)
                                 {
-                                    Parent->Child = 0;
+                                    Element = Next;
+                                }
+                                else
+                                {
+                                    Element = Parent;
+                                    if(Parent)
+                                    {
+                                        Parent->Child = 0;
+                                    }
                                 }
                             }
                         }
+                        Frame->BeginTicks = Event->Value_u64;
+                        Frame->CurrentElement = &Frame->ProfilerSentinel;
+                        Frame->CurrentElement->EndTicks = 0;
                     }
-                    Frame->BeginTicks = Event->Value_u64;
-                    Frame->CurrentElement = &Frame->ProfilerSentinel;
-                    Frame->CurrentElement->EndTicks = 0;
-                }
-                GroupBeginStackCount = 0;
-                PrevNode = &GlobalDebugState->NodeSentinel;
-            } break;
+                    GroupBeginStackCount = 0;
+                    PrevNode = &GlobalDebugState->NodeSentinel;
+                } break;
 
-            case(DebugEventType_GroupBegin):
-            case(DebugEventType_Summary):
-            {
-                debug_node *Node = GetNode(Event);
-                LinkNode(Node, &PrevNode, GroupBeginStack, GroupBeginStackCount);
-                PrevNode = 0;
+                case(DebugEventType_GroupBegin):
+                case(DebugEventType_Summary):
+                {
+                    debug_node *Node = GetNode(Event);
+                    LinkNode(Node, &PrevNode, GroupBeginStack, GroupBeginStackCount);
+                    PrevNode = 0;
 
-                Assert(GroupBeginStackCount < ArrayCount(GroupBeginStack));
-                GroupBeginStack[GroupBeginStackCount++] = Node;
-            } break;
+                    Assert(GroupBeginStackCount < ArrayCount(GroupBeginStack));
+                    GroupBeginStack[GroupBeginStackCount++] = Node;
+                } break;
 
-            case(DebugEventType_GroupEnd):
-            {
-                Assert(GroupBeginStackCount);
-                PrevNode = GroupBeginStack[--GroupBeginStackCount];
-            } break;
+                case(DebugEventType_GroupEnd):
+                {
+                    Assert(GroupBeginStackCount);
+                    PrevNode = GroupBeginStack[--GroupBeginStackCount];
+                } break;
 
-            case(DebugEventType_FillBar):
-            {
-                debug_node *Node = GetNode(Event);
-                LinkNode(Node, &PrevNode, GroupBeginStack, GroupBeginStackCount);
-                debug_node *FrameNode = GetNode(Frame, Event);
-                FrameNode->Value_v2 = Event->Value_v2;
-            } break;
+                case(DebugEventType_FillBar):
+                {
+                    debug_node *Node = GetNode(Event);
+                    LinkNode(Node, &PrevNode, GroupBeginStack, GroupBeginStackCount);
+                    debug_node *FrameNode = GetNode(Frame, Event);
+                    FrameNode->Value_v2 = Event->Value_v2;
+                } break;
 
-            COLLATE_BLANK_TYPES(Event, PrevNode, GroupBeginStackCount, GroupBeginStack);
-            COLLATE_VALUE_TYPES(Frame, Event, PrevNode, GroupBeginStackCount, GroupBeginStack);
+                COLLATE_BLANK_TYPES(Event, PrevNode, GroupBeginStackCount, GroupBeginStack);
+                COLLATE_VALUE_TYPES(Frame, Event, PrevNode, GroupBeginStackCount, GroupBeginStack);
+            }
         }
-    }
 
-    Frame = GlobalDebugState->Frames + GlobalDebugState->ViewingFrameIndex;
-    if(GlobalDebugState->NodeSentinel.Next)
-    {
-        text_layout Layout;
-        Layout.Font = &GlobalDebugState->Font;
-        Layout.Scale = 0.5f;
-        Layout.P = V2(0, BackBuffer->Height - Layout.Font->Ascent*Layout.Scale);
-        Layout.Color = V4(1, 1, 1, 1);
-        DrawNodes(RenderBuffer, &Layout, Frame, GlobalDebugState->NodeSentinel.Next, Input);
-    }
+        Frame = GlobalDebugState->Frames + GlobalDebugState->ViewingFrameIndex;
+        if(GlobalDebugState->NodeSentinel.Next)
+        {
+            text_layout Layout;
+            Layout.Font = &GlobalDebugState->Font;
+            Layout.Scale = 0.5f;
+            Layout.P = V2(0, BackBuffer->Height - Layout.Font->Ascent*Layout.Scale);
+            Layout.Color = V4(1, 1, 1, 1);
+            DrawNodes(RenderBuffer, &Layout, Frame, GlobalDebugState->NodeSentinel.Next, Input);
+        }
 
 #if 0
-    for(GlobalDebugState->EventCount = 0;
-        GlobalDebugState->EventCount < CodeBeginStackCount;
-        ++GlobalDebugState->EventCount)
-    {
-        GlobalDebugState->Events[GlobalDebugState->EventCount] =
-            GlobalDebugState->Events[CodeBeginIndexStack[GlobalDebugState->EventCount]];
-    }
+        for(GlobalDebugState->EventCount = 0;
+            GlobalDebugState->EventCount < CodeBeginStackCount;
+            ++GlobalDebugState->EventCount)
+        {
+            GlobalDebugState->Events[GlobalDebugState->EventCount] =
+                GlobalDebugState->Events[CodeBeginIndexStack[GlobalDebugState->EventCount]];
+        }
 #else
-    GlobalDebugState->EventCount = 0;
+        GlobalDebugState->EventCount = 0;
 #endif
+    }
 
     BEGIN_TIMED_BLOCK("DEBUGRender");
     u32 EventCount = GlobalDebugState->EventCount;

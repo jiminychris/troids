@@ -8,6 +8,7 @@
 
 #define TEXT_Z 200000.0f
 #define HUD_Z 100000.0f
+#define DEBUG_BITMAPS 0
 
 inline void
 PushRenderHeader(memory_arena *Arena, render_command Command)
@@ -175,9 +176,7 @@ DrawFillBar(render_buffer *RenderBuffer, text_layout *Layout, u64 Used, u64 Max)
     DrawFillBar(RenderBuffer, Layout, (r32)Used, (r32)Max);
 }
 
-#if 0
 #pragma optimize("gts", on)
-#endif
 // TODO(chris): Further optimization
 internal void
 RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAxis, v2 YAxis,
@@ -197,17 +196,23 @@ RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 X
     s32 XMax = Clamp(0, Ceiling(Maximum(Maximum(Origin.x, Origin.x + XAxis.x),
                                         Maximum(Origin.x + YAxis.x, Origin.x + XAxis.x + YAxis.x))),
                      BackBuffer->Width);
-#if 1
-    // TODO(chris): Crashed here once when drawing in the top right corner. Check that out.
-    if(XMax == BackBuffer->Width)
-    {
-        u32 Spillover = (4-((XMax-XMin)%4));
-        XMin -= Spillover;
-    }
-#endif
     s32 YMax = Clamp(0, Ceiling(Maximum(Maximum(Origin.y, Origin.y + XAxis.y),
                                         Maximum(Origin.y + YAxis.y, Origin.y + XAxis.y + YAxis.y))),
                      BackBuffer->Height);
+    // TODO(chris): Crashed here once when drawing in the top right corner. Check that out.
+
+    s32 AdjustedXMin = XMin;
+    s32 AdjustedXMax = XMax;
+    s32 Width = XMax-XMin;
+    s32 Height = YMax-YMin;
+    s32 Adjustment = 4-Width%4;
+    if(Adjustment < 4)
+    {
+        AdjustedXMin = Maximum(0, XMin-Adjustment);
+        Adjustment -= XMin-AdjustedXMin;
+        AdjustedXMax = Minimum(BackBuffer->Width, XMax+Adjustment);
+        Width = AdjustedXMax-AdjustedXMin;
+    }
 
     __m128 Inv255 = _mm_set_ps1(1.0f / 255.0f);
     __m128 InvXAxisLengthSq = _mm_set_ps1(1.0f / LengthSq(XAxis));
@@ -226,19 +231,22 @@ RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 X
     __m128 TintA = _mm_set_ps1(Color.a);
     __m128 Mask;
     u8 *PixelRow = (u8 *)BackBuffer->Memory + (BackBuffer->Pitch*YMin);
-    TIMED_LOOP_FUNCTION((YMax-YMin)*(XMax-XMin));
+    TIMED_LOOP_FUNCTION(Width*Height);
+#if DEBUG_BITMAPS
+    __m128i Pink = _mm_set1_epi32(0xFFFF00FF);
+    __m128i Blue = _mm_set1_epi32(0xFF0000FF);
+#endif
     for(s32 Y = YMin;
         Y < YMax;
         ++Y)
     {
-        u32 *Pixel = (u32 *)PixelRow + XMin;
-        for(s32 X = XMin;
-            X < XMax;
+        u32 *Pixel = (u32 *)PixelRow + AdjustedXMin;
+        for(s32 X = AdjustedXMin;
+            X < AdjustedXMax;
             X += 4)
         {
-#if 1
+#if DEBUG_BITMAPS
             // TODO(chris): Ship bounding rectangle seems too big when rotating?
-            __m128i Pink = _mm_set1_epi32(0xFFFF00FF);
             _mm_storeu_si128((__m128i *)Pixel, Pink);
 #endif
             v2 TestPointA = V2i(X + 0, Y) - Origin;
@@ -347,6 +355,11 @@ RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 X
             __m128 DA = _mm_sub_ps(RealOne, _mm_mul_ps(Inv255, _mm_mul_ps(LerpA, TintA)));
 
             __m128i Pixels = _mm_loadu_si128((__m128i *)Pixel);
+#if DEBUG_BITMAPS
+            __m128i IntMask = _mm_set_epi32(Mask.m128_u32[3], Mask.m128_u32[2],
+                                            Mask.m128_u32[1], Mask.m128_u32[0]);
+            Pixels = _mm_or_si128(_mm_andnot_si128(IntMask, Pixels), _mm_and_si128(Blue, IntMask));
+#endif
 
             __m128i Result = _mm_or_si128(
                 _mm_or_si128(
@@ -411,6 +424,7 @@ RenderTranslucentRectangle(game_backbuffer *BackBuffer, rectangle2 Rect, v4 Colo
         AdjustedXMin = Maximum(0, XMin-Adjustment);
         Adjustment -= XMin-AdjustedXMin;
         AdjustedXMax = Minimum(BackBuffer->Width, XMax+Adjustment);
+        Width = AdjustedXMax-AdjustedXMin;
     }
 
     TIMED_LOOP_FUNCTION(Height*Width);
@@ -420,7 +434,7 @@ RenderTranslucentRectangle(game_backbuffer *BackBuffer, rectangle2 Rect, v4 Colo
         ++Y)
     {
         __m128i X4 = _mm_set_epi32(AdjustedXMin+3, AdjustedXMin+2, AdjustedXMin+1, AdjustedXMin+0);
-        u32 *Dest = (u32 *)PixelRow + XMin;
+        u32 *Dest = (u32 *)PixelRow + AdjustedXMin;
         for(s32 X = AdjustedXMin;
             X < AdjustedXMax;
             X += 4)

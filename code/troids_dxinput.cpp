@@ -850,7 +850,7 @@ ProcessGamePadInput(game_input *OldInput, game_input *NewInput)
                     }
                     else if(GamePad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN)
                     {
-                        NewGamePad->LeftStick.y = 1.0f;
+                        NewGamePad->LeftStick.y = -1.0f;
                     }
                     
                     if(GamePad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT)

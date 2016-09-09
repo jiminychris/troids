@@ -473,26 +473,10 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     State->P += (dP + State->dP)*Halfdt;
     State->dP = dP;
 
-#if 0
     v3 AsteroidAcceleration = (0.25f*PixelsPerMeter*
                                V3(AsteroidController->LeftStick.x, AsteroidController->LeftStick.y, 0.0f));
 
     State->Asteroids[0].dP += AsteroidAcceleration*Input->dtForFrame;
-#else
-    local_persist r32 Multiplier = 1.0f;
-    if(WentDown(AsteroidController->ActionUp))
-    {
-        Multiplier *= 2.0f;
-    }
-    if(WentDown(AsteroidController->ActionDown))
-    {
-        Multiplier /= 2.0f;
-    }
-    DEBUG_VALUE("Multiplier", Multiplier);
-    State->Asteroids[0].dP = Multiplier/Input->dtForFrame*V3(AsteroidController->LeftStick.x,
-                                                      AsteroidController->LeftStick.y,
-                                                      0.0f);
-#endif
     
     for(u32 AsteroidIndex = 0;
         AsteroidIndex < State->AsteroidCount;
