@@ -162,6 +162,7 @@ struct debug_frame
     
     profiler_element ProfilerSentinel;
     profiler_element *CurrentElement;
+    profiler_element *NextElement;
 };
 
 struct debug_state

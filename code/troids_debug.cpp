@@ -138,6 +138,7 @@ internal void
 DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, debug_node *Node,
           game_input *Input)
 {
+    Frame->NextElement = Frame->CurrentElement;
     u32 TextLength;
     char Text[256];
     if(!Input->LeftMouse.EndedDown)
@@ -339,7 +340,7 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
                                     V4(0, 0.5f, 1, 1), 2.0f);
             if(Inside(ButtonRect, Input->MousePosition) && WentDown(Input->LeftMouse))
             {
-                Frame->CurrentElement = &Frame->ProfilerSentinel;
+                Frame->NextElement = &Frame->ProfilerSentinel;
             }
 
             Layout->P.x = PopX;
@@ -440,7 +441,7 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
                         DrawText(RenderBuffer, Layout, TextLength, Text);
                         if(WentDown(Input->LeftMouse) && Element->Child)
                         {
-                            Frame->CurrentElement = Element;
+                            Frame->NextElement = Element;
                         }
                     }
                     
@@ -468,6 +469,7 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
     {
         DrawNodes(RenderBuffer, Layout, Frame, Node->Next, Input);
     }
+    Frame->CurrentElement = Frame->NextElement;
 }
 
 inline void

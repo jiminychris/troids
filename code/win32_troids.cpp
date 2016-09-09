@@ -1199,12 +1199,12 @@ int WinMain(HINSTANCE Instance,
                 }
 #endif
 
+#if 0
                 QueryPerformanceCounter(&Counter);
                 r32 FrameSeconds = (Counter.QuadPart - LastCounter.QuadPart)*ClocksToSeconds;
                 FRAME_MARKER(FrameSeconds);
 
                 // TODO(chris): Use as backup if VSYNC fails.
-#if 0
                 char Text[256];
                 r32 ElapsedSeconds = FrameSeconds;
                 if(ElapsedSeconds < dtForFrame)
@@ -1231,6 +1231,10 @@ int WinMain(HINSTANCE Instance,
                 HDC DeviceContext = GetDC(Window);
                 CopyBackBufferToWindow(DeviceContext, &GlobalBackBuffer);
                 ReleaseDC(Window, DeviceContext);
+
+                QueryPerformanceCounter(&Counter);
+                r32 FrameSeconds = (Counter.QuadPart - LastCounter.QuadPart)*ClocksToSeconds;
+                FRAME_MARKER(FrameSeconds);
                 
                 LastCounter = Counter;
             }

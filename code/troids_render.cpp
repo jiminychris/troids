@@ -175,8 +175,10 @@ DrawFillBar(render_buffer *RenderBuffer, text_layout *Layout, u64 Used, u64 Max)
     DrawFillBar(RenderBuffer, Layout, (r32)Used, (r32)Max);
 }
 
-#pragma optimize("", on)
-// TODO(chris): SIMD this!
+#if 0
+#pragma optimize("gts", on)
+#endif
+// TODO(chris): Further optimization
 internal void
 RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAxis, v2 YAxis,
              r32 Scale, v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f))
@@ -196,6 +198,7 @@ RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 X
                                         Maximum(Origin.x + YAxis.x, Origin.x + XAxis.x + YAxis.x))),
                      BackBuffer->Width);
 #if 1
+    // TODO(chris): Crashed here once when drawing in the top right corner. Check that out.
     if(XMax == BackBuffer->Width)
     {
         u32 Spillover = (4-((XMax-XMin)%4));
@@ -221,6 +224,7 @@ RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 X
     __m128 TintG = _mm_set_ps1(Color.g);
     __m128 TintB = _mm_set_ps1(Color.b);
     __m128 TintA = _mm_set_ps1(Color.a);
+    __m128 Mask;
     u8 *PixelRow = (u8 *)BackBuffer->Memory + (BackBuffer->Pitch*YMin);
     TIMED_LOOP_FUNCTION((YMax-YMin)*(XMax-XMin));
     for(s32 Y = YMin;
@@ -232,6 +236,11 @@ RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 X
             X < XMax;
             X += 4)
         {
+#if 1
+            // TODO(chris): Ship bounding rectangle seems too big when rotating?
+            __m128i Pink = _mm_set1_epi32(0xFFFF00FF);
+            _mm_storeu_si128((__m128i *)Pixel, Pink);
+#endif
             v2 TestPointA = V2i(X + 0, Y) - Origin;
             v2 TestPointB = V2i(X + 1, Y) - Origin;
             v2 TestPointC = V2i(X + 2, Y) - Origin;
@@ -247,7 +256,6 @@ RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 X
                                              TestPointB.x*YAxis.x + TestPointC.y*YAxis.y,
                                              TestPointA.x*YAxis.x + TestPointD.y*YAxis.y),
                                   InvYAxisLengthSq);
-            __m128 Mask;
             Mask.m128_u32[0] = 0xFFFFFFFF;
             Mask.m128_u32[1] = 0xFFFFFFFF;
             Mask.m128_u32[2] = 0xFFFFFFFF;
@@ -284,192 +292,167 @@ RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 X
             __m128 OffsetC = _mm_add_ps(OffsetA, BitmapWidth);
             __m128 OffsetD = _mm_add_ps(OffsetC, RealOne);
 
-            u32 TexelA[] = {*((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetA).m128i_u32[0]),
-                            *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetA).m128i_u32[1]),
-                            *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetA).m128i_u32[2]),
-                            *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetA).m128i_u32[3])};
-            u32 TexelB[] = {*((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetB).m128i_u32[0]),
-                            *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetB).m128i_u32[1]),
-                            *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetB).m128i_u32[2]),
-                            *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetB).m128i_u32[3])};
-            u32 TexelC[] = {*((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetC).m128i_u32[0]),
-                            *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetC).m128i_u32[1]),
-                            *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetC).m128i_u32[2]),
-                            *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetC).m128i_u32[3])};
-            u32 TexelD[] = {*((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetD).m128i_u32[0]),
-                            *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetD).m128i_u32[1]),
-                            *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetD).m128i_u32[2]),
-                            *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetD).m128i_u32[3])};
+            __m128i TexelA = _mm_set_epi32(*((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetA).m128i_u32[3]),
+                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetA).m128i_u32[2]),
+                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetA).m128i_u32[1]),
+                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetA).m128i_u32[0]));
+            __m128i TexelB = _mm_set_epi32(*((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetB).m128i_u32[3]),
+                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetB).m128i_u32[2]),
+                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetB).m128i_u32[1]),
+                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetB).m128i_u32[0]));
+            __m128i TexelC = _mm_set_epi32(*((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetC).m128i_u32[3]),
+                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetC).m128i_u32[2]),
+                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetC).m128i_u32[1]),
+                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetC).m128i_u32[0]));
+            __m128i TexelD = _mm_set_epi32(*((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetD).m128i_u32[3]),
+                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetD).m128i_u32[2]),
+                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetD).m128i_u32[1]),
+                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetD).m128i_u32[0]));
 
 
-            __m128 TexelAR = _mm_cvtepi32_ps(_mm_set_epi32((TexelA[3] >> 16)&0xFF,
-                                                           (TexelA[2] >> 16)&0xFF,
-                                                           (TexelA[1] >> 16)&0xFF,
-                                                           (TexelA[0] >> 16)&0xFF));
-            __m128 TexelAG = _mm_cvtepi32_ps(_mm_set_epi32((TexelA[3] >> 8)&0xFF,
-                                                           (TexelA[2] >> 8)&0xFF,
-                                                           (TexelA[1] >> 8)&0xFF,
-                                                           (TexelA[0] >> 8)&0xFF));
-            __m128 TexelAB = _mm_cvtepi32_ps(_mm_set_epi32((TexelA[3] >> 0)&0xFF,
-                                                           (TexelA[2] >> 0)&0xFF,
-                                                           (TexelA[1] >> 0)&0xFF,
-                                                           (TexelA[0] >> 0)&0xFF));
-            __m128 TexelAA = _mm_cvtepi32_ps(_mm_set_epi32((TexelA[3] >> 24)&0xFF,
-                                                           (TexelA[2] >> 24)&0xFF,
-                                                           (TexelA[1] >> 24)&0xFF,
-                                                           (TexelA[0] >> 24)&0xFF));
+            __m128 TexelAR = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelA, 16), ColorMask));
+            __m128 TexelAG = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelA, 8), ColorMask));
+            __m128 TexelAB = _mm_cvtepi32_ps(_mm_and_si128(TexelA, ColorMask));
+            __m128 TexelAA = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelA, 24), ColorMask));
 
-            __m128 TexelBR = _mm_cvtepi32_ps(_mm_set_epi32((TexelB[3] >> 16)&0xFF,
-                                                           (TexelB[2] >> 16)&0xFF,
-                                                           (TexelB[1] >> 16)&0xFF,
-                                                           (TexelB[0] >> 16)&0xFF));
-            __m128 TexelBG = _mm_cvtepi32_ps(_mm_set_epi32((TexelB[3] >> 8)&0xFF,
-                                                           (TexelB[2] >> 8)&0xFF,
-                                                           (TexelB[1] >> 8)&0xFF,
-                                                           (TexelB[0] >> 8)&0xFF));
-            __m128 TexelBB = _mm_cvtepi32_ps(_mm_set_epi32((TexelB[3] >> 0)&0xFF,
-                                                           (TexelB[2] >> 0)&0xFF,
-                                                           (TexelB[1] >> 0)&0xFF,
-                                                           (TexelB[0] >> 0)&0xFF));
-            __m128 TexelBA = _mm_cvtepi32_ps(_mm_set_epi32((TexelB[3] >> 24)&0xFF,
-                                                           (TexelB[2] >> 24)&0xFF,
-                                                           (TexelB[1] >> 24)&0xFF,
-                                                           (TexelB[0] >> 24)&0xFF));
+            __m128 TexelBR = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelB, 16), ColorMask));
+            __m128 TexelBG = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelB, 8), ColorMask));
+            __m128 TexelBB = _mm_cvtepi32_ps(_mm_and_si128(TexelB, ColorMask));
+            __m128 TexelBA = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelB, 24), ColorMask));
 
-            __m128 TexelCR = _mm_cvtepi32_ps(_mm_set_epi32((TexelC[3] >> 16)&0xFF,
-                                                           (TexelC[2] >> 16)&0xFF,
-                                                           (TexelC[1] >> 16)&0xFF,
-                                                           (TexelC[0] >> 16)&0xFF));
-            __m128 TexelCG = _mm_cvtepi32_ps(_mm_set_epi32((TexelC[3] >> 8)&0xFF,
-                                                           (TexelC[2] >> 8)&0xFF,
-                                                           (TexelC[1] >> 8)&0xFF,
-                                                           (TexelC[0] >> 8)&0xFF));
-            __m128 TexelCB = _mm_cvtepi32_ps(_mm_set_epi32((TexelC[3] >> 0)&0xFF,
-                                                           (TexelC[2] >> 0)&0xFF,
-                                                           (TexelC[1] >> 0)&0xFF,
-                                                           (TexelC[0] >> 0)&0xFF));
-            __m128 TexelCA = _mm_cvtepi32_ps(_mm_set_epi32((TexelC[3] >> 24)&0xFF,
-                                                           (TexelC[2] >> 24)&0xFF,
-                                                           (TexelC[1] >> 24)&0xFF,
-                                                           (TexelC[0] >> 24)&0xFF));
+            __m128 TexelCR = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelC, 16), ColorMask));
+            __m128 TexelCG = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelC, 8), ColorMask));
+            __m128 TexelCB = _mm_cvtepi32_ps(_mm_and_si128(TexelC, ColorMask));
+            __m128 TexelCA = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelC, 24), ColorMask));
 
-            __m128 TexelDR = _mm_cvtepi32_ps(_mm_set_epi32((TexelD[3] >> 16)&0xFF,
-                                                           (TexelD[2] >> 16)&0xFF,
-                                                           (TexelD[1] >> 16)&0xFF,
-                                                           (TexelD[0] >> 16)&0xFF));
-            __m128 TexelDG = _mm_cvtepi32_ps(_mm_set_epi32((TexelD[3] >> 8)&0xFF,
-                                                           (TexelD[2] >> 8)&0xFF,
-                                                           (TexelD[1] >> 8)&0xFF,
-                                                           (TexelD[0] >> 8)&0xFF));
-            __m128 TexelDB = _mm_cvtepi32_ps(_mm_set_epi32((TexelD[3] >> 0)&0xFF,
-                                                           (TexelD[2] >> 0)&0xFF,
-                                                           (TexelD[1] >> 0)&0xFF,
-                                                           (TexelD[0] >> 0)&0xFF));
-            __m128 TexelDA = _mm_cvtepi32_ps(_mm_set_epi32((TexelD[3] >> 24)&0xFF,
-                                                           (TexelD[2] >> 24)&0xFF,
-                                                           (TexelD[1] >> 24)&0xFF,
-                                                           (TexelD[0] >> 24)&0xFF));
+            __m128 TexelDR = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelD, 16), ColorMask));
+            __m128 TexelDG = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelD, 8), ColorMask));
+            __m128 TexelDB = _mm_cvtepi32_ps(_mm_and_si128(TexelD, ColorMask));
+            __m128 TexelDA = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelD, 24), ColorMask));
 
             __m128 tU = _mm_sub_ps(tX, ttX);
             __m128 tV = _mm_sub_ps(tY, ttY);
             __m128 tUInv = _mm_sub_ps(RealOne, tU);
             __m128 tVInv = _mm_sub_ps(RealOne, tV);
 
-            __m128 LerpABR = _mm_add_ps(_mm_mul_ps(TexelAR, tUInv), _mm_mul_ps(TexelBR, tU));
-            __m128 LerpABG = _mm_add_ps(_mm_mul_ps(TexelAG, tUInv), _mm_mul_ps(TexelBG, tU));
-            __m128 LerpABB = _mm_add_ps(_mm_mul_ps(TexelAB, tUInv), _mm_mul_ps(TexelBB, tU));
-            __m128 LerpABA = _mm_add_ps(_mm_mul_ps(TexelAA, tUInv), _mm_mul_ps(TexelBA, tU));
-
-            __m128 LerpCDR = _mm_add_ps(_mm_mul_ps(TexelCR, tUInv), _mm_mul_ps(TexelDR, tU));
-            __m128 LerpCDG = _mm_add_ps(_mm_mul_ps(TexelCG, tUInv), _mm_mul_ps(TexelDG, tU));
-            __m128 LerpCDB = _mm_add_ps(_mm_mul_ps(TexelCB, tUInv), _mm_mul_ps(TexelDB, tU));
-            __m128 LerpCDA = _mm_add_ps(_mm_mul_ps(TexelCA, tUInv), _mm_mul_ps(TexelDA, tU));
-
-            __m128 LerpR = _mm_and_ps(_mm_add_ps(_mm_mul_ps(LerpABR, tVInv),
-                                                    _mm_mul_ps(LerpCDR, tV)), Mask);
-            __m128 LerpG = _mm_and_ps(_mm_add_ps(_mm_mul_ps(LerpABG, tVInv),
-                                                    _mm_mul_ps(LerpCDG, tV)), Mask);
-            __m128 LerpB = _mm_and_ps(_mm_add_ps(_mm_mul_ps(LerpABB, tVInv),
-                                                    _mm_mul_ps(LerpCDB, tV)), Mask);
-            __m128 LerpA = _mm_and_ps(_mm_add_ps(_mm_mul_ps(LerpABA, tVInv),
-                                                    _mm_mul_ps(LerpCDA, tV)), Mask);
+            __m128 LerpR = _mm_and_ps(_mm_add_ps(_mm_mul_ps(_mm_add_ps(_mm_mul_ps(TexelAR, tUInv), _mm_mul_ps(TexelBR, tU)), tVInv),
+                                                    _mm_mul_ps(_mm_add_ps(_mm_mul_ps(TexelCR, tUInv), _mm_mul_ps(TexelDR, tU)), tV)), Mask);
+            __m128 LerpG = _mm_and_ps(_mm_add_ps(_mm_mul_ps(_mm_add_ps(_mm_mul_ps(TexelAG, tUInv), _mm_mul_ps(TexelBG, tU)), tVInv),
+                                                    _mm_mul_ps(_mm_add_ps(_mm_mul_ps(TexelCG, tUInv), _mm_mul_ps(TexelDG, tU)), tV)), Mask);
+            __m128 LerpB = _mm_and_ps(_mm_add_ps(_mm_mul_ps(_mm_add_ps(_mm_mul_ps(TexelAB, tUInv), _mm_mul_ps(TexelBB, tU)), tVInv),
+                                                    _mm_mul_ps(_mm_add_ps(_mm_mul_ps(TexelCB, tUInv), _mm_mul_ps(TexelDB, tU)), tV)), Mask);
+            __m128 LerpA = _mm_and_ps(_mm_add_ps(_mm_mul_ps(_mm_add_ps(_mm_mul_ps(TexelAA, tUInv), _mm_mul_ps(TexelBA, tU)), tVInv),
+                                                    _mm_mul_ps(_mm_add_ps(_mm_mul_ps(TexelCA, tUInv), _mm_mul_ps(TexelDA, tU)), tV)), Mask);
 
             __m128 DA = _mm_sub_ps(RealOne, _mm_mul_ps(Inv255, _mm_mul_ps(LerpA, TintA)));
 
-            // TODO(chris): Crashed here once when drawing in the top right corner. Check that out.
-            __m128i Pixels = _mm_set_epi32(*(Pixel + 3),
-                                           *(Pixel + 2),
-                                           *(Pixel + 1),
-                                           *(Pixel + 0));
-            __m128 DR = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(Pixels, 16), ColorMask));
-            __m128 DG = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(Pixels, 8), ColorMask));
-            __m128 DB = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(Pixels, 0), ColorMask));
+            __m128i Pixels = _mm_loadu_si128((__m128i *)Pixel);
 
-            __m128i ResultR = _mm_slli_epi32(_mm_cvtps_epi32(
-                                                 _mm_add_ps(
-                                                     _mm_mul_ps(TintR, LerpR),
-                                                     _mm_mul_ps(DA, DR))), 16);
-            __m128i ResultG = _mm_slli_epi32(_mm_cvtps_epi32(
-                                                 _mm_add_ps(
-                                                     _mm_mul_ps(TintG, LerpG),
-                                                     _mm_mul_ps(DA, DG))), 8);
-            __m128i ResultB = _mm_slli_epi32(_mm_cvtps_epi32(
-                                                 _mm_add_ps(
-                                                     _mm_mul_ps(TintB, LerpB),
-                                                     _mm_mul_ps(DA, DB))), 0);
+            __m128i Result = _mm_or_si128(
+                _mm_or_si128(
+                    _mm_slli_epi32(
+                        _mm_cvtps_epi32(_mm_add_ps(
+                                            _mm_mul_ps(TintR, LerpR),
+                                            _mm_mul_ps(DA,
+                                                       _mm_cvtepi32_ps(
+                                                           _mm_and_si128(
+                                                               _mm_srli_epi32(Pixels, 16),
+                                                               ColorMask))))),
+                        16),
+                    _mm_slli_epi32(
+                        _mm_cvtps_epi32(
+                            _mm_add_ps(
+                                _mm_mul_ps(TintG, LerpG),
+                                _mm_mul_ps(DA,
+                                           _mm_cvtepi32_ps(
+                                               _mm_and_si128(
+                                                   _mm_srli_epi32(Pixels, 8),
+                                                   ColorMask))))),
+                        8)),
+                    _mm_cvtps_epi32(
+                        _mm_add_ps(
+                            _mm_mul_ps(TintB, LerpB),
+                            _mm_mul_ps(DA, _mm_cvtepi32_ps(_mm_and_si128(Pixels, ColorMask))))));
 
-            if((LerpA.m128_f32[0] > 0.0f) &&
-               (LerpA.m128_f32[1] > 0.0f) &&
-               (LerpA.m128_f32[2] > 0.0f) &&
-               (LerpA.m128_f32[3] > 0.0f))
-            {
-                int A = 0;
-            }
+            _mm_storeu_si128((__m128i *)Pixel, Result);
 
-            *(Pixel + 0) = ResultR.m128i_u32[0] | ResultG.m128i_u32[0] | ResultB.m128i_u32[0];
-            *(Pixel + 1) = ResultR.m128i_u32[1] | ResultG.m128i_u32[1] | ResultB.m128i_u32[1];
-            *(Pixel + 2) = ResultR.m128i_u32[2] | ResultG.m128i_u32[2] | ResultB.m128i_u32[2];
-            *(Pixel + 3) = ResultR.m128i_u32[3] | ResultG.m128i_u32[3] | ResultB.m128i_u32[3];
             Pixel += 4;
         }
         PixelRow += BackBuffer->Pitch;
     }
 }
 
-// TODO(chris): SIMD this!
+// TODO(chris): Further optimization
 internal void
 RenderTranslucentRectangle(game_backbuffer *BackBuffer, rectangle2 Rect, v4 Color)
 {
-    TIMED_FUNCTION();
     s32 XMin = Clamp(0, RoundS32(Rect.Min.x), BackBuffer->Width);
     s32 YMin = Clamp(0, RoundS32(Rect.Min.y), BackBuffer->Height);
     s32 XMax = Clamp(0, RoundS32(Rect.Max.x), BackBuffer->Width);
     s32 YMax = Clamp(0, RoundS32(Rect.Max.y), BackBuffer->Height);
 
-    Color.rgb *= 255.0f;
+    Color.rgb *= 255.0f*Color.a;
+    __m128 SR = _mm_set_ps1(Color.r);
+    __m128 SG = _mm_set_ps1(Color.g);
+    __m128 SB = _mm_set_ps1(Color.b);
+    __m128 DA = _mm_set_ps1(1.0f - Color.a);
+    __m128i Four = _mm_set1_epi32(4);
+    __m128i XMin4 = _mm_set1_epi32(XMin);
+    __m128i XMax4 = _mm_set1_epi32(XMax);
+    __m128i ColorMask = _mm_set1_epi32(0x000000FF);
 
-    Color.rgb *= Color.a;
-    r32 SR = Color.r;
-    r32 SG = Color.g;
-    r32 SB = Color.b;
-    r32 DA = 1.0f - Color.a;
+    s32 AdjustedXMin = XMin;
+    s32 AdjustedXMax = XMax;
+    s32 Width = XMax-XMin;
+    s32 Height = YMax-YMin;
+    s32 Adjustment = 4-Width%4;
+    if(Adjustment < 4)
+    {
+        AdjustedXMin = Maximum(0, XMin-Adjustment);
+        Adjustment -= XMin-AdjustedXMin;
+        AdjustedXMax = Minimum(BackBuffer->Width, XMax+Adjustment);
+    }
 
+    TIMED_LOOP_FUNCTION(Height*Width);
     u8 *PixelRow = (u8 *)BackBuffer->Memory + BackBuffer->Pitch*YMin;
     for(s32 Y = YMin;
         Y < YMax;
         ++Y)
     {
+        __m128i X4 = _mm_set_epi32(AdjustedXMin+3, AdjustedXMin+2, AdjustedXMin+1, AdjustedXMin+0);
         u32 *Dest = (u32 *)PixelRow + XMin;
-        for(s32 X = XMin;
-            X < XMax;
-            ++X)
+        for(s32 X = AdjustedXMin;
+            X < AdjustedXMax;
+            X += 4)
         {
-            r32 DR = (r32)((*Dest >> 16) & 0xFF);
-            r32 DG = (r32)((*Dest >> 8) & 0xFF);
-            r32 DB = (r32)((*Dest >> 0) & 0xFF);
-            *Dest++ = ((RoundU32(DA*DR + SR) << 16) | 
-                       (RoundU32(DA*DG + SG) << 8) | 
-                       (RoundU32(DA*DB + SB) << 0));
+            __m128i Mask = _mm_andnot_si128(_mm_cmplt_epi32(X4, XMin4), _mm_cmplt_epi32(X4, XMax4));
+
+            __m128i RawDest = _mm_loadu_si128((__m128i *)Dest);
+
+            __m128 DR = _mm_add_ps(_mm_mul_ps(DA,
+                                              _mm_cvtepi32_ps(
+                                                  _mm_and_si128(_mm_srli_epi32(RawDest, 16),
+                                                                ColorMask))),
+                                   SR);
+            __m128 DG = _mm_add_ps(_mm_mul_ps(DA,
+                                              _mm_cvtepi32_ps(
+                                                  _mm_and_si128(_mm_srli_epi32(RawDest, 8),
+                                                                ColorMask))),
+                                   SG);
+            __m128 DB = _mm_add_ps(_mm_mul_ps(DA,
+                                              _mm_cvtepi32_ps(
+                                                  _mm_and_si128(RawDest,
+                                                                ColorMask))),
+                                   SB);
+
+            __m128i Result = _mm_or_si128(_mm_or_si128(_mm_slli_epi32(_mm_cvtps_epi32(DR), 16),
+                                                       _mm_slli_epi32(_mm_cvtps_epi32(DG), 8)),
+                                          _mm_cvtps_epi32(DB));
+
+            _mm_storeu_si128((__m128i *)Dest, Result);
+
+            Dest += 4;
+            _mm_add_epi32(X4, Four);
         }
         PixelRow += BackBuffer->Pitch;
     }
@@ -479,12 +462,14 @@ RenderTranslucentRectangle(game_backbuffer *BackBuffer, rectangle2 Rect, v4 Colo
 internal void
 RenderInvertedRectangle(game_backbuffer *BackBuffer, rectangle2 Rect)
 {
-    TIMED_FUNCTION();
     s32 XMin = Clamp(0, RoundS32(Rect.Min.x), BackBuffer->Width);
     s32 YMin = Clamp(0, RoundS32(Rect.Min.y), BackBuffer->Height);
     s32 XMax = Clamp(0, RoundS32(Rect.Max.x), BackBuffer->Width);
     s32 YMax = Clamp(0, RoundS32(Rect.Max.y), BackBuffer->Height);
 
+    s32 Height = YMax-YMin;
+    s32 Width = XMax-XMin;
+    TIMED_LOOP_FUNCTION(Height*Width);
     u8 *PixelRow = (u8 *)BackBuffer->Memory + BackBuffer->Pitch*YMin;
     for(s32 Y = YMin;
         Y < YMax;
@@ -505,7 +490,6 @@ RenderInvertedRectangle(game_backbuffer *BackBuffer, rectangle2 Rect)
 internal void
 RenderSolidRectangle(game_backbuffer *BackBuffer, rectangle2 Rect, v3 Color)
 {
-    TIMED_FUNCTION();
     s32 XMin = Clamp(0, RoundS32(Rect.Min.x), BackBuffer->Width);
     s32 YMin = Clamp(0, RoundS32(Rect.Min.y), BackBuffer->Height);
     s32 XMax = Clamp(0, RoundS32(Rect.Max.x), BackBuffer->Width);
@@ -516,6 +500,9 @@ RenderSolidRectangle(game_backbuffer *BackBuffer, rectangle2 Rect, v3 Color)
                      (RoundU32(Color.g) << 8) |
                      (RoundU32(Color.b) << 0));
 
+    s32 Height = YMax-YMin;
+    s32 Width = XMax-XMin;
+    TIMED_LOOP_FUNCTION(Height*Width);
     u8 *PixelRow = (u8 *)BackBuffer->Memory + BackBuffer->Pitch*YMin;
     for(s32 Y = YMin;
         Y < YMax;
