@@ -14,9 +14,9 @@
 #include <gl/gl.h>
 
 #include "troids_platform.h"
+#include "troids_intrinsics.h"
 #include "troids_debug.h"
 #include "troids_opengl.h"
-#include "troids_intrinsics.h"
 
 #if TROIDS_INTERNAL
 #define DATA_PATH "..\\troids\\data"

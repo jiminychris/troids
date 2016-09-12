@@ -234,7 +234,7 @@ RenderBitmap(loaded_bitmap *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAx
     __m128 TintA = _mm_set_ps1(Color.a);
     __m128 Mask;
     u8 *PixelRow = (u8 *)BackBuffer->Memory + (BackBuffer->Pitch*YMin);
-    IGNORED_TIMED_LOOP_FUNCTION(Width*Height);
+    TIMED_LOOP_FUNCTION(Width*Height);
 #if DEBUG_BITMAPS
     __m128i Pink = _mm_set1_epi32(0xFFFF00FF);
     __m128i Blue = _mm_set1_epi32(0xFF0000FF);
@@ -410,7 +410,7 @@ RenderTranslucentRectangle(loaded_bitmap *BackBuffer, rectangle2 Rect, v4 Color,
         Width = AdjustedXMax-AdjustedXMin;
     }
 
-    IGNORED_TIMED_LOOP_FUNCTION(Height*Width);
+    TIMED_LOOP_FUNCTION(Height*Width);
     u8 *PixelRow = (u8 *)BackBuffer->Memory + BackBuffer->Pitch*YMin;
     for(s32 Y = YMin;
         Y < YMax;
@@ -466,7 +466,7 @@ RenderInvertedRectangle(loaded_bitmap *BackBuffer, rectangle2 Rect, s32 OffsetX 
 
     s32 Height = YMax-YMin;
     s32 Width = XMax-XMin;
-    IGNORED_TIMED_LOOP_FUNCTION(Height*Width);
+    TIMED_LOOP_FUNCTION(Height*Width);
     u8 *PixelRow = (u8 *)BackBuffer->Memory + BackBuffer->Pitch*YMin;
     for(s32 Y = YMin;
         Y < YMax;
@@ -500,7 +500,7 @@ RenderSolidRectangle(loaded_bitmap *BackBuffer, rectangle2 Rect, v3 Color,
 
     s32 Height = YMax-YMin;
     s32 Width = XMax-XMin;
-    IGNORED_TIMED_LOOP_FUNCTION(Height*Width);
+    TIMED_LOOP_FUNCTION(Height*Width);
     u8 *PixelRow = (u8 *)BackBuffer->Memory + BackBuffer->Pitch*YMin;
     for(s32 Y = YMin;
         Y < YMax;

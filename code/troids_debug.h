@@ -41,6 +41,8 @@ enum debug_event_type
 
 struct debug_event
 {
+    u32 ThreadID;
+    b32 Ignored;
     u32 Line;
     union
     {
@@ -150,7 +152,17 @@ struct debug_node
     };
 };
 
+struct debug_thread
+{
+    u32 ID;
+    
+    profiler_element ProfilerSentinel;
+    profiler_element *CurrentElement;
+    profiler_element *NextElement;
+};
+
 #define MAX_DEBUG_FRAMES 128
+#define MAX_DEBUG_THREADS 32
 struct debug_frame
 {
     r32 ElapsedSeconds;
@@ -160,9 +172,8 @@ struct debug_frame
     // NOTE(chris): Per-frame hash for nodes.
     debug_node *NodeHash[256];
     
-    profiler_element ProfilerSentinel;
-    profiler_element *CurrentElement;
-    profiler_element *NextElement;
+    u32 ThreadCount;
+    debug_thread Threads[MAX_DEBUG_THREADS];
 };
 
 struct debug_state
@@ -171,9 +182,12 @@ struct debug_state
 
     b32 Paused;
     memory_arena Arena;
-    u32 EventCount;
+    u32 EventStart;
+    u32 Ignore;
+    volatile u32 EventCount;
     u32 CollatingFrameIndex;
     u32 ViewingFrameIndex;
+    debug_event NullEvent;
     debug_event Events[MAX_DEBUG_EVENTS];
     debug_frame Frames[MAX_DEBUG_FRAMES];
 
@@ -193,8 +207,13 @@ global_variable debug_state *GlobalDebugState;
 inline debug_event *
 NextDebugEvent()
 {
-    Assert(GlobalDebugState->EventCount < ArrayCount(GlobalDebugState->Events));
-    debug_event *Result = GlobalDebugState->Events + GlobalDebugState->EventCount++;
+    u32 Mask = ArrayCount(GlobalDebugState->Events)-1;
+    u32 EventIndex = ((AtomicIncrement(&GlobalDebugState->EventCount) - 1) & Mask);
+                      
+    Assert(((EventIndex+1)&Mask) != GlobalDebugState->EventStart);
+    debug_event *Result = GlobalDebugState->Events + EventIndex;
+    Result->ThreadID = GetCurrentThreadID();
+    Result->Ignored = GlobalDebugState->Ignore == Result->ThreadID;
     return(Result);
 }
 
