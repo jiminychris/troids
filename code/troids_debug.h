@@ -351,6 +351,7 @@ LOG_DEBUG_TYPE(memory_arena)
 #define DEBUG_PROFILER(...)
 #define DEBUG_FRAME_TIMELINE(...)
 #endif
+#define IGNORED_TIMED_LOOP_FUNCTION(...)
 #define IGNORED_TIMED_BLOCK(...)
 #define IGNORED_TIMED_FUNCTION(...)
 

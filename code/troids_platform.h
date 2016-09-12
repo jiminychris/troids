@@ -232,6 +232,24 @@ struct read_file_result
 #define PLATFORM_READ_FILE(Name) read_file_result Name(char *FileName)
 typedef PLATFORM_READ_FILE(platform_read_file);
 
+struct thread_progress
+{
+    b32 Finished;
+};
+
+#define THREAD_CALLBACK(Name) void Name(void *Params)
+typedef THREAD_CALLBACK(thread_callback);
+#define PLATFORM_PUSH_THREAD_WORK(Name) void Name(thread_callback *Callback, void *Params, thread_progress *Progress)
+typedef PLATFORM_PUSH_THREAD_WORK(platform_push_thread_work);
+
+struct thread_work
+{
+    thread_callback *Callback;
+    void *Params;
+    thread_progress *Progress;
+    b32 Free;
+};
+
 struct loaded_bitmap
 {
     s32 Height;
@@ -264,6 +282,7 @@ struct game_memory
 #endif
 
     platform_read_file *PlatformReadFile;
+    platform_push_thread_work *PlatformPushThreadWork;
 };
 
 struct memory_arena
@@ -475,14 +494,6 @@ WentDown(game_button Button)
     return(Result);
 }
 
-struct game_backbuffer
-{
-    s32 Width;
-    s32 Height;
-    s32 Pitch;
-    void *Memory;
-};
-
 struct game_sound_buffer
 {
     u32 SamplesPerSecond;
@@ -533,13 +544,13 @@ StringsMatch(char *A, char *B)
     return Result;
 }
 
-#define GAME_UPDATE_AND_RENDER(Name) void Name(game_memory *GameMemory, game_input *Input, game_backbuffer *BackBuffer)
+#define GAME_UPDATE_AND_RENDER(Name) void Name(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
 typedef GAME_UPDATE_AND_RENDER(game_update_and_render);
 
 #define GAME_GET_SOUND_SAMPLES(Name) void Name(game_memory *GameMemory, game_input *Input, game_sound_buffer *SoundBuffer)
 typedef GAME_GET_SOUND_SAMPLES(game_get_sound_samples);
 
-#define DEBUG_COLLATE(Name) void Name(game_memory *GameMemory, game_input *Input, game_backbuffer *BackBuffer)
+#define DEBUG_COLLATE(Name) void Name(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
 typedef DEBUG_COLLATE(debug_collate);
 
 #define TROIDS_PLATFORM_H

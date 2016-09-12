@@ -12,8 +12,6 @@
 #include "troids.h"
 #include "troids_render.cpp"
 
-platform_read_file *PlatformReadFile;
-
 internal loaded_bitmap
 LoadBitmap(char *FileName)
 {
@@ -277,10 +275,10 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 #endif
     TIMED_FUNCTION();
     game_state *State = (game_state *)GameMemory->PermanentMemory;
+    PlatformReadFile = GameMemory->PlatformReadFile;
+    PlatformPushThreadWork = GameMemory->PlatformPushThreadWork;
     if(!State->IsInitialized)
     {
-        PlatformReadFile = GameMemory->PlatformReadFile;
-        
         State->IsInitialized = true;
 
         State->P = V3(BackBuffer->Width / 2.0f, BackBuffer->Height / 2.0f, 0.0f);

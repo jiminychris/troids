@@ -13,6 +13,9 @@
 #include "troids_render.h"
 #include "troids_debug.h"
 
+platform_read_file *PlatformReadFile;
+platform_push_thread_work *PlatformPushThreadWork;
+
 struct asteroid
 {
     v3 P;

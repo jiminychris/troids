@@ -346,16 +346,16 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
             Layout->P.x = PopX;
             
             u32 ColorIndex = 0;
-            v4 Colors[7] =
-                {
-                    V4(1, 0, 0, 1),
-                    V4(0, 1, 0, 1),
-                    V4(0, 0, 1, 1),
-                    V4(1, 1, 0, 1),
-                    V4(0.5f, 0, 1, 1),
-                    V4(0, 1, 1, 1),
-                    V4(1, 0.5f, 0, 1),
-                };
+            v4 ParentColors[] =
+            {
+                V4(0, 0.6f, 1, 1),
+                V4(0, 0.5f, 1, 1),
+            };
+            v4 LeafColors[] =
+            {
+                V4(0.6f, 0, 0, 1),
+                V4(0.5f, 0, 0, 1),
+            };
             v2 TotalDim = V2(RenderBuffer->Width - Layout->P.x - 10.0f, 200);
             rectangle2 ProfileRect = TopLeftDim(V2(Layout->P.x, Layout->P.y), TotalDim);
             PushRectangle(RenderBuffer, V3(ProfileRect.Min, HUD_Z), TotalDim,
@@ -363,7 +363,7 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
             r32 InverseTotalCycles = 1.0f / (Frame->CurrentElement->EndTicks -
                                              Frame->CurrentElement->BeginTicks);
             u32 Depth = 0;
-            u32 MaxDepth = 1;
+            u32 MaxDepth = 0;
             b32 FinishedChildren = false;
             r32 LayerHeight = TotalDim.y/(MaxDepth + 1);
             r64 TicksToSeconds = Frame->ElapsedSeconds/(Frame->EndTicks - Frame->BeginTicks);
@@ -410,9 +410,10 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
                     v2 RegionDim = V2(Width, Height);
                     rectangle2 RegionRect = MinDim(V2(Left, ProfileRect.Min.y + Depth*Height),
                                                    RegionDim);
+                    v4 *Colors = Element->Child ? ParentColors : LeafColors;
                     PushRectangle(RenderBuffer, V3(RegionRect.Min, HUD_Z+1000), RegionDim,
                                   Colors[ColorIndex++]);
-                    if(ColorIndex == ArrayCount(Colors))
+                    if(ColorIndex == ArrayCount(ParentColors))
                     {
                         ColorIndex = 0;
                     }

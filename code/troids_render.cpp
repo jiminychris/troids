@@ -176,29 +176,31 @@ DrawFillBar(render_buffer *RenderBuffer, text_layout *Layout, u64 Used, u64 Max)
     DrawFillBar(RenderBuffer, Layout, (r32)Used, (r32)Max);
 }
 
+#if 1
 #pragma optimize("gts", on)
+#endif
 // TODO(chris): Further optimization
 internal void
-RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAxis, v2 YAxis,
-             r32 Scale, v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f))
+RenderBitmap(loaded_bitmap *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAxis, v2 YAxis,
+             r32 Scale, v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f), s32 OffsetX = 0, s32 OffsetY = 0)
 {
     Color.rgb *= Color.a;
     XAxis *= Scale*Bitmap->Width;
     YAxis *= Scale*Bitmap->Height;
     Origin -= Hadamard(Bitmap->Align, XAxis + YAxis);
-    s32 XMin = Clamp(0, Floor(Minimum(Minimum(Origin.x, Origin.x + XAxis.x),
+    s32 XMin = Clamp(OffsetX, Floor(Minimum(Minimum(Origin.x, Origin.x + XAxis.x),
                                       Minimum(Origin.x + YAxis.x, Origin.x + XAxis.x + YAxis.x))),
-                     BackBuffer->Width);
-    s32 YMin = Clamp(0, Floor(Minimum(Minimum(Origin.y, Origin.y + XAxis.y),
+                     OffsetX + BackBuffer->Width);
+    s32 YMin = Clamp(OffsetY, Floor(Minimum(Minimum(Origin.y, Origin.y + XAxis.y),
                                       Minimum(Origin.y + YAxis.y, Origin.y + XAxis.y + YAxis.y))),
-                     BackBuffer->Height);
+                     OffsetY + BackBuffer->Height);
 
-    s32 XMax = Clamp(0, Ceiling(Maximum(Maximum(Origin.x, Origin.x + XAxis.x),
+    s32 XMax = Clamp(OffsetX, Ceiling(Maximum(Maximum(Origin.x, Origin.x + XAxis.x),
                                         Maximum(Origin.x + YAxis.x, Origin.x + XAxis.x + YAxis.x))),
-                     BackBuffer->Width);
-    s32 YMax = Clamp(0, Ceiling(Maximum(Maximum(Origin.y, Origin.y + XAxis.y),
+                     OffsetX + BackBuffer->Width);
+    s32 YMax = Clamp(OffsetY, Ceiling(Maximum(Maximum(Origin.y, Origin.y + XAxis.y),
                                         Maximum(Origin.y + YAxis.y, Origin.y + XAxis.y + YAxis.y))),
-                     BackBuffer->Height);
+                     OffsetY + BackBuffer->Height);
     // TODO(chris): Crashed here once when drawing in the top right corner. Check that out.
 
     s32 AdjustedXMin = XMin;
@@ -208,9 +210,9 @@ RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 X
     s32 Adjustment = 4-Width%4;
     if(Adjustment < 4)
     {
-        AdjustedXMin = Maximum(0, XMin-Adjustment);
+        AdjustedXMin = Maximum(OffsetX, XMin-Adjustment);
         Adjustment -= XMin-AdjustedXMin;
-        AdjustedXMax = Minimum(BackBuffer->Width, XMax+Adjustment);
+        AdjustedXMax = Minimum(OffsetX + BackBuffer->Width, XMax+Adjustment);
         Width = AdjustedXMax-AdjustedXMin;
     }
 
@@ -222,6 +224,7 @@ RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 X
     __m128 BitmapWidth = _mm_set_ps1((r32)Bitmap->Width);
     __m128i BitmapHeight = _mm_set1_epi32(Bitmap->Height);
     __m128i One = _mm_set1_epi32(1);
+    __m128 RealZero = _mm_set_ps1(0.0f);
     __m128 RealOne = _mm_set_ps1(1.0f);
     __m128 Half = _mm_set_ps1(0.5f);
     __m128i ColorMask = _mm_set1_epi32(0xFF);
@@ -231,7 +234,7 @@ RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 X
     __m128 TintA = _mm_set_ps1(Color.a);
     __m128 Mask;
     u8 *PixelRow = (u8 *)BackBuffer->Memory + (BackBuffer->Pitch*YMin);
-    TIMED_LOOP_FUNCTION(Width*Height);
+    IGNORED_TIMED_LOOP_FUNCTION(Width*Height);
 #if DEBUG_BITMAPS
     __m128i Pink = _mm_set1_epi32(0xFFFF00FF);
     __m128i Blue = _mm_set1_epi32(0xFF0000FF);
@@ -264,31 +267,10 @@ RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 X
                                              TestPointB.x*YAxis.x + TestPointC.y*YAxis.y,
                                              TestPointA.x*YAxis.x + TestPointD.y*YAxis.y),
                                   InvYAxisLengthSq);
-            Mask.m128_u32[0] = 0xFFFFFFFF;
-            Mask.m128_u32[1] = 0xFFFFFFFF;
-            Mask.m128_u32[2] = 0xFFFFFFFF;
-            Mask.m128_u32[3] = 0xFFFFFFFF;
 
-            if(U.m128_f32[0] < 0.0f || U.m128_f32[0] > 1.0f ||
-               V.m128_f32[0] < 0.0f || V.m128_f32[0] > 1.0f)
-            {
-                Mask.m128_f32[0] = 0;
-            }
-            if(U.m128_f32[1] < 0.0f || U.m128_f32[1] > 1.0f ||
-               V.m128_f32[1] < 0.0f || V.m128_f32[1] > 1.0f)
-            {
-                Mask.m128_f32[1] = 0;
-            }
-            if(U.m128_f32[2] < 0.0f || U.m128_f32[2] > 1.0f ||
-               V.m128_f32[2] < 0.0f || V.m128_f32[2] > 1.0f)
-            {
-                Mask.m128_f32[2] = 0;
-            }
-            if(U.m128_f32[3] < 0.0f || U.m128_f32[3] > 1.0f ||
-               V.m128_f32[3] < 0.0f || V.m128_f32[3] > 1.0f)
-            {
-                Mask.m128_f32[3] = 0;
-            }
+            Mask = _mm_and_ps(_mm_and_ps(_mm_cmpge_ps(U, RealZero), _mm_cmpge_ps(V, RealZero)),
+                              _mm_and_ps(_mm_cmple_ps(U, RealOne), _mm_cmple_ps(V, RealOne)));
+
             __m128 tX = _mm_add_ps(_mm_mul_ps(U, BitmapInternalWidth), Half);
             __m128 tY = _mm_add_ps(_mm_mul_ps(V, BitmapInternalHeight), Half);
 
@@ -397,12 +379,13 @@ RenderBitmap(game_backbuffer *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 X
 
 // TODO(chris): Further optimization
 internal void
-RenderTranslucentRectangle(game_backbuffer *BackBuffer, rectangle2 Rect, v4 Color)
+RenderTranslucentRectangle(loaded_bitmap *BackBuffer, rectangle2 Rect, v4 Color,
+                           s32 OffsetX = 0, s32 OffsetY = 0)
 {
-    s32 XMin = Clamp(0, RoundS32(Rect.Min.x), BackBuffer->Width);
-    s32 YMin = Clamp(0, RoundS32(Rect.Min.y), BackBuffer->Height);
-    s32 XMax = Clamp(0, RoundS32(Rect.Max.x), BackBuffer->Width);
-    s32 YMax = Clamp(0, RoundS32(Rect.Max.y), BackBuffer->Height);
+    s32 XMin = Clamp(OffsetX, RoundS32(Rect.Min.x), OffsetX + BackBuffer->Width);
+    s32 YMin = Clamp(OffsetY, RoundS32(Rect.Min.y), OffsetY + BackBuffer->Height);
+    s32 XMax = Clamp(OffsetX, RoundS32(Rect.Max.x), OffsetX + BackBuffer->Width);
+    s32 YMax = Clamp(OffsetY, RoundS32(Rect.Max.y), OffsetY + BackBuffer->Height);
 
     Color.rgb *= 255.0f*Color.a;
     __m128 SR = _mm_set_ps1(Color.r);
@@ -421,13 +404,13 @@ RenderTranslucentRectangle(game_backbuffer *BackBuffer, rectangle2 Rect, v4 Colo
     s32 Adjustment = 4-Width%4;
     if(Adjustment < 4)
     {
-        AdjustedXMin = Maximum(0, XMin-Adjustment);
+        AdjustedXMin = Maximum(OffsetX, XMin-Adjustment);
         Adjustment -= XMin-AdjustedXMin;
-        AdjustedXMax = Minimum(BackBuffer->Width, XMax+Adjustment);
+        AdjustedXMax = Minimum(OffsetX + BackBuffer->Width, XMax+Adjustment);
         Width = AdjustedXMax-AdjustedXMin;
     }
 
-    TIMED_LOOP_FUNCTION(Height*Width);
+    IGNORED_TIMED_LOOP_FUNCTION(Height*Width);
     u8 *PixelRow = (u8 *)BackBuffer->Memory + BackBuffer->Pitch*YMin;
     for(s32 Y = YMin;
         Y < YMax;
@@ -474,16 +457,16 @@ RenderTranslucentRectangle(game_backbuffer *BackBuffer, rectangle2 Rect, v4 Colo
 
 // TODO(chris): SIMD this!
 internal void
-RenderInvertedRectangle(game_backbuffer *BackBuffer, rectangle2 Rect)
+RenderInvertedRectangle(loaded_bitmap *BackBuffer, rectangle2 Rect, s32 OffsetX = 0, s32 OffsetY = 0)
 {
-    s32 XMin = Clamp(0, RoundS32(Rect.Min.x), BackBuffer->Width);
-    s32 YMin = Clamp(0, RoundS32(Rect.Min.y), BackBuffer->Height);
-    s32 XMax = Clamp(0, RoundS32(Rect.Max.x), BackBuffer->Width);
-    s32 YMax = Clamp(0, RoundS32(Rect.Max.y), BackBuffer->Height);
+    s32 XMin = Clamp(OffsetX, RoundS32(Rect.Min.x), OffsetX + BackBuffer->Width);
+    s32 YMin = Clamp(OffsetY, RoundS32(Rect.Min.y), OffsetY + BackBuffer->Height);
+    s32 XMax = Clamp(OffsetX, RoundS32(Rect.Max.x), OffsetX + BackBuffer->Width);
+    s32 YMax = Clamp(OffsetY, RoundS32(Rect.Max.y), OffsetY + BackBuffer->Height);
 
     s32 Height = YMax-YMin;
     s32 Width = XMax-XMin;
-    TIMED_LOOP_FUNCTION(Height*Width);
+    IGNORED_TIMED_LOOP_FUNCTION(Height*Width);
     u8 *PixelRow = (u8 *)BackBuffer->Memory + BackBuffer->Pitch*YMin;
     for(s32 Y = YMin;
         Y < YMax;
@@ -502,12 +485,13 @@ RenderInvertedRectangle(game_backbuffer *BackBuffer, rectangle2 Rect)
 
 // TODO(chris): SIMD this!
 internal void
-RenderSolidRectangle(game_backbuffer *BackBuffer, rectangle2 Rect, v3 Color)
+RenderSolidRectangle(loaded_bitmap *BackBuffer, rectangle2 Rect, v3 Color,
+                     s32 OffsetX = 0, s32 OffsetY = 0)
 {
-    s32 XMin = Clamp(0, RoundS32(Rect.Min.x), BackBuffer->Width);
-    s32 YMin = Clamp(0, RoundS32(Rect.Min.y), BackBuffer->Height);
-    s32 XMax = Clamp(0, RoundS32(Rect.Max.x), BackBuffer->Width);
-    s32 YMax = Clamp(0, RoundS32(Rect.Max.y), BackBuffer->Height);
+    s32 XMin = Clamp(OffsetX, RoundS32(Rect.Min.x), OffsetX + BackBuffer->Width);
+    s32 YMin = Clamp(OffsetY, RoundS32(Rect.Min.y), OffsetY + BackBuffer->Height);
+    s32 XMax = Clamp(OffsetX, RoundS32(Rect.Max.x), OffsetX + BackBuffer->Width);
+    s32 YMax = Clamp(OffsetY, RoundS32(Rect.Max.y), OffsetY + BackBuffer->Height);
 
     Color *= 255.0f;
     u32 DestColor = ((RoundU32(Color.r) << 16) |
@@ -516,7 +500,7 @@ RenderSolidRectangle(game_backbuffer *BackBuffer, rectangle2 Rect, v3 Color)
 
     s32 Height = YMax-YMin;
     s32 Width = XMax-XMin;
-    TIMED_LOOP_FUNCTION(Height*Width);
+    IGNORED_TIMED_LOOP_FUNCTION(Height*Width);
     u8 *PixelRow = (u8 *)BackBuffer->Memory + BackBuffer->Pitch*YMin;
     for(s32 Y = YMin;
         Y < YMax;
@@ -534,24 +518,24 @@ RenderSolidRectangle(game_backbuffer *BackBuffer, rectangle2 Rect, v3 Color)
 }
 
 inline void
-RenderRectangle(game_backbuffer *BackBuffer, rectangle2 Rect, v4 Color)
+RenderRectangle(loaded_bitmap *BackBuffer, rectangle2 Rect, v4 Color, s32 OffsetX = 0, s32 OffsetY = 0)
 {
     if(Color.a == 1.0f)
     {
-        RenderSolidRectangle(BackBuffer, Rect, Color.rgb);
+        RenderSolidRectangle(BackBuffer, Rect, Color.rgb, OffsetX, OffsetY);
     }
     else if(IsInvertedColor(Color))
     {
-        RenderInvertedRectangle(BackBuffer, Rect);
+        RenderInvertedRectangle(BackBuffer, Rect, OffsetX, OffsetY);
     }
     else
     {
-        RenderTranslucentRectangle(BackBuffer, Rect, Color);
+        RenderTranslucentRectangle(BackBuffer, Rect, Color, OffsetX, OffsetY);
     }
 }
 
 internal void
-RenderLine(game_backbuffer *BackBuffer, v2 PointA, v2 PointB, v4 Color)
+RenderLine(loaded_bitmap *BackBuffer, v2 PointA, v2 PointB, v4 Color, s32 OffsetX = 0, s32 OffsetY = 0)
 {
     u32 A = (u32)(Color.a*255.0f + 0.5f);
     u32 R = (u32)(Color.r*255.0f + 0.5f);
@@ -584,8 +568,8 @@ RenderLine(game_backbuffer *BackBuffer, v2 PointA, v2 PointB, v4 Color)
             Start = PointB;
             End = PointA;
         }
-        Min = Clamp(0, RoundS32(Start.x), BackBuffer->Width);
-        Max = Clamp(0, RoundS32(End.x), BackBuffer->Width);
+        Min = Clamp(OffsetX, RoundS32(Start.x), OffsetX + BackBuffer->Width);
+        Max = Clamp(OffsetX, RoundS32(End.x), OffsetX + BackBuffer->Width);
         for(s32 X = Min;
             X < Max;
             ++X)
@@ -610,8 +594,8 @@ RenderLine(game_backbuffer *BackBuffer, v2 PointA, v2 PointB, v4 Color)
             Start = PointB;
             End = PointA;
         }
-        Min = Clamp(0, RoundS32(Start.y), BackBuffer->Height);
-        Max = Clamp(0, RoundS32(End.y), BackBuffer->Height);
+        Min = Clamp(OffsetY, RoundS32(Start.y), OffsetY + BackBuffer->Height);
+        Max = Clamp(OffsetY, RoundS32(End.y), OffsetY + BackBuffer->Height);
         for(s32 Y = Min;
             Y < Max;
             ++Y)
@@ -627,12 +611,12 @@ RenderLine(game_backbuffer *BackBuffer, v2 PointA, v2 PointB, v4 Color)
 #pragma optimize("", on)
 
 inline void
-Clear(game_backbuffer *BackBuffer, v4 Color)
+Clear(loaded_bitmap *BackBuffer, v4 Color, s32 OffsetX = 0, s32 OffsetY = 0)
 {
     rectangle2 Rect;
     Rect.Min = V2(0, 0);
-    Rect.Max = V2i(BackBuffer->Width, BackBuffer->Height);
-    RenderRectangle(BackBuffer, Rect, Color);
+    Rect.Max = V2i(OffsetX + BackBuffer->Width, OffsetY + BackBuffer->Height);
+    RenderRectangle(BackBuffer, Rect, Color, OffsetX, OffsetY);
 }
 
 struct binary_node
@@ -680,11 +664,12 @@ Insert(memory_arena *Arena, binary_node **NodePtr, r32 SortKey, u32 Index)
 }
 
 internal void
-RenderTree(render_buffer *RenderBuffer, binary_node *Node, game_backbuffer *BackBuffer)
+RenderTree(render_buffer *RenderBuffer, binary_node *Node, loaded_bitmap *BackBuffer,
+           s32 OffsetX, s32 OffsetY)
 {
     if(Node->Prev)
     {
-        RenderTree(RenderBuffer, Node->Prev, BackBuffer);
+        RenderTree(RenderBuffer, Node->Prev, BackBuffer, OffsetX, OffsetY);
     }
     for(binary_node *Chain = Node;
         Chain;
@@ -698,25 +683,25 @@ RenderTree(render_buffer *RenderBuffer, binary_node *Node, game_backbuffer *Back
             {
                 render_bitmap_data *Data = (render_bitmap_data *)(Header + 1);
                 RenderBitmap(BackBuffer, Data->Bitmap, Data->Origin.xy, Data->XAxis, Data->YAxis,
-                             Data->Scale, Data->Color);
+                             Data->Scale, Data->Color, OffsetX, OffsetY);
             } break;
 
             case RenderCommand_Rectangle:
             {
                 render_rectangle_data *Data = (render_rectangle_data *)(Header + 1);
-                RenderRectangle(BackBuffer, Data->Rect, Data->Color);
+                RenderRectangle(BackBuffer, Data->Rect, Data->Color, OffsetX, OffsetY);
             } break;
             
             case RenderCommand_Line:
             {
                 render_line_data *Data = (render_line_data *)(Header + 1);
-                RenderLine(BackBuffer, Data->PointA.xy, Data->PointB.xy, Data->Color);
+                RenderLine(BackBuffer, Data->PointA.xy, Data->PointB.xy, Data->Color, OffsetX, OffsetY);
             } break;
             
             case RenderCommand_Clear:
             {
                 render_clear_data *Data = (render_clear_data *)(Header + 1);
-                Clear(BackBuffer, Data->Color);
+                Clear(BackBuffer, Data->Color, OffsetX, OffsetY);
             } break;
 
             InvalidDefaultCase;
@@ -724,13 +709,73 @@ RenderTree(render_buffer *RenderBuffer, binary_node *Node, game_backbuffer *Back
     }
     if(Node->Next)
     {
-        RenderTree(RenderBuffer, Node->Next, BackBuffer);
+        RenderTree(RenderBuffer, Node->Next, BackBuffer, OffsetX, OffsetY);
     }
 }
 
-// TODO(chris): Sorting!!!
+struct render_tree_data
+{
+    render_buffer *RenderBuffer;
+    binary_node *Node;
+    loaded_bitmap BackBuffer;
+    s32 OffsetX;
+    s32 OffsetY;
+};
+
+THREAD_CALLBACK(RenderTreeCallback)
+{
+    render_tree_data *Data = (render_tree_data *)Params;
+    RenderTree(Data->RenderBuffer, Data->Node, &Data->BackBuffer, Data->OffsetX, Data->OffsetY);
+}
+
+inline void
+SplitWork(render_buffer *RenderBuffer, binary_node *Node, void *Memory,
+          u32 CoreCount, s32 Width, s32 Height, s32 Pitch, s32 OffsetX, s32 OffsetY,
+          render_tree_data *Data)
+{
+    if(CoreCount == 1)
+    {
+        Data->RenderBuffer = RenderBuffer;
+        Data->Node = Node;
+        Data->OffsetX = OffsetX;
+        Data->OffsetY = OffsetY;
+        Data->BackBuffer.Height = Height;
+        Data->BackBuffer.Width = Width;
+        Data->BackBuffer.Pitch = Pitch;
+        Data->BackBuffer.Memory = Memory;
+    }
+    else if(CoreCount & 1)
+    {
+        Assert(!"Odd core count not supported");
+    }
+    else
+    {
+        u32 HalfCores = CoreCount/2;
+        if(Width >= Height)
+        {
+            s32 HalfWidth = Width/2;
+            SplitWork(RenderBuffer, Node, Memory,
+                      HalfCores, HalfWidth, Height, Pitch, OffsetX, OffsetY,
+                      Data);
+            SplitWork(RenderBuffer, Node, Memory,
+                      HalfCores, HalfWidth, Height, Pitch, OffsetX+HalfWidth, OffsetY,
+                      Data+HalfCores);
+        }
+        else
+        {
+            s32 HalfHeight = Height/2;
+            SplitWork(RenderBuffer, Node, Memory,
+                      HalfCores, Width, HalfHeight, Pitch, OffsetX, OffsetY,
+                      Data);
+            SplitWork(RenderBuffer, Node, Memory,
+                      HalfCores, Width, HalfHeight, Pitch, OffsetX, OffsetY+HalfHeight,
+                      Data+HalfCores);
+        }
+    }
+}
+
 internal void
-RenderBufferToBackBuffer(render_buffer *RenderBuffer, game_backbuffer *BackBuffer)
+RenderBufferToBackBuffer(render_buffer *RenderBuffer, loaded_bitmap *BackBuffer)
 {
     binary_node *SortTree = 0;
     u8 *Cursor = (u8 *)RenderBuffer->Arena.Memory;
@@ -771,6 +816,36 @@ RenderBufferToBackBuffer(render_buffer *RenderBuffer, game_backbuffer *BackBuffe
     }
     if(SortTree)
     {
-        RenderTree(RenderBuffer, SortTree, BackBuffer);
+        // TODO(chris): Optimize this for the number of logical cores.
+        render_tree_data RenderTreeData[32];
+        thread_progress ThreadProgress[32];
+        u32 CoreCount = 8;
+        SplitWork(RenderBuffer, SortTree, BackBuffer->Memory, CoreCount,
+                  BackBuffer->Width, BackBuffer->Height, BackBuffer->Pitch, 0, 0,
+                  RenderTreeData);
+        
+        for(u32 RenderChunkIndex = 1;
+            RenderChunkIndex < CoreCount;
+            ++RenderChunkIndex)
+        {
+            render_tree_data *Data = RenderTreeData + RenderChunkIndex;
+            thread_progress *Progress = ThreadProgress + RenderChunkIndex;
+            PlatformPushThreadWork(RenderTreeCallback, Data, Progress);
+        }
+        RenderTree(RenderBuffer, SortTree, &RenderTreeData[0].BackBuffer, 0, 0);
+        ThreadProgress[0].Finished = true;
+
+        b32 Finished;
+        do
+        {
+            Finished = true;
+            for(u32 ProgressIndex = 0;
+                ProgressIndex < CoreCount;
+                ++ProgressIndex)
+            {
+                thread_progress *Progress = ThreadProgress + ProgressIndex;
+                Finished &= Progress->Finished;
+            }
+        } while(!Finished);
     }
 }

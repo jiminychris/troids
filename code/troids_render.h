@@ -94,7 +94,7 @@ internal rectangle2
 DrawButton(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char *Text);
 
 internal void
-RenderBufferToBackBuffer(render_buffer *RenderBuffer, game_backbuffer *BackBuffer);
+RenderBufferToBackBuffer(render_buffer *RenderBuffer, loaded_bitmap *BackBuffer);
 
 #define TROIDS_RENDER_H
 #endif

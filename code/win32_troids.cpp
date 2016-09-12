@@ -387,12 +387,71 @@ FileExists(char *Path)
     return(Result);
 }
 
-int WinMain(HINSTANCE Instance,
-            HINSTANCE PrevInstance,
-            LPSTR     CommandLine,
-            int       Show)
+global_variable thread_work GlobalThreadQueue[64];
+global_variable volatile u32 GlobalThreadQueueStartIndex = 0;
+global_variable u32 GlobalThreadQueueNextIndex = 0;
+global_variable HANDLE GlobalThreadQueueSemaphore;
+
+inline void
+Win32PushThreadWork(thread_callback *Callback, void *Params, thread_progress *Progress)
+{
+    Progress->Finished = false;
+    u32 WorkIndex = (++GlobalThreadQueueNextIndex &
+                     (ArrayCount(GlobalThreadQueue)-1));
+    thread_work *Work = GlobalThreadQueue + WorkIndex;
+    while(!Work->Free);
+    Work->Callback = Callback;
+    Work->Params = Params;
+    Work->Progress = Progress;
+    Work->Free = false;
+    ReleaseSemaphore(GlobalThreadQueueSemaphore, 1, 0);
+}
+
+DWORD WINAPI
+ThreadProc(void *Parameter)
+{
+    DWORD Result = 0;
+
+    while(!Result)
+    {
+        WaitForSingleObject(GlobalThreadQueueSemaphore, INFINITE);
+        u32 WorkIndex = (InterlockedIncrement(&GlobalThreadQueueStartIndex) &
+                         (ArrayCount(GlobalThreadQueue)-1));
+        thread_work Work = GlobalThreadQueue[WorkIndex];
+        GlobalThreadQueue[WorkIndex].Free = true;
+
+        Work.Callback(Work.Params);
+        Work.Progress->Finished = true;
+    }
+
+    return(Result);
+}
+
+int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int Show)
 {
     // TODO(chris): CreateMutex?
+    GlobalRunning = true;
+
+    SYSTEM_INFO SystemInfo;
+    GetSystemInfo(&SystemInfo);
+
+    GlobalThreadQueueSemaphore = CreateSemaphore(0, 0, ArrayCount(GlobalThreadQueue), 0);
+
+    for(u32 ThreadWorkIndex = 0;
+        ThreadWorkIndex < ArrayCount(GlobalThreadQueue);
+        ++ThreadWorkIndex)
+    {
+        thread_work *Work = GlobalThreadQueue + ThreadWorkIndex;
+        Work->Free = true;
+    }
+
+//    SystemInfo.dwNumberOfProcessors = 16;
+    for(u32 ProcessorIndex = 0;
+        ProcessorIndex < SystemInfo.dwNumberOfProcessors - 1;
+        ++ProcessorIndex)
+    {
+        CreateThread(0, 0, ThreadProc, 0, 0, 0);
+    }
     
     MSG Message;
     Message.wParam = 0;
@@ -696,11 +755,12 @@ int WinMain(HINSTANCE Instance,
             ReleaseDC(Window, DeviceContext);
 
             GameMemory.PlatformReadFile = Win32ReadFile;
+            GameMemory.PlatformPushThreadWork = Win32PushThreadWork;
             
             // TODO(chris): Query monitor refresh rate
             r32 dtForFrame = 1.0f / 60.0f;
             
-            game_backbuffer GameBackBuffer;
+            loaded_bitmap GameBackBuffer;
             GameBackBuffer.Width = GlobalBackBuffer.Width;
             GameBackBuffer.Height = GlobalBackBuffer.Height;
             GameBackBuffer.Pitch = GlobalBackBuffer.Pitch;
@@ -862,7 +922,6 @@ int WinMain(HINSTANCE Instance,
                                            CREATE_ALWAYS,
                                            FILE_ATTRIBUTE_NORMAL, 0);
             DWORD ByteToLock = 0;
-            GlobalRunning = true;
             // TODO(chris): Maybe initialize this with starting controller state?
             game_input GameInput[3] = {};
             game_input *OldInput = GameInput;
