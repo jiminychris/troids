@@ -587,6 +587,8 @@ extern "C" DEBUG_COLLATE(DebugCollate)
     memory_arena *DebugArena = &GlobalDebugState->Arena;
     Assert(TranState->IsInitialized);
     render_buffer *RenderBuffer = &TranState->RenderBuffer;
+    projection PoppedProjection = RenderBuffer->Projection;
+    RenderBuffer->Projection = Projection_None;
     temporary_memory RenderMemory = BeginTemporaryMemory(&TranState->RenderBuffer.Arena);
     u32 EventIndex = GlobalDebugState->EventStart;
     // TODO(chris): Handle events that cross a frame boundary (i.e. threads)
@@ -681,12 +683,13 @@ extern "C" DEBUG_COLLATE(DebugCollate)
 
                         // NOTE(chris): Trick only works if MAX_DEBUG_FRAMES is a power of two.
                         GlobalDebugState->CollatingFrameIndex = (GlobalDebugState->CollatingFrameIndex+1)&(MAX_DEBUG_FRAMES-1);
-                        Frame = GlobalDebugState->Frames + GlobalDebugState->CollatingFrameIndex;
+                        debug_frame *NewFrame = (GlobalDebugState->Frames +
+                                                 GlobalDebugState->CollatingFrameIndex);
                         for(u32 NodeIndex = 0;
-                            NodeIndex < ArrayCount(Frame->NodeHash);
+                            NodeIndex < ArrayCount(NewFrame->NodeHash);
                             ++NodeIndex)
                         {
-                            for(debug_node *Chain = Frame->NodeHash[NodeIndex];
+                            for(debug_node *Chain = NewFrame->NodeHash[NodeIndex];
                                 Chain;
                                 )
                             {
@@ -695,13 +698,13 @@ extern "C" DEBUG_COLLATE(DebugCollate)
                                 GlobalDebugState->FirstFreeNode = Chain;
                                 Chain = Next;
                             }
-                            Frame->NodeHash[NodeIndex] = 0;
+                            NewFrame->NodeHash[NodeIndex] = 0;
                         }
                         for(u32 ThreadIndex = 0;
-                            ThreadIndex < Frame->ThreadCount;
+                            ThreadIndex < NewFrame->ThreadCount;
                             ++ThreadIndex)
                         {
-                            debug_thread *Thread = Frame->Threads + ThreadIndex;
+                            debug_thread *Thread = NewFrame->Threads + ThreadIndex;
                             for(profiler_element *Element = Thread->ProfilerSentinel.Child;
                                 Element && Element != &Thread->ProfilerSentinel;
                                 )
@@ -731,12 +734,20 @@ extern "C" DEBUG_COLLATE(DebugCollate)
                                 }
                             }
                         }
-                        Frame->BeginTicks = Event->Value_u64;
-                        Frame->ThreadCount = 0;
+                        NewFrame->ThreadCount = 0;
+                        for(u32 ThreadIndex = 0;
+                            ThreadIndex < Frame->ThreadCount;
+                            ++ThreadIndex)
+                        {
+                            debug_thread *OldThread = Frame->Threads + ThreadIndex;
+                            GetThread(NewFrame, OldThread->ID);
+                        }
+                        NewFrame->BeginTicks = Event->Value_u64;
 #if 0
-                        Frame->CurrentElement = &Frame->ProfilerSentinel;
-                        Frame->CurrentElement->EndTicks = 0;
+                        NewFrame->CurrentElement = &NewFrame->ProfilerSentinel;
+                        NewFrame->CurrentElement->EndTicks = 0;
 #endif
+                        Frame = NewFrame;
                     }
                     GroupBeginStackCount = 0;
                     PrevNode = &GlobalDebugState->NodeSentinel;
@@ -777,7 +788,7 @@ extern "C" DEBUG_COLLATE(DebugCollate)
         {
             text_layout Layout;
             Layout.Font = &GlobalDebugState->Font;
-            Layout.Scale = 0.5f;
+            Layout.Scale = 21.0f / Layout.Font->Height;
             Layout.P = V2(0, BackBuffer->Height - Layout.Font->Ascent*Layout.Scale);
             Layout.Color = V4(1, 1, 1, 1);
             DrawNodes(RenderBuffer, &Layout, Frame, GlobalDebugState->NodeSentinel.Next, Input);
@@ -791,5 +802,6 @@ extern "C" DEBUG_COLLATE(DebugCollate)
     END_TIMED_BLOCK();
 
     EndTemporaryMemory(RenderMemory);
+    RenderBuffer->Projection = PoppedProjection;
 #endif
 }

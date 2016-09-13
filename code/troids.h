@@ -20,12 +20,13 @@ struct asteroid
 {
     v3 P;
     v3 dP;
-    r32 Scale;
+    r32 Diameter;
 };
 
 struct live_bullet
 {
     v3 P;
+    v3 dP;
     r32 Direction;
     r32 Timer;
 };
@@ -33,6 +34,10 @@ struct live_bullet
 struct game_state
 {
     b32 IsInitialized;
+
+    r32 MetersToPixels;
+    v3 CameraP;
+    r32 CameraRot;
     
     u32 RunningSampleCount;
     

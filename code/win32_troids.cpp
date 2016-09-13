@@ -6,7 +6,7 @@
    $Notice: $
    ======================================================================== */
 
-#define DEBUG_FONT 1
+#define THREAD_QUEUE_SIZE 256
 
 #include <windows.h>
 #include <stdio.h>
@@ -387,7 +387,7 @@ FileExists(char *Path)
     return(Result);
 }
 
-global_variable thread_work GlobalThreadQueue[64];
+global_variable thread_work GlobalThreadQueue[THREAD_QUEUE_SIZE];
 global_variable volatile u32 GlobalThreadQueueStartIndex = 0;
 global_variable u32 GlobalThreadQueueNextIndex = 0;
 global_variable HANDLE GlobalThreadQueueSemaphore;

@@ -10,6 +10,42 @@
 #define HUD_Z 100000.0f
 #define DEBUG_BITMAPS 0
 
+inline v2
+WorldToScreenTransform(render_buffer *RenderBuffer, v3 WorldP)
+{
+    v2 Result = {};
+    switch(RenderBuffer->Projection)
+    {
+        case Projection_Orthographic:
+        {
+            v3 NewP = WorldP - RenderBuffer->CameraP;
+            r32 ScaleFactor = 1.0f / -(5.0f*NewP.z);
+            r32 CosRot = Cos(RenderBuffer->CameraRot);
+            r32 SinRot = Sin(RenderBuffer->CameraRot);
+            {
+                m33 RotMat =
+                    {
+                        CosRot, SinRot, 0,
+                        -SinRot, CosRot, 0,
+                        0, 0, 1,
+                    };
+                NewP = RotMat*NewP;
+            }
+
+            Result = (ScaleFactor*RenderBuffer->MetersToPixels*NewP.xy +
+                                  0.5f*V2i(RenderBuffer->Width, RenderBuffer->Height));
+        } break;
+
+        case Projection_None:
+        {
+            Result = WorldP.xy;
+        } break;
+
+        InvalidDefaultCase;
+    }
+    return(Result);
+}
+
 inline void
 PushRenderHeader(memory_arena *Arena, render_command Command)
 {
@@ -19,7 +55,7 @@ PushRenderHeader(memory_arena *Arena, render_command Command)
 
 inline void
 PushBitmap(render_buffer *RenderBuffer, loaded_bitmap *Bitmap, v3 Origin, v2 XAxis, v2 YAxis,
-           r32 Scale, v4 Color)
+           r32 Height, v4 Color)
 {
     if(Bitmap->Height && Bitmap->Width)
     {
@@ -29,7 +65,7 @@ PushBitmap(render_buffer *RenderBuffer, loaded_bitmap *Bitmap, v3 Origin, v2 XAx
         Data->Origin = Origin;
         Data->XAxis = XAxis;
         Data->YAxis = YAxis;
-        Data->Scale = Scale;
+        Data->Height = Height;
         Data->Color = Color;
         Data->SortKey = Origin.z;
     }
@@ -109,9 +145,9 @@ DrawText(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char 
                               V4(1.0f, 0.0f, 1.0f, 1.0f));
 #endif
                 PushBitmap(RenderBuffer, Glyph, V3(Layout->P + Height*V2(0.05f, -0.05f), TEXT_Z-1),
-                           XAxis, YAxis, Layout->Scale, V4(0, 0, 0, 1));
+                           XAxis, YAxis, Layout->Scale*Glyph->Height, V4(0, 0, 0, 1));
                 PushBitmap(RenderBuffer, Glyph, V3(Layout->P, TEXT_Z),
-                           XAxis, YAxis, Layout->Scale);
+                           XAxis, YAxis, Layout->Scale*Glyph->Height);
             }
         }
         Prev = *At++;
@@ -182,12 +218,9 @@ DrawFillBar(render_buffer *RenderBuffer, text_layout *Layout, u64 Used, u64 Max)
 // TODO(chris): Further optimization
 internal void
 RenderBitmap(loaded_bitmap *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAxis, v2 YAxis,
-             r32 Scale, v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f), s32 OffsetX = 0, s32 OffsetY = 0)
+             v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f), s32 OffsetX = 0, s32 OffsetY = 0)
 {
     Color.rgb *= Color.a;
-    XAxis *= Scale*Bitmap->Width;
-    YAxis *= Scale*Bitmap->Height;
-    Origin -= Hadamard(Bitmap->Align, XAxis + YAxis);
     s32 XMin = Clamp(OffsetX, Floor(Minimum(Minimum(Origin.x, Origin.x + XAxis.x),
                                       Minimum(Origin.x + YAxis.x, Origin.x + XAxis.x + YAxis.x))),
                      OffsetX + BackBuffer->Width);
@@ -223,7 +256,14 @@ RenderBitmap(loaded_bitmap *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAx
     __m128 BitmapInternalHeight = _mm_set_ps1((r32)(Bitmap->Height - 2));
     __m128 BitmapWidth = _mm_set_ps1((r32)Bitmap->Width);
     __m128i BitmapHeight = _mm_set1_epi32(Bitmap->Height);
+    __m128 OriginX = _mm_set_ps1(Origin.x);
+    __m128 OriginY = _mm_set_ps1(Origin.y);
+    __m128 XAxisX = _mm_set_ps1(XAxis.x);
+    __m128 XAxisY = _mm_set_ps1(XAxis.y);
+    __m128 YAxisX = _mm_set_ps1(YAxis.x);
+    __m128 YAxisY = _mm_set_ps1(YAxis.y);
     __m128i One = _mm_set1_epi32(1);
+    __m128 Four = _mm_set_ps1(4.0f);
     __m128 RealZero = _mm_set_ps1(0.0f);
     __m128 RealOne = _mm_set_ps1(1.0f);
     __m128 Half = _mm_set_ps1(0.5f);
@@ -244,6 +284,9 @@ RenderBitmap(loaded_bitmap *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAx
         ++Y)
     {
         u32 *Pixel = (u32 *)PixelRow + AdjustedXMin;
+        __m128 X4 = _mm_set_ps((r32)AdjustedXMin + 3, (r32)AdjustedXMin + 2,
+                                   (r32)AdjustedXMin + 1, (r32)AdjustedXMin + 0);
+        __m128 Y4 = _mm_set_ps1((r32)Y);
         for(s32 X = AdjustedXMin;
             X < AdjustedXMax;
             X += 4)
@@ -252,20 +295,14 @@ RenderBitmap(loaded_bitmap *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAx
             // TODO(chris): Ship bounding rectangle seems too big when rotating?
             _mm_storeu_si128((__m128i *)Pixel, Pink);
 #endif
-            v2 TestPointA = V2i(X + 0, Y) - Origin;
-            v2 TestPointB = V2i(X + 1, Y) - Origin;
-            v2 TestPointC = V2i(X + 2, Y) - Origin;
-            v2 TestPointD = V2i(X + 3, Y) - Origin;
+            __m128 TestPointX = _mm_sub_ps(X4, OriginX);
+            __m128 TestPointY = _mm_sub_ps(Y4, OriginY);
 
-            __m128 U = _mm_mul_ps(_mm_set_ps(TestPointD.x*XAxis.x + TestPointA.y*XAxis.y,
-                                             TestPointC.x*XAxis.x + TestPointB.y*XAxis.y,
-                                             TestPointB.x*XAxis.x + TestPointC.y*XAxis.y,
-                                             TestPointA.x*XAxis.x + TestPointD.y*XAxis.y),
+            __m128 U = _mm_mul_ps(_mm_add_ps((_mm_mul_ps(TestPointX, XAxisX)),
+                                             _mm_mul_ps(TestPointY, XAxisY)),
                                   InvXAxisLengthSq);
-            __m128 V = _mm_mul_ps(_mm_set_ps(TestPointD.x*YAxis.x + TestPointA.y*YAxis.y,
-                                             TestPointC.x*YAxis.x + TestPointB.y*YAxis.y,
-                                             TestPointB.x*YAxis.x + TestPointC.y*YAxis.y,
-                                             TestPointA.x*YAxis.x + TestPointD.y*YAxis.y),
+            __m128 V = _mm_mul_ps(_mm_add_ps((_mm_mul_ps(TestPointX, YAxisX)),
+                                             _mm_mul_ps(TestPointY, YAxisY)),
                                   InvYAxisLengthSq);
 
             Mask = _mm_and_ps(_mm_and_ps(_mm_cmpge_ps(U, RealZero), _mm_cmpge_ps(V, RealZero)),
@@ -372,6 +409,7 @@ RenderBitmap(loaded_bitmap *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAx
             _mm_storeu_si128((__m128i *)Pixel, Result);
 
             Pixel += 4;
+            X4 = _mm_add_ps(X4, Four);
         }
         PixelRow += BackBuffer->Pitch;
     }
@@ -682,8 +720,20 @@ RenderTree(render_buffer *RenderBuffer, binary_node *Node, loaded_bitmap *BackBu
             case RenderCommand_Bitmap:
             {
                 render_bitmap_data *Data = (render_bitmap_data *)(Header + 1);
-                RenderBitmap(BackBuffer, Data->Bitmap, Data->Origin.xy, Data->XAxis, Data->YAxis,
-                             Data->Scale, Data->Color, OffsetX, OffsetY);
+                v2 YAxis = Data->YAxis*Data->Height;
+                v2 XAxis = Data->XAxis*Data->Height*((r32)Data->Bitmap->Width/(r32)Data->Bitmap->Height);
+                v3 Origin = Data->Origin - V3(Hadamard(Data->Bitmap->Align, XAxis + YAxis), 0);
+                
+                XAxis = WorldToScreenTransform(RenderBuffer, Origin + V3(XAxis, 0));
+                YAxis = WorldToScreenTransform(RenderBuffer, Origin + V3(YAxis, 0));
+                v2 ScreenOrigin = WorldToScreenTransform(RenderBuffer, Origin);
+                XAxis -= ScreenOrigin;
+                YAxis -= ScreenOrigin;
+
+                RenderBitmap(BackBuffer, Data->Bitmap,
+                             ScreenOrigin,
+                             XAxis, YAxis,
+                             Data->Color, OffsetX, OffsetY);
             } break;
 
             case RenderCommand_Rectangle:
@@ -730,9 +780,9 @@ THREAD_CALLBACK(RenderTreeCallback)
 }
 
 inline void
-SplitWork(render_buffer *RenderBuffer, binary_node *Node, void *Memory,
-          u32 CoreCount, s32 Width, s32 Height, s32 Pitch, s32 OffsetX, s32 OffsetY,
-          render_tree_data *Data)
+SplitWorkIntoSquares(render_buffer *RenderBuffer, binary_node *Node, void *Memory,
+                     u32 CoreCount, s32 Width, s32 Height, s32 Pitch, s32 OffsetX, s32 OffsetY,
+                     render_tree_data *Data)
 {
     if(CoreCount == 1)
     {
@@ -755,23 +805,77 @@ SplitWork(render_buffer *RenderBuffer, binary_node *Node, void *Memory,
         if(Width >= Height)
         {
             s32 HalfWidth = Width/2;
-            SplitWork(RenderBuffer, Node, Memory,
+            SplitWorkIntoSquares(RenderBuffer, Node, Memory,
                       HalfCores, HalfWidth, Height, Pitch, OffsetX, OffsetY,
                       Data);
-            SplitWork(RenderBuffer, Node, Memory,
+            SplitWorkIntoSquares(RenderBuffer, Node, Memory,
                       HalfCores, HalfWidth, Height, Pitch, OffsetX+HalfWidth, OffsetY,
                       Data+HalfCores);
         }
         else
         {
             s32 HalfHeight = Height/2;
-            SplitWork(RenderBuffer, Node, Memory,
+            SplitWorkIntoSquares(RenderBuffer, Node, Memory,
                       HalfCores, Width, HalfHeight, Pitch, OffsetX, OffsetY,
                       Data);
-            SplitWork(RenderBuffer, Node, Memory,
+            SplitWorkIntoSquares(RenderBuffer, Node, Memory,
                       HalfCores, Width, HalfHeight, Pitch, OffsetX, OffsetY+HalfHeight,
                       Data+HalfCores);
         }
+    }
+}
+
+inline void
+SplitWorkIntoHorizontalStrips(render_buffer *RenderBuffer, binary_node *Node, void *Memory,
+                              u32 CoreCount, s32 Width, s32 Height, s32 Pitch, render_tree_data *Data)
+{
+    s32 OffsetY = 0;
+    r32 InverseCoreCount = 1.0f / CoreCount;
+    for(u32 CoreIndex = 0;
+        CoreIndex < CoreCount;
+        ++CoreIndex)
+    {
+        render_tree_data *CoreData = Data + CoreIndex;
+
+        s32 NextOffsetY = RoundS32(Height*(CoreIndex+1)*InverseCoreCount);
+        
+        CoreData->RenderBuffer = RenderBuffer;
+        CoreData->Node = Node;
+        CoreData->OffsetX = 0;
+        CoreData->OffsetY = OffsetY;
+        CoreData->BackBuffer.Height = NextOffsetY-OffsetY;
+        CoreData->BackBuffer.Width = Width;
+        CoreData->BackBuffer.Pitch = Pitch;
+        CoreData->BackBuffer.Memory = Memory;
+
+        OffsetY = NextOffsetY;
+    }
+}
+
+inline void
+SplitWorkIntoVerticalStrips(render_buffer *RenderBuffer, binary_node *Node, void *Memory,
+                            u32 CoreCount, s32 Width, s32 Height, s32 Pitch, render_tree_data *Data)
+{
+    s32 OffsetX = 0;
+    r32 InverseCoreCount = 1.0f / CoreCount;
+    for(u32 CoreIndex = 0;
+        CoreIndex < CoreCount;
+        ++CoreIndex)
+    {
+        render_tree_data *CoreData = Data + CoreIndex;
+
+        s32 NextOffsetX = RoundS32(Width*(CoreIndex+1)*InverseCoreCount);
+        
+        CoreData->RenderBuffer = RenderBuffer;
+        CoreData->Node = Node;
+        CoreData->OffsetX = OffsetX;
+        CoreData->OffsetY = 0;
+        CoreData->BackBuffer.Height = Height;
+        CoreData->BackBuffer.Width = NextOffsetX-OffsetX;
+        CoreData->BackBuffer.Pitch = Pitch;
+        CoreData->BackBuffer.Memory = Memory;
+
+        OffsetX = NextOffsetX;
     }
 }
 
@@ -817,13 +921,19 @@ RenderBufferToBackBuffer(render_buffer *RenderBuffer, loaded_bitmap *BackBuffer)
     }
     if(SortTree)
     {
+        render_tree_data RenderTreeData[64];
+        thread_progress ThreadProgress[64];
         // TODO(chris): Optimize this for the number of logical cores.
-        render_tree_data RenderTreeData[32];
-        thread_progress ThreadProgress[32];
-        u32 CoreCount = 8;
-        SplitWork(RenderBuffer, SortTree, BackBuffer->Memory, CoreCount,
-                  BackBuffer->Width, BackBuffer->Height, BackBuffer->Pitch, 0, 0,
-                  RenderTreeData);
+        u32 CoreCount = 64;
+#if 0
+        SplitWorkIntoVerticalStrips(RenderBuffer, SortTree, BackBuffer->Memory, CoreCount,
+            BackBuffer->Width, BackBuffer->Height, BackBuffer->Pitch,
+            RenderTreeData);
+#else
+        SplitWorkIntoSquares(RenderBuffer, SortTree, BackBuffer->Memory, CoreCount,
+            BackBuffer->Width, BackBuffer->Height, BackBuffer->Pitch, 0, 0,
+            RenderTreeData);
+#endif
         
         for(u32 RenderChunkIndex = 1;
             RenderChunkIndex < CoreCount;
@@ -833,7 +943,7 @@ RenderBufferToBackBuffer(render_buffer *RenderBuffer, loaded_bitmap *BackBuffer)
             thread_progress *Progress = ThreadProgress + RenderChunkIndex;
             PlatformPushThreadWork(RenderTreeCallback, Data, Progress);
         }
-        RenderTree(RenderBuffer, SortTree, &RenderTreeData[0].BackBuffer, 0, 0);
+        RenderTreeCallback(&RenderTreeData[0]);
         ThreadProgress[0].Finished = true;
 
         b32 Finished;

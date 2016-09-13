@@ -23,7 +23,7 @@ struct render_command_header
 struct render_bitmap_data
 {
     r32 SortKey;
-    r32 Scale;
+    r32 Height;
     v2 XAxis;
     v2 YAxis;
     v4 Color;
@@ -51,10 +51,20 @@ struct render_clear_data
     v4 Color;
 };
 
+enum projection
+{
+    Projection_None,
+    Projection_Orthographic,
+};
+
 struct render_buffer
 {
     u32 Width;
     u32 Height;
+    r32 MetersToPixels;
+    v3 CameraP;
+    r32 CameraRot;
+    projection Projection;
     memory_arena Arena;
 };
 
