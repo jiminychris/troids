@@ -23,7 +23,6 @@ struct render_command_header
 struct render_bitmap_data
 {
     r32 SortKey;
-    r32 Height;
     v2 XAxis;
     v2 YAxis;
     v4 Color;
@@ -78,7 +77,7 @@ IsInvertedColor(v4 Color)
 
 inline void
 PushBitmap(render_buffer *RenderBuffer, loaded_bitmap *Bitmap, v3 Origin, v2 XAxis, v2 YAxis,
-           r32 Scale, v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f));
+           v2 Dim, v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f));
 
 inline rectangle2
 PushRectangle(render_buffer *RenderBuffer, v3 P, v2 Dim, v4 Color);

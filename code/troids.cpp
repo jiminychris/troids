@@ -6,6 +6,8 @@
    $Notice: $
    ======================================================================== */
 
+#define DEBUG_COLLISION 1
+
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -286,18 +288,26 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
         State->MetersToPixels = 3674.9418959066769192359305459154f;
 
-        State->P = ShipStartingP;
-        State->Yaw = ShipStartingYaw;
-        State->Ship = LoadBitmap("ship_opaque.bmp");
-        State->Asteroid = LoadBitmap("asteroid_opaque.bmp");
-        State->Bullet = LoadBitmap("bullet.bmp");
+        State->Ship.Dim = V2(10.0f, 10.0f);
+        State->Ship.P = ShipStartingP;
+        State->Ship.Yaw = ShipStartingYaw;
+        State->Ship.CollisionBoxes[0] = CenterDim(V2(0.0f, 0.0f), V2(3.0f, 8.0f));
+        State->Ship.CollisionBoxes[1] = CenterDim(V2(-1.0f, -3.0f), V2(2.0f, 2.0f));
+        State->Ship.CollisionBoxes[2] = CenterDim(V2(1.0f, -3.0f), V2(2.0f, 2.0f));
+        State->Ship.CollisionBoxCount = 3;
+        State->ShipBitmap = LoadBitmap("ship_opaque.bmp");
+        State->AsteroidBitmap = LoadBitmap("asteroid_opaque.bmp");
+        State->BulletBitmap = LoadBitmap("bullet.bmp");
+#if TROIDS_INTERNAL
+        State->DebugBitmap = LoadBitmap("debug.bmp");
+#endif
 
-        State->CameraP = V3(State->P.xy, 100.0f);
-        State->CameraRot = State->Yaw;
+        State->CameraP = V3(State->Ship.P.xy, 100.0f);
+        State->CameraRot = State->Ship.Yaw;
 
-        State->Scale = 100.0f;
+        State->FloatingHead.Scale = 100.0f;
 
-        State->RotationMatrix =
+        State->FloatingHead.RotationMatrix =
         {
             1, 0, 0,
             0, 1, 0,
@@ -310,8 +320,8 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 #if 0
         State->Asteroids[0].dP = 50.0f*V3(0.7f, 0.3f, 0.0f);
 #endif
-        State->Asteroids[0].Diameter = 10.0f;
-        State->Asteroids[1].Diameter = 20.0f;
+        State->Asteroids[0].Dim = V2(10.0f, 0.0f);
+        State->Asteroids[1].Dim = V2(20.0f, 0.0f);
     }
 
     transient_state *TranState = (transient_state *)GameMemory->TemporaryMemory;
@@ -372,10 +382,10 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     if(WentDown(ShipController->Select) && (State->AsteroidCount < ArrayCount(State->Asteroids)))
     {
-        asteroid *NewAsteroid = State->Asteroids + State->AsteroidCount;
-        asteroid *OldAsteroid = State->Asteroids;
+        entity *NewAsteroid = State->Asteroids + State->AsteroidCount;
+        entity *OldAsteroid = State->Asteroids;
         // NOTE(chris): Halving volume results in dividing radius by cuberoot(2)
-        OldAsteroid->Diameter *= 0.79370052598f;
+        OldAsteroid->Dim *= 0.79370052598f;
         *NewAsteroid = *OldAsteroid;
 
         r32 Angle = Tau/12.0f;
@@ -406,7 +416,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     if(Keyboard->Start.EndedDown || ShipController->Start.EndedDown)
     {
-        State->P = ShipStartingP;
+        State->Ship.P = ShipStartingP;
     }
 
     if(AsteroidController->Start.EndedDown)
@@ -416,20 +426,17 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     if(Keyboard->ActionUp.EndedDown || ShipController->ActionUp.EndedDown)
     {
-        State->Scale += Input->dtForFrame*100.0f;
+        State->FloatingHead.Scale += Input->dtForFrame*100.0f;
     }
 
     if(Keyboard->ActionDown.EndedDown || ShipController->ActionDown.EndedDown)
     {
-        State->Scale -= Input->dtForFrame*100.0f;
+        State->FloatingHead.Scale -= Input->dtForFrame*100.0f;
     }
-    if(State->Scale < 0.0f)
+    if(State->FloatingHead.Scale < 0.0f)
     {
-        State->Scale = 0.0f;
+        State->FloatingHead.Scale = 0.0f;
     }
-
-    r32 ShipLength = 10.0f;
-    r32 BulletLength = 3.0f;
 
     r32 LeftStickX = Keyboard->LeftStick.x ? Keyboard->LeftStick.x : ShipController->LeftStick.x;
     r32 Thrust;
@@ -458,34 +465,35 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     
     r32 Halfdt = Input->dtForFrame*0.5f;
     r32 MaxDYaw = 0.2*Tau;
-    r32 dYaw = Clamp(-MaxDYaw, State->dYaw + Input->dtForFrame*-LeftStickX, MaxDYaw);
-    State->Yaw += (dYaw + State->dYaw)*Halfdt;
-    State->dYaw = dYaw;
-    v3 Facing = V3(Cos(State->Yaw), Sin(State->Yaw), 0.0f);
+    r32 dYaw = Clamp(-MaxDYaw, State->Ship.dYaw + Input->dtForFrame*-LeftStickX, MaxDYaw);
+    State->Ship.Yaw += (dYaw + State->Ship.dYaw)*Halfdt;
+    State->Ship.dYaw = dYaw;
+    v3 Facing = V3(Cos(State->Ship.Yaw), Sin(State->Ship.Yaw), 0.0f);
 
     r32 PixelsToMeters = 1.0f / State->MetersToPixels;
     
     v3 Acceleration = {};
     if((WentDown(ShipController->RightShoulder1) || WentDown(Keyboard->RightShoulder1)) &&
-       State->LiveBulletCount < ArrayCount(State->LiveBullets))
+       State->BulletCount < ArrayCount(State->Bullets))
     {
-        if(State->Cooldown <= 0.0f)
+        if(State->Ship.Timer <= 0.0f)
         {
-            live_bullet *LiveBullet = State->LiveBullets + State->LiveBulletCount++;
-            r32 BulletOffset = 0.5f*(ShipLength + BulletLength);
-            LiveBullet->P = State->P + Facing*(BulletOffset);
-            LiveBullet->dP = State->dP + Facing*100.0f;
-            LiveBullet->Direction = State->Yaw;
-            LiveBullet->Timer = 2.0f;
-            State->Cooldown = 0.1f;
+            entity *Bullet = State->Bullets + State->BulletCount++;
+            Bullet->Dim = V2(0.0f, 3.0f);
+            r32 BulletOffset = 0.5f*(State->Ship.Dim.y + Bullet->Dim.y);
+            Bullet->P = State->Ship.P + Facing*(BulletOffset);
+            Bullet->dP = State->Ship.dP + Facing*100.0f;
+            Bullet->Yaw = State->Ship.Yaw;
+            Bullet->Timer = 2.0f;
+            State->Ship.Timer = 0.1f;
             Acceleration += -Facing*100.0f;
         }
     }
 
     Acceleration += 50.0f*Facing*Thrust;
-    v3 dP = State->dP + Acceleration*Input->dtForFrame;
-    State->P += (dP + State->dP)*Halfdt;
-    State->dP = dP;
+    v3 dP = State->Ship.dP + Acceleration*Input->dtForFrame;
+    State->Ship.P += (dP + State->Ship.dP)*Halfdt;
+    State->Ship.dP = dP;
 
     v3 AsteroidAcceleration = (0.25f*
                                V3(AsteroidController->LeftStick.x, AsteroidController->LeftStick.y, 0.0f));
@@ -496,13 +504,13 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         AsteroidIndex < State->AsteroidCount;
         ++AsteroidIndex)
     {
-        asteroid *Asteroid = State->Asteroids + AsteroidIndex;
+        entity *Asteroid = State->Asteroids + AsteroidIndex;
         Asteroid->P += Asteroid->dP*Input->dtForFrame;
     }
     
-    if(State->Cooldown > 0.0f)
+    if(State->Ship.Timer > 0.0f)
     {
-        State->Cooldown -= Input->dtForFrame;
+        State->Ship.Timer -= Input->dtForFrame;
         ShipController->HighFrequencyMotor = 1.0f;
     }
     else
@@ -513,7 +521,20 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     {
         v2 YAxis = Facing.xy;
         v2 XAxis = -Perp(YAxis);
-        PushBitmap(&TranState->RenderBuffer, &State->Ship, State->P, XAxis, YAxis, ShipLength);
+#if DEBUG_COLLISION
+        // TODO(chris): Make a "RenderRotatedRectangle" function to remove this debug bitmap.
+        for(u32 BoxIndex = 0;
+            BoxIndex < State->Ship.CollisionBoxCount;
+            ++BoxIndex)
+        {
+            rectangle2 *Box = State->Ship.CollisionBoxes + BoxIndex;
+            PushBitmap(&TranState->RenderBuffer, &State->DebugBitmap,
+                       V3(State->Ship.P.xy + GetCenter(*Box), State->Ship.P.z+0.01f),
+                       XAxis, YAxis, GetDim(*Box));
+        }
+#endif
+        PushBitmap(&TranState->RenderBuffer, &State->ShipBitmap, State->Ship.P,
+                   XAxis, YAxis, State->Ship.Dim);
     }
 
     {
@@ -523,35 +544,37 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             AsteroidIndex < State->AsteroidCount;
             ++AsteroidIndex)
         {
-            asteroid *Asteroid = State->Asteroids + AsteroidIndex;
-            PushBitmap(&TranState->RenderBuffer, &State->Asteroid, Asteroid->P, XAxis, YAxis, Asteroid->Diameter);
+            entity *Asteroid = State->Asteroids + AsteroidIndex;
+            PushBitmap(&TranState->RenderBuffer, &State->AsteroidBitmap, Asteroid->P,
+                       XAxis, YAxis, Asteroid->Dim);
         }
     }
     
-    live_bullet *LiveBullet = State->LiveBullets;
-    live_bullet *End = State->LiveBullets + State->LiveBulletCount;
-    while(LiveBullet != End)
+    entity *Bullet = State->Bullets;
+    entity *End = State->Bullets + State->BulletCount;
+    while(Bullet != End)
     {
-        if(LiveBullet->Timer <= 0.0f)
+        if(Bullet->Timer <= 0.0f)
         {
-            *LiveBullet = State->LiveBullets[--State->LiveBulletCount];
+            *Bullet = State->Bullets[--State->BulletCount];
             --End;
         }
         else
         {
-            v2 YAxis = V2(Cos(LiveBullet->Direction), Sin(LiveBullet->Direction));
+            v2 YAxis = V2(Cos(Bullet->Yaw), Sin(Bullet->Yaw));
             v2 XAxis = -Perp(YAxis);
-            LiveBullet->P += Input->dtForFrame*LiveBullet->dP;
-            PushBitmap(&TranState->RenderBuffer, &State->Bullet, LiveBullet->P, XAxis, YAxis, BulletLength,
-                       V4(1.0f, 1.0f, 1.0f, Unlerp(0.0f, LiveBullet->Timer, 2.0f)));
-//            DrawLine(BackBuffer, State->P, LiveBullet->P, V4(0.0f, 0.0f, 1.0f, 1.0f));
-            LiveBullet->Timer -= Input->dtForFrame;
-            ++LiveBullet;
+            Bullet->P += Input->dtForFrame*Bullet->dP;
+            PushBitmap(&TranState->RenderBuffer, &State->BulletBitmap, Bullet->P, XAxis, YAxis,
+                       Bullet->Dim,
+                       V4(1.0f, 1.0f, 1.0f, Unlerp(0.0f, Bullet->Timer, 2.0f)));
+//            DrawLine(BackBuffer, State->P, Bullet->P, V4(0.0f, 0.0f, 1.0f, 1.0f));
+            Bullet->Timer -= Input->dtForFrame;
+            ++Bullet;
         }
     }
 
-    State->CameraP.xy += 0.2f*(State->P.xy - State->CameraP.xy);
-    State->CameraRot += 0.05f*((State->Yaw - 0.25f*Tau) - State->CameraRot);
+    State->CameraP.xy += 0.2f*(State->Ship.P.xy - State->CameraP.xy);
+    State->CameraRot += 0.05f*((State->Ship.Yaw - 0.25f*Tau) - State->CameraRot);
 
     v4 White = V4(1.0f, 1.0f, 1.0f, 1.0f);
 
@@ -581,7 +604,8 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         0,             0,            1,
     };
 
-    State->RotationMatrix = ZRotationMatrix*YRotationMatrix*XRotationMatrix*State->RotationMatrix;
+    State->FloatingHead.RotationMatrix =
+        ZRotationMatrix*YRotationMatrix*XRotationMatrix*State->FloatingHead.RotationMatrix;
 
 #if 0
     {

@@ -16,19 +16,22 @@
 platform_read_file *PlatformReadFile;
 platform_push_thread_work *PlatformPushThreadWork;
 
-struct asteroid
+struct entity
 {
     v3 P;
     v3 dP;
-    r32 Diameter;
-};
-
-struct live_bullet
-{
-    v3 P;
-    v3 dP;
-    r32 Direction;
+    r32 Yaw;
+    r32 dYaw;
+    r32 Pitch;
+    r32 Roll;
     r32 Timer;
+    v2 Dim;
+
+    u32 CollisionBoxCount;
+    rectangle2 CollisionBoxes[8];
+    
+    r32 Scale;
+    m33 RotationMatrix;
 };
 
 struct game_state
@@ -40,27 +43,20 @@ struct game_state
     r32 CameraRot;
     
     u32 RunningSampleCount;
-    
-    v3 P;
-    v3 dP;
-    r32 dYaw;
-    r32 Yaw;
-    r32 Pitch;
-    r32 Roll;
-    r32 Cooldown;
 
-    r32 Scale;
-    m33 RotationMatrix;
-
+    u32 BulletCount;
+    entity Bullets[64];
     u32 AsteroidCount;
-    asteroid Asteroids[64];
-    
-    u32 LiveBulletCount;
-    live_bullet LiveBullets[64];
+    entity Asteroids[64];
+    entity Ship;
+    entity FloatingHead;
 
-    loaded_bitmap Ship;
-    loaded_bitmap Asteroid;
-    loaded_bitmap Bullet;
+    loaded_bitmap ShipBitmap;
+    loaded_bitmap AsteroidBitmap;
+    loaded_bitmap BulletBitmap;
+#if TROIDS_INTERNAL
+    loaded_bitmap DebugBitmap;
+#endif
     loaded_obj HeadMesh;
 };
 

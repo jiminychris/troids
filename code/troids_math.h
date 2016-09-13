@@ -416,6 +416,15 @@ GetDim(rectangle2 Rect)
     return(Result);
 }
 
+inline v2
+GetCenter(rectangle2 Rect)
+{
+    v2 Result;
+    Result.x = (Rect.Max.x + Rect.Min.x)*0.5f;
+    Result.y = (Rect.Max.y + Rect.Min.y)*0.5f;
+    return(Result);
+}
+
 inline rectangle2
 TopLeftDim(v2 TopLeft, v2 Dim)
 {

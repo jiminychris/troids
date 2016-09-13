@@ -55,7 +55,7 @@ PushRenderHeader(memory_arena *Arena, render_command Command)
 
 inline void
 PushBitmap(render_buffer *RenderBuffer, loaded_bitmap *Bitmap, v3 Origin, v2 XAxis, v2 YAxis,
-           r32 Height, v4 Color)
+           v2 Dim, v4 Color)
 {
     if(Bitmap->Height && Bitmap->Width)
     {
@@ -63,9 +63,16 @@ PushBitmap(render_buffer *RenderBuffer, loaded_bitmap *Bitmap, v3 Origin, v2 XAx
         render_bitmap_data *Data = PushStruct(&RenderBuffer->Arena, render_bitmap_data);
         Data->Bitmap = Bitmap;
         Data->Origin = Origin;
-        Data->XAxis = XAxis;
-        Data->YAxis = YAxis;
-        Data->Height = Height;
+        if(Dim.x == 0.0f && Bitmap->Height)
+        {
+            Dim.x = ((r32)Bitmap->Width/(r32)Bitmap->Height)*Dim.y;
+        }
+        if(Dim.y == 0.0f && Bitmap->Width)
+        {
+            Dim.y = ((r32)Bitmap->Height/(r32)Bitmap->Width)*Dim.x;
+        }
+        Data->XAxis = XAxis*Dim.x;
+        Data->YAxis = YAxis*Dim.y;
         Data->Color = Color;
         Data->SortKey = Origin.z;
     }
@@ -145,9 +152,9 @@ DrawText(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char 
                               V4(1.0f, 0.0f, 1.0f, 1.0f));
 #endif
                 PushBitmap(RenderBuffer, Glyph, V3(Layout->P + Height*V2(0.05f, -0.05f), TEXT_Z-1),
-                           XAxis, YAxis, Layout->Scale*Glyph->Height, V4(0, 0, 0, 1));
+                           XAxis, YAxis, V2(0, Layout->Scale*Glyph->Height), V4(0, 0, 0, 1));
                 PushBitmap(RenderBuffer, Glyph, V3(Layout->P, TEXT_Z),
-                           XAxis, YAxis, Layout->Scale*Glyph->Height);
+                           XAxis, YAxis, V2(0, Layout->Scale*Glyph->Height));
             }
         }
         Prev = *At++;
@@ -720,8 +727,8 @@ RenderTree(render_buffer *RenderBuffer, binary_node *Node, loaded_bitmap *BackBu
             case RenderCommand_Bitmap:
             {
                 render_bitmap_data *Data = (render_bitmap_data *)(Header + 1);
-                v2 YAxis = Data->YAxis*Data->Height;
-                v2 XAxis = Data->XAxis*Data->Height*((r32)Data->Bitmap->Width/(r32)Data->Bitmap->Height);
+                v2 XAxis = Data->XAxis;
+                v2 YAxis = Data->YAxis;
                 v3 Origin = Data->Origin - V3(Hadamard(Data->Bitmap->Align, XAxis + YAxis), 0);
                 
                 XAxis = WorldToScreenTransform(RenderBuffer, Origin + V3(XAxis, 0));
