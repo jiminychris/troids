@@ -8,7 +8,7 @@
    ======================================================================== */
 
 #if TROIDS_INTERNAL
-#define MAX_DEBUG_EVENTS 4096
+#define MAX_DEBUG_EVENTS 8192
 
 enum debug_event_type
 {
@@ -183,7 +183,10 @@ struct debug_state
     b32 Paused;
     memory_arena Arena;
     u32 EventStart;
-    u32 Ignore;
+    // TODO(chris): This has the unintended effect of ignoring everything. e.g., I want to ignore
+    // only the events raised when drawing the debug display, but this would also ignore background
+    // loading stuff.
+    b32 Ignored;
     volatile u32 EventCount;
     u32 CollatingFrameIndex;
     u32 ViewingFrameIndex;
@@ -213,7 +216,7 @@ NextDebugEvent()
     Assert(((EventIndex+1)&Mask) != GlobalDebugState->EventStart);
     debug_event *Result = GlobalDebugState->Events + EventIndex;
     Result->ThreadID = GetCurrentThreadID();
-    Result->Ignored = GlobalDebugState->Ignore == Result->ThreadID;
+    Result->Ignored = GlobalDebugState->Ignored;
     return(Result);
 }
 

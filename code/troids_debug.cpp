@@ -138,7 +138,6 @@ internal void
 DrawThread(render_buffer *RenderBuffer, text_layout *Layout, debug_thread *Thread,
            game_input *Input, v2 Dim, v2 P)
 {
-    Thread->NextElement = &Thread->ProfilerSentinel;
     b32 FinishedChildren = false;
     u32 Depth = 0;
     u32 MaxDepth = 0;
@@ -148,13 +147,17 @@ DrawThread(render_buffer *RenderBuffer, text_layout *Layout, debug_thread *Threa
     u32 ColorIndex = 0;
     v4 ParentColors[] =
         {
+            V4(0, 0.2f, 1, 1),
+            V4(0, 0.4f, 1, 1),
             V4(0, 0.6f, 1, 1),
-            V4(0, 0.5f, 1, 1),
+            V4(0, 0.8f, 1, 1),
         };
     v4 LeafColors[] =
         {
+            V4(0.2f, 0, 0, 1),
+            V4(0.4f, 0, 0, 1),
             V4(0.6f, 0, 0, 1),
-            V4(0.5f, 0, 0, 1),
+            V4(0.8f, 0, 0, 1),
         };
     u32 TextLength;
     char Text[256];
@@ -184,7 +187,7 @@ DrawThread(render_buffer *RenderBuffer, text_layout *Layout, debug_thread *Threa
                         ((Element->BeginTicks-Thread->CurrentElement->BeginTicks)*
                          InverseTotalCycles*Dim.x));
             r32 Width = CyclesPassed*InverseTotalCycles*Dim.x;
-            v2 RegionDim = V2(Width, Height);
+            v2 RegionDim = V2(Width, Height-2.0f);
             rectangle2 RegionRect = MinDim(V2(Left, P.y + Depth*Height),
                                            RegionDim);
             v4 *Colors = Element->Child ? ParentColors : LeafColors;
@@ -240,13 +243,18 @@ DrawThread(render_buffer *RenderBuffer, text_layout *Layout, debug_thread *Threa
 
         }
     }
-    Layout->P = V2(P.x, P.y - Layout->Font->Ascent*Layout->Scale);
-    Thread->CurrentElement = Thread->NextElement;
 }
 
 internal void
 DrawProfiler(debug_frame *Frame, render_buffer *RenderBuffer, text_layout *Layout, game_input *Input)
 {
+    for(u32 ThreadIndex = 0;
+        ThreadIndex < Frame->ThreadCount;
+        ++ThreadIndex)
+    {
+        debug_thread *Thread = Frame->Threads + ThreadIndex;
+        Thread->NextElement = Thread->CurrentElement;
+    }
     u32 TextLength;
     // TODO(chris): More formatting stuff to stop needing to do this kind of thing?
     r32 PopX = Layout->P.x;
@@ -324,7 +332,9 @@ DrawProfiler(debug_frame *Frame, render_buffer *RenderBuffer, text_layout *Layou
         debug_thread *Thread = Frame->Threads + ThreadIndex;
         DrawThread(RenderBuffer, Layout, Thread, Input, V2(TotalDim.x, ThreadHeight),
         V2(ProfileRect.Min.x, ProfileRect.Min.y + ThreadIndex*ThreadHeight));
+        Thread->CurrentElement = Thread->NextElement;
     }
+    Layout->P = V2(PopX, ProfileRect.Min.y - Layout->Font->Ascent*Layout->Scale);
 }
 
 internal void
@@ -374,7 +384,6 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
             DrawText(RenderBuffer, Layout, NameLength, Node->Name);
         } break;
 
-#if 0
         case DebugEventType_FillBar:
         case DebugEventType_DebugEvents:
         {
@@ -383,7 +392,17 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
             char DebugEventsName[] = "Debug Events";
             if(Node->Type == DebugEventType_DebugEvents)
             {
-                Used = (r32)GlobalDebugState->EventCount;
+                u32 Mask = ArrayCount(GlobalDebugState->Events)-1;
+                u32 EventIndex = GlobalDebugState->EventCount & Mask;
+                if(GlobalDebugState->EventStart < EventIndex)
+                {
+                    Used = (r32)(EventIndex - GlobalDebugState->EventStart);
+                }
+                else
+                {
+                    Used = (r32)(ArrayCount(GlobalDebugState->Events) -
+                                 GlobalDebugState->EventStart + EventIndex);
+                }
                 Max = (r32)ArrayCount(GlobalDebugState->Events);
                 Name = DebugEventsName;
                 NameLength = sizeof(DebugEventsName);
@@ -402,7 +421,6 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
             DrawFillBar(RenderBuffer, Layout, Used, Max);
             Layout->P.x = XInit;
         } break;
-#endif
 
         case DebugEventType_DebugMemory:
         case DebugEventType_memory_arena:
@@ -570,6 +588,7 @@ extern "C" DEBUG_COLLATE(DebugCollate)
     Assert(TranState->IsInitialized);
     render_buffer *RenderBuffer = &TranState->RenderBuffer;
     temporary_memory RenderMemory = BeginTemporaryMemory(&TranState->RenderBuffer.Arena);
+    u32 EventIndex = GlobalDebugState->EventStart;
     // TODO(chris): Handle events that cross a frame boundary (i.e. threads)
     {
         TIMED_BLOCK("CollateEvents");
@@ -577,12 +596,13 @@ extern "C" DEBUG_COLLATE(DebugCollate)
         debug_node *GroupBeginStack[MAX_DEBUG_EVENTS];
         debug_node *PrevNode = &GlobalDebugState->NodeSentinel;
 
+        u32 Mask = ArrayCount(GlobalDebugState->Events)-1;
+        u32 EventEnd = GlobalDebugState->EventCount & Mask;
         for(;
-            GlobalDebugState->EventStart != GlobalDebugState->EventCount;
-            GlobalDebugState->EventStart = ((GlobalDebugState->EventStart+1)
-                                            & (ArrayCount(GlobalDebugState->Events)-1)))
+            EventIndex != EventEnd;
+            EventIndex = ((EventIndex+1) & Mask))
         {
-            debug_event *Event = GlobalDebugState->Events + GlobalDebugState->EventStart;
+            debug_event *Event = GlobalDebugState->Events + EventIndex;
             if(Event->Ignored) continue;
             switch(Event->Type)
             {
@@ -631,14 +651,13 @@ extern "C" DEBUG_COLLATE(DebugCollate)
                         debug_thread *Thread = GetThread(Frame, Event->ThreadID);
                         Assert(Thread->CurrentElement);
                         // TODO(chris): IMPORTANT FIX THIS ASAP!!!
-                        if(Thread->CurrentElement != &Thread->ProfilerSentinel)
+                        if(Thread->CurrentElement->EndTicks)
                         {
-                            if(Thread->CurrentElement->EndTicks)
-                            {
-                                Thread->CurrentElement = Thread->CurrentElement->Parent;
-                            }
-                            Thread->CurrentElement->EndTicks = Event->Value_u64;
+                            Assert(Thread->CurrentElement->Parent);
+                            Thread->CurrentElement = Thread->CurrentElement->Parent;
                         }
+                        Assert(Thread->CurrentElement != &Thread->ProfilerSentinel);
+                        Thread->CurrentElement->EndTicks = Event->Value_u64;
                     }
                 } break;
 
@@ -648,11 +667,16 @@ extern "C" DEBUG_COLLATE(DebugCollate)
                     {
                         Frame->ElapsedSeconds = Event->ElapsedSeconds;
                         Frame->EndTicks = Event->Value_u64;
-#if 0
-                        Frame->CurrentElement = &Frame->ProfilerSentinel;
-                        Frame->CurrentElement->BeginTicks = Frame->BeginTicks;
-                        Frame->CurrentElement->EndTicks = Frame->EndTicks;
-#endif
+
+                        for(u32 ThreadIndex = 0;
+                            ThreadIndex < Frame->ThreadCount;
+                            ++ThreadIndex)
+                        {
+                            debug_thread *Thread = Frame->Threads + ThreadIndex;
+                            Thread->CurrentElement = &Thread->ProfilerSentinel;
+                            Thread->CurrentElement->BeginTicks = Frame->BeginTicks;
+                            Thread->CurrentElement->EndTicks = Frame->EndTicks;
+                        }
                         GlobalDebugState->ViewingFrameIndex = GlobalDebugState->CollatingFrameIndex;
 
                         // NOTE(chris): Trick only works if MAX_DEBUG_FRAMES is a power of two.
@@ -708,6 +732,7 @@ extern "C" DEBUG_COLLATE(DebugCollate)
                             }
                         }
                         Frame->BeginTicks = Event->Value_u64;
+                        Frame->ThreadCount = 0;
 #if 0
                         Frame->CurrentElement = &Frame->ProfilerSentinel;
                         Frame->CurrentElement->EndTicks = 0;
@@ -759,13 +784,10 @@ extern "C" DEBUG_COLLATE(DebugCollate)
         }
     }
 
+    GlobalDebugState->EventStart = EventIndex;
+
     BEGIN_TIMED_BLOCK("DEBUGRender");
-    GlobalDebugState->Ignore = GetCurrentThreadID();
     RenderBufferToBackBuffer(RenderBuffer, BackBuffer);
-    // TODO(chris): This is for preventing recursive debug events. The debug system logs its own
-    // draw events, which in turn get drawn and are logged again... etc. Replace this with a better
-    // system. Or just ignore all render function logs.
-    GlobalDebugState->Ignore = 0;
     END_TIMED_BLOCK();
 
     EndTemporaryMemory(RenderMemory);
