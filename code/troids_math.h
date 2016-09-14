@@ -399,11 +399,20 @@ MinMax(v2 Min, v2 Max)
 }
 
 inline rectangle2
-AddBorder(rectangle2 Rect, r32 Border)
+AddRadius(rectangle2 Rect, r32 Radius)
 {
     rectangle2 Result;
-    Result.Min = V2(Rect.Min.x - Border, Rect.Min.y - Border);
-    Result.Max = V2(Rect.Max.x + Border, Rect.Max.y + Border);
+    Result.Min = V2(Rect.Min.x - Radius, Rect.Min.y - Radius);
+    Result.Max = V2(Rect.Max.x + Radius, Rect.Max.y + Radius);
+    return(Result);
+}
+
+inline rectangle2
+AddRadius(rectangle2 Rect, v2 Radius)
+{
+    rectangle2 Result;
+    Result.Min = V2(Rect.Min.x - Radius.x, Rect.Min.y - Radius.y);
+    Result.Max = V2(Rect.Max.x + Radius.x, Rect.Max.y + Radius.y);
     return(Result);
 }
 

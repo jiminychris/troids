@@ -79,6 +79,10 @@ inline void
 PushBitmap(render_buffer *RenderBuffer, loaded_bitmap *Bitmap, v3 Origin, v2 XAxis, v2 YAxis,
            v2 Dim, v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f));
 
+inline void
+PushRotatedRectangle(render_buffer *RenderBuffer, v3 Origin,
+                     v2 Dim, v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f));
+
 inline rectangle2
 PushRectangle(render_buffer *RenderBuffer, v3 P, v2 Dim, v4 Color);
 

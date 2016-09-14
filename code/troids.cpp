@@ -270,6 +270,53 @@ LoadObj(char *FileName, memory_arena *Arena)
         DEBUG_VALUE("CenterClick", (Controller)->CenterClick.EndedDown); \
     }
 
+internal rectangle2
+CalculateBoundingBox(entity *Entity)
+{
+    rectangle2 Result;
+    v2 Center = Entity->P.xy;
+    v2 HalfDim = 0.5f*Entity->Dim;
+    v2 Facing = V2(Cos(Entity->Yaw), Sin(Entity->Yaw));
+    v2 PerpFacing = Perp(Facing);
+    v2 Corners[4];
+    Corners[0] = Center + HalfDim.y*Facing + HalfDim.x*PerpFacing;
+    Corners[1] = Center - HalfDim.y*Facing + HalfDim.x*PerpFacing;
+    Corners[2] = Center + HalfDim.y*Facing - HalfDim.x*PerpFacing;
+    Corners[3] = Center - HalfDim.y*Facing - HalfDim.x*PerpFacing;
+    Result.Min = Result.Max = Corners[0];
+    for(u32 CornerIndex = 1;
+        CornerIndex < ArrayCount(Corners);
+        ++CornerIndex)
+    {
+        v2 Corner = Corners[CornerIndex];
+        if(Corner.x < Result.Min.x)
+        {
+            Result.Min.x = Corner.x;
+        }
+        if(Corner.x > Result.Max.x)
+        {
+            Result.Max.x = Corner.x;
+        }
+        if(Corner.y < Result.Min.y)
+        {
+            Result.Min.y = Corner.y;
+        }
+        if(Corner.y > Result.Max.y)
+        {
+            Result.Max.y = Corner.y;
+        }
+    }
+    return(Result);
+}
+
+inline void
+DrawCollision(render_buffer *RenderBuffer, entity *Entity)
+{
+    v3 BoundingBoxOffset = V3(0, 0, -0.1f);
+    PushRotatedRectangle(RenderBuffer, Entity->P + BoundingBoxOffset,
+                         GetDim(Entity->BoundingBox), Entity->Collided ? V4(1, 0, 0, 1) : V4(1, 0, 1, 1));
+}
+
 extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 {
 #if TROIDS_INTERNAL
@@ -291,16 +338,9 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         State->Ship.Dim = V2(10.0f, 10.0f);
         State->Ship.P = ShipStartingP;
         State->Ship.Yaw = ShipStartingYaw;
-        State->Ship.CollisionBoxes[0] = CenterDim(V2(0.0f, 0.0f), V2(3.0f, 8.0f));
-        State->Ship.CollisionBoxes[1] = CenterDim(V2(-1.0f, -3.0f), V2(2.0f, 2.0f));
-        State->Ship.CollisionBoxes[2] = CenterDim(V2(1.0f, -3.0f), V2(2.0f, 2.0f));
-        State->Ship.CollisionBoxCount = 3;
         State->ShipBitmap = LoadBitmap("ship_opaque.bmp");
         State->AsteroidBitmap = LoadBitmap("asteroid_opaque.bmp");
         State->BulletBitmap = LoadBitmap("bullet.bmp");
-#if TROIDS_INTERNAL
-        State->DebugBitmap = LoadBitmap("debug.bmp");
-#endif
 
         State->CameraP = V3(State->Ship.P.xy, 100.0f);
         State->CameraRot = State->Ship.Yaw;
@@ -320,8 +360,8 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 #if 0
         State->Asteroids[0].dP = 50.0f*V3(0.7f, 0.3f, 0.0f);
 #endif
-        State->Asteroids[0].Dim = V2(10.0f, 0.0f);
-        State->Asteroids[1].Dim = V2(20.0f, 0.0f);
+        State->Asteroids[0].Dim = V2(10.0f, 10.0f);
+        State->Asteroids[1].Dim = V2(20.0f, 20.0f);
     }
 
     transient_state *TranState = (transient_state *)GameMemory->TemporaryMemory;
@@ -426,12 +466,12 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     if(Keyboard->ActionUp.EndedDown || ShipController->ActionUp.EndedDown)
     {
-        State->FloatingHead.Scale += Input->dtForFrame*100.0f;
+        State->CameraP.z += 100.0f*Input->dtForFrame;
     }
 
     if(Keyboard->ActionDown.EndedDown || ShipController->ActionDown.EndedDown)
     {
-        State->FloatingHead.Scale -= Input->dtForFrame*100.0f;
+        State->CameraP.z -= 100.0f*Input->dtForFrame;
     }
     if(State->FloatingHead.Scale < 0.0f)
     {
@@ -479,7 +519,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         if(State->Ship.Timer <= 0.0f)
         {
             entity *Bullet = State->Bullets + State->BulletCount++;
-            Bullet->Dim = V2(0.0f, 3.0f);
+            Bullet->Dim = V2(1.5f, 3.0f);
             r32 BulletOffset = 0.5f*(State->Ship.Dim.y + Bullet->Dim.y);
             Bullet->P = State->Ship.P + Facing*(BulletOffset);
             Bullet->dP = State->Ship.dP + Facing*100.0f;
@@ -500,12 +540,23 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     State->Asteroids[0].dP += AsteroidAcceleration*Input->dtForFrame;
     
+    State->Ship.BoundingBox = CalculateBoundingBox(&State->Ship);
+    State->Ship.Collided = false;
     for(u32 AsteroidIndex = 0;
         AsteroidIndex < State->AsteroidCount;
         ++AsteroidIndex)
     {
         entity *Asteroid = State->Asteroids + AsteroidIndex;
+        Asteroid->Collided = false;
         Asteroid->P += Asteroid->dP*Input->dtForFrame;
+        Asteroid->BoundingBox = CalculateBoundingBox(Asteroid);
+
+        rectangle2 HitBox = AddRadius(Asteroid->BoundingBox, 0.5f*GetDim(State->Ship.BoundingBox));
+        // TODO(chris): Align box with position somehow
+        if(Inside(HitBox, State->Ship.P.xy))
+        {
+            Asteroid->Collided = State->Ship.Collided = true;
+        }
     }
     
     if(State->Ship.Timer > 0.0f)
@@ -522,16 +573,29 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         v2 YAxis = Facing.xy;
         v2 XAxis = -Perp(YAxis);
 #if DEBUG_COLLISION
-        // TODO(chris): Make a "RenderRotatedRectangle" function to remove this debug bitmap.
-        for(u32 BoxIndex = 0;
-            BoxIndex < State->Ship.CollisionBoxCount;
-            ++BoxIndex)
+
+        DrawCollision(&TranState->RenderBuffer, &State->Ship);
+            
+        for(u32 AsteroidIndex = 0;
+            AsteroidIndex < State->AsteroidCount;
+            ++AsteroidIndex)
         {
-            rectangle2 *Box = State->Ship.CollisionBoxes + BoxIndex;
+            entity *Asteroid = State->Asteroids + AsteroidIndex;
+            DrawCollision(&TranState->RenderBuffer, Asteroid);
+        }
+
+#if 0
+        // TODO(chris): Make a "RenderRotatedRectangle" function to remove this debug bitmap.
+        for(u32 ShapeIndex = 0;
+            ShapeIndex < State->Ship.CollisionShapeCount;
+            ++ShapeIndex)
+        {
+            collision_shape *Shape = State->Ship.CollisionBoxes + ShapeIndex;
             PushBitmap(&TranState->RenderBuffer, &State->DebugBitmap,
                        V3(State->Ship.P.xy + GetCenter(*Box), State->Ship.P.z+0.01f),
                        XAxis, YAxis, GetDim(*Box));
         }
+#endif
 #endif
         PushBitmap(&TranState->RenderBuffer, &State->ShipBitmap, State->Ship.P,
                    XAxis, YAxis, State->Ship.Dim);

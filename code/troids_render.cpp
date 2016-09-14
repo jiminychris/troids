@@ -57,20 +57,12 @@ inline void
 PushBitmap(render_buffer *RenderBuffer, loaded_bitmap *Bitmap, v3 Origin, v2 XAxis, v2 YAxis,
            v2 Dim, v4 Color)
 {
-    if(Bitmap->Height && Bitmap->Width)
+    if(Bitmap && Bitmap->Height && Bitmap->Width)
     {
         PushRenderHeader(&RenderBuffer->Arena, RenderCommand_Bitmap);
         render_bitmap_data *Data = PushStruct(&RenderBuffer->Arena, render_bitmap_data);
         Data->Bitmap = Bitmap;
         Data->Origin = Origin;
-        if(Dim.x == 0.0f && Bitmap->Height)
-        {
-            Dim.x = ((r32)Bitmap->Width/(r32)Bitmap->Height)*Dim.y;
-        }
-        if(Dim.y == 0.0f && Bitmap->Width)
-        {
-            Dim.y = ((r32)Bitmap->Height/(r32)Bitmap->Width)*Dim.x;
-        }
         Data->XAxis = XAxis*Dim.x;
         Data->YAxis = YAxis*Dim.y;
         Data->Color = Color;
@@ -78,12 +70,26 @@ PushBitmap(render_buffer *RenderBuffer, loaded_bitmap *Bitmap, v3 Origin, v2 XAx
     }
 }
 
+inline void
+PushRotatedRectangle(render_buffer *RenderBuffer, v3 Origin,
+                     v2 Dim, v4 Color)
+{
+    PushRenderHeader(&RenderBuffer->Arena, RenderCommand_Bitmap);
+    render_bitmap_data *Data = PushStruct(&RenderBuffer->Arena, render_bitmap_data);
+    Data->Bitmap = 0;
+    Data->Origin = Origin;
+    Data->XAxis = V2(1, 0)*Dim.x;
+    Data->YAxis = V2(0, 1)*Dim.y;
+    Data->Color = Color;
+    Data->SortKey = Origin.z;
+}
+
 inline rectangle2
 PushRectangle(render_buffer *RenderBuffer, v3 P, v2 Dim, v4 Color)
 {
     PushRenderHeader(&RenderBuffer->Arena, RenderCommand_Rectangle);
-    rectangle2 Rect = MinDim(P.xy, Dim);
     render_rectangle_data *Data = PushStruct(&RenderBuffer->Arena, render_rectangle_data);
+    rectangle2 Rect = MinDim(P.xy, Dim);
     Data->Rect = Rect;
     Data->Color = Color;
     Data->SortKey = P.z;
@@ -145,16 +151,16 @@ DrawText(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char 
             loaded_bitmap *Glyph = Layout->Font->Glyphs + *At;
             if(Glyph->Height && Glyph->Width)
             {
-                v2 YAxis = V2(0, 1);
-                v2 XAxis = -Perp(YAxis);
+                v2 XAxis = V2(1, 0);
+                v2 YAxis = Perp(XAxis);
 #if 0
                 PushRectangle(&TranState->RenderBuffer, CenterDim(P, Scale*(XAxis + YAxis)),
                               V4(1.0f, 0.0f, 1.0f, 1.0f));
 #endif
+                v2 Dim = Layout->Scale*V2((r32)Glyph->Width, (r32)Glyph->Height);
                 PushBitmap(RenderBuffer, Glyph, V3(Layout->P + Height*V2(0.05f, -0.05f), TEXT_Z-1),
-                           XAxis, YAxis, V2(0, Layout->Scale*Glyph->Height), V4(0, 0, 0, 1));
-                PushBitmap(RenderBuffer, Glyph, V3(Layout->P, TEXT_Z),
-                           XAxis, YAxis, V2(0, Layout->Scale*Glyph->Height));
+                           XAxis, YAxis, Dim, V4(0, 0, 0, 1));
+                PushBitmap(RenderBuffer, Glyph, V3(Layout->P, TEXT_Z), XAxis, YAxis, Dim);
             }
         }
         Prev = *At++;
@@ -183,7 +189,7 @@ DrawButton(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, cha
     v2 PInit = Layout->P;
     Layout->P.x += Border;
     Layout->P.y -= Border;
-    Result = AddBorder(DrawText(RenderBuffer, Layout, TextLength, Text), Border);
+    Result = AddRadius(DrawText(RenderBuffer, Layout, TextLength, Text), Border);
     PushRectangle(RenderBuffer, V3(Result.Min, HUD_Z), GetDim(Result), Color);
     
     return(Result);
@@ -421,6 +427,93 @@ RenderBitmap(loaded_bitmap *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAx
         PixelRow += BackBuffer->Pitch;
     }
 }
+// TODO(chris): Further optimization
+internal void
+RenderRotatedSolidRectangle(loaded_bitmap *BackBuffer, v2 Origin, v2 XAxis, v2 YAxis,
+                            v3 Color, s32 OffsetX = 0, s32 OffsetY = 0)
+{
+    s32 XMin = Clamp(OffsetX, Floor(Minimum(Minimum(Origin.x, Origin.x + XAxis.x),
+                                      Minimum(Origin.x + YAxis.x, Origin.x + XAxis.x + YAxis.x))),
+                     OffsetX + BackBuffer->Width);
+    s32 YMin = Clamp(OffsetY, Floor(Minimum(Minimum(Origin.y, Origin.y + XAxis.y),
+                                      Minimum(Origin.y + YAxis.y, Origin.y + XAxis.y + YAxis.y))),
+                     OffsetY + BackBuffer->Height);
+
+    s32 XMax = Clamp(OffsetX, Ceiling(Maximum(Maximum(Origin.x, Origin.x + XAxis.x),
+                                        Maximum(Origin.x + YAxis.x, Origin.x + XAxis.x + YAxis.x))),
+                     OffsetX + BackBuffer->Width);
+    s32 YMax = Clamp(OffsetY, Ceiling(Maximum(Maximum(Origin.y, Origin.y + XAxis.y),
+                                        Maximum(Origin.y + YAxis.y, Origin.y + XAxis.y + YAxis.y))),
+                     OffsetY + BackBuffer->Height);
+    // TODO(chris): Crashed here once when drawing in the top right corner. Check that out.
+
+    s32 AdjustedXMin = XMin;
+    s32 AdjustedXMax = XMax;
+    s32 Width = XMax-XMin;
+    s32 Height = YMax-YMin;
+    s32 Adjustment = 4-Width%4;
+    if(Adjustment < 4)
+    {
+        AdjustedXMin = Maximum(OffsetX, XMin-Adjustment);
+        Adjustment -= XMin-AdjustedXMin;
+        AdjustedXMax = Minimum(OffsetX + BackBuffer->Width, XMax+Adjustment);
+        Width = AdjustedXMax-AdjustedXMin;
+    }
+
+    Color *= 255.0f;
+    __m128i DestColor = _mm_set1_epi32(((RoundU32(Color.r) << 16) |
+                                        (RoundU32(Color.g) << 8) |
+                                        (RoundU32(Color.b) << 0)));
+
+    __m128 InvXAxisLengthSq = _mm_set_ps1(1.0f / LengthSq(XAxis));
+    __m128 InvYAxisLengthSq = _mm_set_ps1(1.0f / LengthSq(YAxis));
+    __m128 OriginX = _mm_set_ps1(Origin.x);
+    __m128 OriginY = _mm_set_ps1(Origin.y);
+    __m128 XAxisX = _mm_set_ps1(XAxis.x);
+    __m128 XAxisY = _mm_set_ps1(XAxis.y);
+    __m128 YAxisX = _mm_set_ps1(YAxis.x);
+    __m128 YAxisY = _mm_set_ps1(YAxis.y);
+    __m128 Four = _mm_set_ps1(4.0f);
+    __m128 RealZero = _mm_set_ps1(0.0f);
+    __m128 RealOne = _mm_set_ps1(1.0f);
+    __m128i Mask;
+    u8 *PixelRow = (u8 *)BackBuffer->Memory + (BackBuffer->Pitch*YMin);
+    IGNORED_TIMED_LOOP_FUNCTION(Width*Height);
+    for(s32 Y = YMin;
+        Y < YMax;
+        ++Y)
+    {
+        u32 *Pixel = (u32 *)PixelRow + AdjustedXMin;
+        __m128 X4 = _mm_set_ps((r32)AdjustedXMin + 3, (r32)AdjustedXMin + 2,
+                                   (r32)AdjustedXMin + 1, (r32)AdjustedXMin + 0);
+        __m128 Y4 = _mm_set_ps1((r32)Y);
+        for(s32 X = AdjustedXMin;
+            X < AdjustedXMax;
+            X += 4)
+        {
+            __m128i RawDest = _mm_loadu_si128((__m128i *)Pixel);
+            __m128 TestPointX = _mm_sub_ps(X4, OriginX);
+            __m128 TestPointY = _mm_sub_ps(Y4, OriginY);
+
+            __m128 U = _mm_mul_ps(_mm_add_ps((_mm_mul_ps(TestPointX, XAxisX)),
+                                             _mm_mul_ps(TestPointY, XAxisY)),
+                                  InvXAxisLengthSq);
+            __m128 V = _mm_mul_ps(_mm_add_ps((_mm_mul_ps(TestPointX, YAxisX)),
+                                             _mm_mul_ps(TestPointY, YAxisY)),
+                                  InvYAxisLengthSq);
+
+            Mask = _mm_castps_si128(_mm_and_ps(_mm_and_ps(_mm_cmpge_ps(U, RealZero), _mm_cmpge_ps(V, RealZero)),
+                                               _mm_and_ps(_mm_cmple_ps(U, RealOne), _mm_cmple_ps(V, RealOne))));
+
+            _mm_storeu_si128((__m128i *)Pixel, _mm_or_si128(_mm_andnot_si128(Mask, RawDest),
+                                                            _mm_and_si128(DestColor, Mask)));
+
+            Pixel += 4;
+            X4 = _mm_add_ps(X4, Four);
+        }
+        PixelRow += BackBuffer->Pitch;
+    }
+}
 
 // TODO(chris): Further optimization
 internal void
@@ -487,14 +580,14 @@ RenderTranslucentRectangle(loaded_bitmap *BackBuffer, rectangle2 Rect, v4 Color,
                                                                 ColorMask))),
                                    SB);
 
-            __m128i Result = _mm_or_si128(_mm_or_si128(_mm_slli_epi32(_mm_cvtps_epi32(DR), 16),
-                                                       _mm_slli_epi32(_mm_cvtps_epi32(DG), 8)),
-                                          _mm_cvtps_epi32(DB));
+            __m128i Result = _mm_and_si128(_mm_or_si128(_mm_or_si128(_mm_slli_epi32(_mm_cvtps_epi32(DR), 16),
+                                                                     _mm_slli_epi32(_mm_cvtps_epi32(DG), 8)),
+                                                        _mm_cvtps_epi32(DB)), Mask);
 
             _mm_storeu_si128((__m128i *)Dest, Result);
 
             Dest += 4;
-            _mm_add_epi32(X4, Four);
+            X4 = _mm_add_epi32(X4, Four);
         }
         PixelRow += BackBuffer->Pitch;
     }
@@ -559,23 +652,6 @@ RenderSolidRectangle(loaded_bitmap *BackBuffer, rectangle2 Rect, v3 Color,
             *Dest++ = DestColor;
         }
         PixelRow += BackBuffer->Pitch;
-    }
-}
-
-inline void
-RenderRectangle(loaded_bitmap *BackBuffer, rectangle2 Rect, v4 Color, s32 OffsetX = 0, s32 OffsetY = 0)
-{
-    if(Color.a == 1.0f)
-    {
-        RenderSolidRectangle(BackBuffer, Rect, Color.rgb, OffsetX, OffsetY);
-    }
-    else if(IsInvertedColor(Color))
-    {
-        RenderInvertedRectangle(BackBuffer, Rect, OffsetX, OffsetY);
-    }
-    else
-    {
-        RenderTranslucentRectangle(BackBuffer, Rect, Color, OffsetX, OffsetY);
     }
 }
 
@@ -656,6 +732,23 @@ RenderLine(loaded_bitmap *BackBuffer, v2 PointA, v2 PointB, v4 Color, s32 Offset
 #pragma optimize("", on)
 
 inline void
+RenderRectangle(loaded_bitmap *BackBuffer, rectangle2 Rect, v4 Color, s32 OffsetX = 0, s32 OffsetY = 0)
+{
+    if(Color.a == 1.0f)
+    {
+        RenderSolidRectangle(BackBuffer, Rect, Color.rgb, OffsetX, OffsetY);
+    }
+    else if(IsInvertedColor(Color))
+    {
+        RenderInvertedRectangle(BackBuffer, Rect, OffsetX, OffsetY);
+    }
+    else
+    {
+        RenderTranslucentRectangle(BackBuffer, Rect, Color, OffsetX, OffsetY);
+    }
+}
+
+inline void
 Clear(loaded_bitmap *BackBuffer, v4 Color, s32 OffsetX = 0, s32 OffsetY = 0)
 {
     rectangle2 Rect;
@@ -727,9 +820,10 @@ RenderTree(render_buffer *RenderBuffer, binary_node *Node, loaded_bitmap *BackBu
             case RenderCommand_Bitmap:
             {
                 render_bitmap_data *Data = (render_bitmap_data *)(Header + 1);
+                v2 Align = Data->Bitmap ? Data->Bitmap->Align : V2(0.5f, 0.5f);
                 v2 XAxis = Data->XAxis;
                 v2 YAxis = Data->YAxis;
-                v3 Origin = Data->Origin - V3(Hadamard(Data->Bitmap->Align, XAxis + YAxis), 0);
+                v3 Origin = Data->Origin - V3(Hadamard(Align, XAxis + YAxis), 0);
                 
                 XAxis = WorldToScreenTransform(RenderBuffer, Origin + V3(XAxis, 0));
                 YAxis = WorldToScreenTransform(RenderBuffer, Origin + V3(YAxis, 0));
@@ -737,10 +831,18 @@ RenderTree(render_buffer *RenderBuffer, binary_node *Node, loaded_bitmap *BackBu
                 XAxis -= ScreenOrigin;
                 YAxis -= ScreenOrigin;
 
-                RenderBitmap(BackBuffer, Data->Bitmap,
-                             ScreenOrigin,
-                             XAxis, YAxis,
-                             Data->Color, OffsetX, OffsetY);
+                if(Data->Bitmap)
+                {
+                    RenderBitmap(BackBuffer, Data->Bitmap,
+                                 ScreenOrigin,
+                                 XAxis, YAxis,
+                                 Data->Color, OffsetX, OffsetY);
+                }
+                else
+                {
+                    RenderRotatedSolidRectangle(BackBuffer, ScreenOrigin, XAxis, YAxis, Data->Color.rgb,
+                                                OffsetX, OffsetY);
+                }
             } break;
 
             case RenderCommand_Rectangle:

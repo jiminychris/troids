@@ -16,6 +16,37 @@
 platform_read_file *PlatformReadFile;
 platform_push_thread_work *PlatformPushThreadWork;
 
+enum collision_shape_type
+{
+    CollisionShapeType_Rectangle,
+    CollisionShapeType_Triangle,
+    CollisionShapeType_Circle,
+};
+
+struct collision_shape
+{
+    collision_shape_type Type;
+    union
+    {
+        rectangle2 Rectangle;
+        union
+        {
+            v2 TrianglePoints[3];
+            struct
+            {
+                r32 TrianglePointA;
+                r32 TrianglePointB;
+                r32 TrianglePointC;
+            };
+        };
+        struct
+        {
+            r32 Radius;
+            v2 Center;
+        };
+    };
+};
+
 struct entity
 {
     v3 P;
@@ -27,8 +58,10 @@ struct entity
     r32 Timer;
     v2 Dim;
 
-    u32 CollisionBoxCount;
-    rectangle2 CollisionBoxes[8];
+    b32 Collided;
+    rectangle2 BoundingBox;
+    u32 CollisionShapeCount;
+    collision_shape CollisionShapes[8];
     
     r32 Scale;
     m33 RotationMatrix;
@@ -54,9 +87,6 @@ struct game_state
     loaded_bitmap ShipBitmap;
     loaded_bitmap AsteroidBitmap;
     loaded_bitmap BulletBitmap;
-#if TROIDS_INTERNAL
-    loaded_bitmap DebugBitmap;
-#endif
     loaded_obj HeadMesh;
 };
 
