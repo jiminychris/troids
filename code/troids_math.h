@@ -446,8 +446,7 @@ TopLeftDim(v2 TopLeft, v2 Dim)
 inline b32
 InsideX(rectangle2 Rect, v2 Point)
 {
-    b32 Result = (Point.x >= Rect.Min.x &&
-                  Point.x < Rect.Max.x);
+    b32 Result = ((Point.x >= Rect.Min.x) && (Point.x <= Rect.Max.x));
 
     return(Result);
 }
@@ -455,8 +454,23 @@ InsideX(rectangle2 Rect, v2 Point)
 inline b32
 InsideY(rectangle2 Rect, v2 Point)
 {
-    b32 Result = (Point.y >= Rect.Min.y &&
-                  Point.y < Rect.Max.y);
+    b32 Result = ((Point.y >= Rect.Min.y) && (Point.y <= Rect.Max.y));
+
+    return(Result);
+}
+
+inline b32
+InsideX(rectangle2 Rect, r32 X)
+{
+    b32 Result = ((X >= Rect.Min.x) && (X <= Rect.Max.x));
+
+    return(Result);
+}
+
+inline b32
+InsideY(rectangle2 Rect, r32 Y)
+{
+    b32 Result = ((Y >= Rect.Min.y) && (Y <= Rect.Max.y));
 
     return(Result);
 }

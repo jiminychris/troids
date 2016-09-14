@@ -328,7 +328,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     PlatformPushThreadWork = GameMemory->PlatformPushThreadWork;
     v3 ShipStartingP = V3(0.0f, 0.0f, 0.0f);
     r32 ShipStartingYaw = 0.0f;
-    v3 AsteroidStartingP = V3(-50.0f, -50.0f, 0.0f);
+    v3 AsteroidStartingP = V3(50.0f, 0.0f, 0.0f);
     if(!State->IsInitialized)
     {
         State->IsInitialized = true;
@@ -552,7 +552,6 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         Asteroid->BoundingBox = CalculateBoundingBox(Asteroid);
 
         rectangle2 HitBox = AddRadius(Asteroid->BoundingBox, 0.5f*GetDim(State->Ship.BoundingBox));
-        // TODO(chris): Align box with position somehow
         if(Inside(HitBox, State->Ship.P.xy))
         {
             Asteroid->Collided = State->Ship.Collided = true;
@@ -572,31 +571,6 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     {
         v2 YAxis = Facing.xy;
         v2 XAxis = -Perp(YAxis);
-#if DEBUG_COLLISION
-
-        DrawCollision(&TranState->RenderBuffer, &State->Ship);
-            
-        for(u32 AsteroidIndex = 0;
-            AsteroidIndex < State->AsteroidCount;
-            ++AsteroidIndex)
-        {
-            entity *Asteroid = State->Asteroids + AsteroidIndex;
-            DrawCollision(&TranState->RenderBuffer, Asteroid);
-        }
-
-#if 0
-        // TODO(chris): Make a "RenderRotatedRectangle" function to remove this debug bitmap.
-        for(u32 ShapeIndex = 0;
-            ShapeIndex < State->Ship.CollisionShapeCount;
-            ++ShapeIndex)
-        {
-            collision_shape *Shape = State->Ship.CollisionBoxes + ShapeIndex;
-            PushBitmap(&TranState->RenderBuffer, &State->DebugBitmap,
-                       V3(State->Ship.P.xy + GetCenter(*Box), State->Ship.P.z+0.01f),
-                       XAxis, YAxis, GetDim(*Box));
-        }
-#endif
-#endif
         PushBitmap(&TranState->RenderBuffer, &State->ShipBitmap, State->Ship.P,
                    XAxis, YAxis, State->Ship.Dim);
     }
@@ -627,7 +601,68 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         {
             v2 YAxis = V2(Cos(Bullet->Yaw), Sin(Bullet->Yaw));
             v2 XAxis = -Perp(YAxis);
-            Bullet->P += Input->dtForFrame*Bullet->dP;
+            v3 OldP = Bullet->P;
+            v3 NewP = OldP + Input->dtForFrame*Bullet->dP;
+            Bullet->Collided = false;
+            Bullet->BoundingBox = CalculateBoundingBox(Bullet);
+
+            for(u32 AsteroidIndex = 0;
+                AsteroidIndex < State->AsteroidCount;
+                ++AsteroidIndex)
+            {
+                entity *Asteroid = State->Asteroids + AsteroidIndex;
+                rectangle2 HitBox = AddRadius(Asteroid->BoundingBox, 0.5f*GetDim(Bullet->BoundingBox));
+                if(Inside(HitBox, OldP.xy) || Inside(HitBox, NewP.xy))
+                {
+                        Bullet->Collided = Asteroid->Collided = true;
+                }
+                else
+                {
+                    v3 dP = NewP - OldP;
+                    rectangle2 dPRect = MinMax(V2(Minimum(OldP.x, NewP.x), Minimum(OldP.y, NewP.y)),
+                                               V2(Maximum(OldP.x, NewP.x), Maximum(OldP.y, NewP.y)));
+                    r32 Y1 = 0.0f;
+                    r32 Y2 = 0.0f;
+                    r32 X1 = 0.0f;
+                    r32 X2 = 0.0f;
+                    if(dP.x == 0)
+                    {
+                        if(InsideX(HitBox, OldP.x) &&
+                           (InsideY(dPRect, HitBox.Min.y) ||
+                            InsideY(dPRect,  HitBox.Max.y)))
+                        {
+                            Bullet->Collided = Asteroid->Collided = true;
+                        }
+                    }
+                    else if(dP.y == 0)
+                    {
+                        if(InsideY(HitBox, OldP.y) &&
+                           (InsideX(dPRect, HitBox.Min.x) ||
+                            InsideX(dPRect,  HitBox.Max.x)))
+                        {
+                            Bullet->Collided = Asteroid->Collided = true;
+                        }
+                    }
+                    else
+                    {
+                        r32 m = dP.y / dP.x;
+                        r32 mInv = 1.0f / m;
+                        r32 b = OldP.y - m*OldP.x;
+                        Y1 = m*HitBox.Min.x + b;
+                        Y2 = m*HitBox.Max.x + b;
+                        X1 = (HitBox.Min.y - b)*mInv;
+                        X2 = (HitBox.Max.y - b)*mInv;
+                        if((InsideY(HitBox, Y1) && InsideY(dPRect, Y1)) ||
+                           (InsideY(HitBox, Y2) && InsideY(dPRect, Y2)) ||
+                           (InsideX(HitBox, X1) && InsideX(dPRect, X1)) ||
+                           (InsideX(HitBox, X2) && InsideX(dPRect, X2)))
+                        {
+                            Bullet->Collided = Asteroid->Collided = true;
+                        }
+                    }
+                }
+            }
+            Bullet->P = NewP;
             PushBitmap(&TranState->RenderBuffer, &State->BulletBitmap, Bullet->P, XAxis, YAxis,
                        Bullet->Dim,
                        V4(1.0f, 1.0f, 1.0f, Unlerp(0.0f, Bullet->Timer, 2.0f)));
@@ -636,6 +671,38 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             ++Bullet;
         }
     }
+
+#if DEBUG_COLLISION
+        DrawCollision(&TranState->RenderBuffer, &State->Ship);
+
+        for(u32 AsteroidIndex = 0;
+            AsteroidIndex < State->AsteroidCount;
+            ++AsteroidIndex)
+        {
+            entity *Asteroid = State->Asteroids + AsteroidIndex;
+            DrawCollision(&TranState->RenderBuffer, Asteroid);
+        }
+            
+        for(u32 BulletIndex = 0;
+            BulletIndex < State->BulletCount;
+            ++BulletIndex)
+        {
+            entity *Bullet = State->Bullets + BulletIndex;
+            DrawCollision(&TranState->RenderBuffer, Bullet);
+        }
+
+#if 0
+        for(u32 ShapeIndex = 0;
+            ShapeIndex < State->Ship.CollisionShapeCount;
+            ++ShapeIndex)
+        {
+            collision_shape *Shape = State->Ship.CollisionBoxes + ShapeIndex;
+            PushBitmap(&TranState->RenderBuffer, &State->DebugBitmap,
+                       V3(State->Ship.P.xy + GetCenter(*Box), State->Ship.P.z+0.01f),
+                       XAxis, YAxis, GetDim(*Box));
+        }
+#endif
+#endif
 
     State->CameraP.xy += 0.2f*(State->Ship.P.xy - State->CameraP.xy);
     State->CameraRot += 0.05f*((State->Ship.Yaw - 0.25f*Tau) - State->CameraRot);

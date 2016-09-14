@@ -263,13 +263,13 @@ DrawProfiler(debug_frame *Frame, render_buffer *RenderBuffer, text_layout *Layou
     {
         char Unpause[] = "Unpause";
         ButtonText = Unpause;
-        TextLength = sizeof(Unpause);
+        TextLength = sizeof(Unpause)-1;
     }
     else
     {
         char Pause[] = "Pause";
         ButtonText = Pause;
-        TextLength = sizeof(Pause);
+        TextLength = sizeof(Pause)-1;
     }
     r32 ButtonY = Layout->P.y;
     rectangle2 ButtonRect = DrawButton(RenderBuffer, Layout, TextLength, ButtonText,
@@ -283,7 +283,7 @@ DrawProfiler(debug_frame *Frame, render_buffer *RenderBuffer, text_layout *Layou
     Layout->P.y = ButtonY;
     Layout->P.x = ButtonRect.Max.x + 5.0f;
     char Top[] = "Top";
-    ButtonRect = DrawButton(RenderBuffer, Layout, sizeof(Top), Top,
+    ButtonRect = DrawButton(RenderBuffer, Layout, sizeof(Top)-1, Top,
                             V4(0, 0.5f, 1, 1), 2.0f);
     if(Inside(ButtonRect, Input->MousePosition) && WentDown(Input->LeftMouse))
     {

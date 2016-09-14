@@ -1,2 +1,2 @@
 @echo off
-devenv %*
+devenv W:\build\win32_troids.exe
