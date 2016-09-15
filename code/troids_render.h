@@ -87,6 +87,10 @@ inline rectangle2
 PushRectangle(render_buffer *RenderBuffer, v3 P, v2 Dim, v4 Color);
 
 inline void
+PushLine(render_buffer *RenderBuffer, v3 Origin, m33 RotationMatrix,
+         v3 PointA, v3 PointB, v2 Dim, v4 Color);
+
+inline void
 PushLine(render_buffer *RenderBuffer, v3 PointA, v3 PointB, v4 Color);
 
 inline void

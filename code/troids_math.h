@@ -569,5 +569,20 @@ operator*(m33 A, v3 X)
     return(Result);
 }
 
+inline v3
+RotateZ(v3 A, r32 Angle)
+{
+    r32 CosRot = Cos(Angle);
+    r32 SinRot = Sin(Angle);
+    m33 RotMat =
+    {
+        CosRot, -SinRot, 0,
+        SinRot, CosRot, 0,
+        0, 0, 1,
+    };
+    v3 Result = RotMat*A;
+    return(Result);
+}
+
 #define TROIDS_MATH_H
 #endif

@@ -47,8 +47,17 @@ struct collision_shape
     };
 };
 
+enum entity_type
+{
+    EntityType_Ship,
+    EntityType_FloatingHead,
+    EntityType_Bullet,
+    EntityType_Asteroid,
+};
+
 struct entity
 {
+    entity_type Type;
     v3 P;
     v3 dP;
     r32 Yaw;
@@ -58,12 +67,12 @@ struct entity
     r32 Timer;
     v2 Dim;
 
+    b32 Collides;
     b32 Collided;
     rectangle2 BoundingBox;
     u32 CollisionShapeCount;
     collision_shape CollisionShapes[8];
     
-    r32 Scale;
     m33 RotationMatrix;
 };
 
@@ -77,12 +86,8 @@ struct game_state
     
     u32 RunningSampleCount;
 
-    u32 BulletCount;
-    entity Bullets[64];
-    u32 AsteroidCount;
-    entity Asteroids[64];
-    entity Ship;
-    entity FloatingHead;
+    u32 EntityCount;
+    entity Entities[256];
 
     loaded_bitmap ShipBitmap;
     loaded_bitmap AsteroidBitmap;

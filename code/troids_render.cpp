@@ -108,6 +108,15 @@ PushLine(render_buffer *RenderBuffer, v3 PointA, v3 PointB, v4 Color)
     Data->SortKey = 0.5f*(PointA.z + PointB.z);
 }
 
+inline void
+PushLine(render_buffer *RenderBuffer, v3 Origin, m33 RotationMatrix,
+         v3 PointA, v3 PointB, v2 Dim, v4 Color)
+{
+    PushLine(RenderBuffer,
+             Origin + Hadamard(V3(Dim, 0), RotationMatrix*PointA),
+             Origin + Hadamard(V3(Dim, 0), RotationMatrix*PointB),
+             Color);
+}
 
 inline void
 PushClear(render_buffer *RenderBuffer, v4 Color)
@@ -696,9 +705,10 @@ RenderLine(loaded_bitmap *BackBuffer, v2 PointA, v2 PointB, v4 Color, s32 Offset
             ++X)
         {
             s32 Y = RoundS32(Lerp(Start.y, OneOverDistance*(X - Start.x), End.y));
-            if(Y >= 0 && Y < BackBuffer->Height)
+            if(Y >= OffsetY && Y < OffsetY + BackBuffer->Height)
             {
-                *((u32 *)BackBuffer->Memory + Y*BackBuffer->Width + X) = DestColor;
+                u32 *Row = (u32 *)((u8 *)BackBuffer->Memory + Y*BackBuffer->Pitch);
+                *(Row + X) = DestColor;
             }
         }
     }
@@ -722,9 +732,10 @@ RenderLine(loaded_bitmap *BackBuffer, v2 PointA, v2 PointB, v4 Color, s32 Offset
             ++Y)
         {
             s32 X = RoundS32(Lerp(Start.x, OneOverDistance*(Y - Start.y), End.x));
-            if(X >= 0 && X < BackBuffer->Width)
+            if(X >= OffsetX && X < OffsetX + BackBuffer->Width)
             {
-                *((u32 *)BackBuffer->Memory + Y*BackBuffer->Width + X) = DestColor;
+                u32 *Row = (u32 *)((u8 *)BackBuffer->Memory + Y*BackBuffer->Pitch);
+                *(Row + X) = DestColor;
             }
         }
     }
@@ -854,7 +865,20 @@ RenderTree(render_buffer *RenderBuffer, binary_node *Node, loaded_bitmap *BackBu
             case RenderCommand_Line:
             {
                 render_line_data *Data = (render_line_data *)(Header + 1);
-                RenderLine(BackBuffer, Data->PointA.xy, Data->PointB.xy, Data->Color, OffsetX, OffsetY);
+                v2 PointA = WorldToScreenTransform(RenderBuffer, Data->PointA);
+                v2 PointB = WorldToScreenTransform(RenderBuffer, Data->PointB);
+                rectangle2 LineRect = MinMax(V2(Minimum(PointA.x, PointB.x),
+                                                Minimum(PointA.y, PointB.y)),
+                                             V2(Maximum(PointA.x, PointB.x),
+                                                Maximum(PointA.y, PointB.y)));
+                v2 Dim = GetDim(LineRect);
+                rectangle2 HitBox = MinMax(V2(OffsetX - Dim.x, OffsetY - Dim.y),
+                                           V2i(OffsetX + BackBuffer->Width,
+                                               OffsetY + BackBuffer->Height));
+                if(Inside(HitBox, LineRect.Min))
+                {
+                    RenderLine(BackBuffer, PointA, PointB, Data->Color, OffsetX, OffsetY);
+                }
             } break;
             
             case RenderCommand_Clear:
@@ -988,6 +1012,7 @@ SplitWorkIntoVerticalStrips(render_buffer *RenderBuffer, binary_node *Node, void
     }
 }
 
+#if 1
 internal void
 RenderBufferToBackBuffer(render_buffer *RenderBuffer, loaded_bitmap *BackBuffer)
 {
@@ -1069,3 +1094,129 @@ RenderBufferToBackBuffer(render_buffer *RenderBuffer, loaded_bitmap *BackBuffer)
         } while(!Finished);
     }
 }
+#else
+internal void
+RenderBufferToBackBufferCallback(void *Params)
+{
+    TIMED_FUNCTION();
+    render_tree_data *Data = (render_tree_data *)Params;
+    render_buffer *RenderBuffer = Data->RenderBuffer;
+    loaded_bitmap *BackBuffer = &Data->BackBuffer;
+    s32 OffsetX = Data->OffsetX;
+    s32 OffsetY = Data->OffsetY;
+    
+    u8 *Cursor = (u8 *)RenderBuffer->Arena.Memory;
+    u8 *End = Cursor + RenderBuffer->Arena.Used;
+    while(Cursor != End)
+    {
+        render_command_header *Header = (render_command_header *)Cursor;
+        u32 Index = (u32)((u8 *)Header - (u8 *)RenderBuffer->Arena.Memory);
+        Cursor += sizeof(render_command_header);
+        switch(Header->Command)
+        {
+            case RenderCommand_Bitmap:
+            {
+                PackedBufferAdvance(Data, render_bitmap_data, Cursor);
+                v2 Align = Data->Bitmap ? Data->Bitmap->Align : V2(0.5f, 0.5f);
+                v2 XAxis = Data->XAxis;
+                v2 YAxis = Data->YAxis;
+                v3 Origin = Data->Origin - V3(Hadamard(Align, XAxis + YAxis), 0);
+                
+                XAxis = WorldToScreenTransform(RenderBuffer, Origin + V3(XAxis, 0));
+                YAxis = WorldToScreenTransform(RenderBuffer, Origin + V3(YAxis, 0));
+                v2 ScreenOrigin = WorldToScreenTransform(RenderBuffer, Origin);
+                XAxis -= ScreenOrigin;
+                YAxis -= ScreenOrigin;
+
+                if(Data->Bitmap)
+                {
+                    RenderBitmap(BackBuffer, Data->Bitmap,
+                                 ScreenOrigin,
+                                 XAxis, YAxis,
+                                 Data->Color, OffsetX, OffsetY);
+                }
+                else
+                {
+                    RenderRotatedSolidRectangle(BackBuffer, ScreenOrigin, XAxis, YAxis, Data->Color.rgb,
+                                                OffsetX, OffsetY);
+                }
+            } break;
+
+            case RenderCommand_Rectangle:
+            {
+                PackedBufferAdvance(Data, render_rectangle_data, Cursor);
+                RenderRectangle(BackBuffer, Data->Rect, Data->Color, OffsetX, OffsetY);
+            } break;
+            
+            case RenderCommand_Line:
+            {
+                PackedBufferAdvance(Data, render_line_data, Cursor);
+                v2 PointA = WorldToScreenTransform(RenderBuffer, Data->Origin + Data->PointA);
+                v2 PointB = WorldToScreenTransform(RenderBuffer, Data->Origin + Data->PointB);
+                rectangle2 LineRect = MinMax(V2(Minimum(PointA.x, PointB.x),
+                                                Minimum(PointA.y, PointB.y)),
+                                             V2(Maximum(PointA.x, PointB.x),
+                                                Maximum(PointA.y, PointB.y)));
+                v2 Dim = GetDim(LineRect);
+                rectangle2 HitBox = MinMax(V2(OffsetX - Dim.x, OffsetY - Dim.y),
+                                           V2i(OffsetX + BackBuffer->Width,
+                                               OffsetY + BackBuffer->Height));
+                if(Inside(HitBox, LineRect.Min))
+                {
+                    RenderLine(BackBuffer, PointA, PointB, Data->Color, OffsetX, OffsetY);
+                }
+            } break;
+            
+            case RenderCommand_Clear:
+            {
+                PackedBufferAdvance(Data, render_clear_data, Cursor);
+                Clear(BackBuffer, Data->Color, OffsetX, OffsetY);
+            } break;
+
+            InvalidDefaultCase;
+        }
+    }
+}
+
+internal void
+RenderBufferToBackBuffer(render_buffer *RenderBuffer, loaded_bitmap *BackBuffer)
+{
+    render_tree_data RenderTreeData[64];
+    thread_progress ThreadProgress[64];
+    // TODO(chris): Optimize this for the number of logical cores.
+    u32 CoreCount = 64;
+#if 0
+    SplitWorkIntoVerticalStrips(RenderBuffer, 0, BackBuffer->Memory, CoreCount,
+                                BackBuffer->Width, BackBuffer->Height, BackBuffer->Pitch,
+                                RenderTreeData);
+#else
+    SplitWorkIntoSquares(RenderBuffer, 0, BackBuffer->Memory, CoreCount,
+                         BackBuffer->Width, BackBuffer->Height, BackBuffer->Pitch, 0, 0,
+                         RenderTreeData);
+#endif
+        
+    for(u32 RenderChunkIndex = 1;
+        RenderChunkIndex < CoreCount;
+        ++RenderChunkIndex)
+    {
+        render_tree_data *Data = RenderTreeData + RenderChunkIndex;
+        thread_progress *Progress = ThreadProgress + RenderChunkIndex;
+        PlatformPushThreadWork(RenderBufferToBackBufferCallback, Data, Progress);
+    }
+    RenderBufferToBackBufferCallback(&RenderTreeData[0]);
+    ThreadProgress[0].Finished = true;
+
+    b32 Finished;
+    do
+    {
+        Finished = true;
+        for(u32 ProgressIndex = 0;
+            ProgressIndex < CoreCount;
+            ++ProgressIndex)
+        {
+            thread_progress *Progress = ThreadProgress + ProgressIndex;
+            Finished &= Progress->Finished;
+        }
+    } while(!Finished);
+}
+#endif

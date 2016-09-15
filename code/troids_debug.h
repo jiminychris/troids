@@ -8,7 +8,7 @@
    ======================================================================== */
 
 #if TROIDS_INTERNAL
-#define MAX_DEBUG_EVENTS 8192
+#define MAX_DEBUG_EVENTS 65536
 
 enum debug_event_type
 {

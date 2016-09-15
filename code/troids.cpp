@@ -309,12 +309,82 @@ CalculateBoundingBox(entity *Entity)
     return(Result);
 }
 
-inline void
-DrawCollision(render_buffer *RenderBuffer, entity *Entity)
+inline entity *
+CreateEntity(game_state *State)
 {
-    v3 BoundingBoxOffset = V3(0, 0, -0.1f);
-    PushRotatedRectangle(RenderBuffer, Entity->P + BoundingBoxOffset,
-                         GetDim(Entity->BoundingBox), Entity->Collided ? V4(1, 0, 0, 1) : V4(1, 0, 1, 1));
+    entity *Result = 0;
+    if(State->EntityCount < ArrayCount(State->Entities))
+    {
+        Result = State->Entities + State->EntityCount++;
+    }
+    else
+    {
+        Assert(!"Created too many entities.");
+    }
+    return(Result);
+}
+
+inline void
+DestroyEntity(game_state *State, entity *Entity)
+{
+    *Entity = State->Entities[--State->EntityCount];
+}
+
+inline entity *
+CreateShip(game_state *State, v3 P, r32 Yaw)
+{
+    entity *Result = CreateEntity(State);
+    Result->Type = EntityType_Ship;
+    Result->Dim = V2(10.0f, 10.0f);
+    Result->P = P;
+    Result->Yaw = Yaw;
+    Result->Collides = true;
+    return(Result);
+}
+
+inline entity *
+CreateFloatingHead(game_state *State)
+{
+    entity *Result = CreateEntity(State);
+    Result->Type = EntityType_FloatingHead;
+    Result->P = V3(0.0f, 0.0f, 0.0f);
+    Result->Dim = V2(100.0f, 100.0f);
+    Result->RotationMatrix =
+    {
+        1, 0, 0,
+        0, 1, 0,
+        0, 0, 1,
+    };
+    Result->Collides = false;
+    return(Result);
+}
+
+inline entity *
+CreateAsteroid(game_state *State, v3 P, r32 Radius)
+{
+    entity *Result = CreateEntity(State);
+    Result->Type = EntityType_Asteroid;
+    Result->P = P;
+    Result->Dim = V2(Radius, Radius);
+    Result->CollisionShapeCount = 1;
+    Result->CollisionShapes[0].Type = CollisionShapeType_Circle;
+    Result->CollisionShapes[0].Radius = Radius;
+    Result->Collides = true;
+    return(Result);
+}
+
+inline entity *
+CreateBullet(game_state *State, v3 P, v3 dP, r32 Yaw)
+{
+    entity *Result = CreateEntity(State);
+    Result->Type = EntityType_Bullet;
+    Result->P = P;
+    Result->dP = dP;
+    Result->Yaw = Yaw;
+    Result->Dim = V2(1.5f, 3.0f);
+    Result->Timer = 2.0f;
+    Result->Collides = true;
+    return(Result);
 }
 
 extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
@@ -329,39 +399,25 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     v3 ShipStartingP = V3(0.0f, 0.0f, 0.0f);
     r32 ShipStartingYaw = 0.0f;
     v3 AsteroidStartingP = V3(50.0f, 0.0f, 0.0f);
+
     if(!State->IsInitialized)
     {
         State->IsInitialized = true;
 
         State->MetersToPixels = 3674.9418959066769192359305459154f;
 
-        State->Ship.Dim = V2(10.0f, 10.0f);
-        State->Ship.P = ShipStartingP;
-        State->Ship.Yaw = ShipStartingYaw;
         State->ShipBitmap = LoadBitmap("ship_opaque.bmp");
         State->AsteroidBitmap = LoadBitmap("asteroid_opaque.bmp");
         State->BulletBitmap = LoadBitmap("bullet.bmp");
 
-        State->CameraP = V3(State->Ship.P.xy, 100.0f);
-        State->CameraRot = State->Ship.Yaw;
+        entity *Ship = CreateShip(State, ShipStartingP, ShipStartingYaw);
+        entity *FloatingHead = CreateFloatingHead(State);
 
-        State->FloatingHead.Scale = 100.0f;
+        entity *SmallAsteroid = CreateAsteroid(State, AsteroidStartingP, 10.0f);
+        entity *LargeAsteroid = CreateAsteroid(State, AsteroidStartingP + V3(30.0f, 30.0f, 0.0f), 20.0f);
 
-        State->FloatingHead.RotationMatrix =
-        {
-            1, 0, 0,
-            0, 1, 0,
-            0, 0, 1,
-        };
-
-        State->AsteroidCount = 2;
-        State->Asteroids[0].P = AsteroidStartingP;
-        State->Asteroids[1].P = AsteroidStartingP + V3(30.0f, 30.0f, 0.0f);
-#if 0
-        State->Asteroids[0].dP = 50.0f*V3(0.7f, 0.3f, 0.0f);
-#endif
-        State->Asteroids[0].Dim = V2(10.0f, 10.0f);
-        State->Asteroids[1].Dim = V2(20.0f, 20.0f);
+        State->CameraP = V3(Ship->P.xy, 100.0f);
+        State->CameraRot = Ship->Yaw;
     }
 
     transient_state *TranState = (transient_state *)GameMemory->TemporaryMemory;
@@ -381,10 +437,11 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
         TranState->IsInitialized = true;
     }
-    TranState->RenderBuffer.CameraP = State->CameraP;
-    TranState->RenderBuffer.CameraRot = State->CameraRot;
-    temporary_memory RenderMemory = BeginTemporaryMemory(&TranState->RenderBuffer.Arena);
-    PushClear(&TranState->RenderBuffer, V4(0.1f, 0.1f, 0.1f, 1.0f));
+    render_buffer *RenderBuffer = &TranState->RenderBuffer;
+    RenderBuffer->CameraP = State->CameraP;
+    RenderBuffer->CameraRot = State->CameraRot;
+    temporary_memory RenderMemory = BeginTemporaryMemory(&RenderBuffer->Arena);
+    PushClear(RenderBuffer, V4(0.1f, 0.1f, 0.1f, 1.0f));
 
     DEBUG_SUMMARY();
     {DEBUG_GROUP("Debug System");
@@ -420,232 +477,230 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     game_controller *ShipController = Input->GamePads + 0;
     game_controller *AsteroidController = Input->GamePads + 1;
 
-    if(WentDown(ShipController->Select) && (State->AsteroidCount < ArrayCount(State->Asteroids)))
-    {
-        entity *NewAsteroid = State->Asteroids + State->AsteroidCount;
-        entity *OldAsteroid = State->Asteroids;
-        // NOTE(chris): Halving volume results in dividing radius by cuberoot(2)
-        OldAsteroid->Dim *= 0.79370052598f;
-        *NewAsteroid = *OldAsteroid;
-
-        r32 Angle = Tau/12.0f;
-        r32 CosRot = Cos(Angle);
-        r32 SinRot = Sin(Angle);
-        {
-            m33 RotMat =
-            {
-                CosRot, SinRot, 0,
-                -SinRot, CosRot, 0,
-                0, 0, 1,
-            };
-            OldAsteroid->dP = RotMat*OldAsteroid->dP;
-        }
-
-        {
-            m33 RotMat =
-            {
-                CosRot, -SinRot, 0,
-                SinRot, CosRot, 0,
-                0, 0, 1,
-            };
-            NewAsteroid->dP = RotMat*NewAsteroid->dP;
-        }
-
-        ++State->AsteroidCount;
-    }
-
-    if(Keyboard->Start.EndedDown || ShipController->Start.EndedDown)
-    {
-        State->Ship.P = ShipStartingP;
-    }
-
-    if(AsteroidController->Start.EndedDown)
-    {
-        State->Asteroids[0].P = AsteroidStartingP;
-    }
-
-    if(Keyboard->ActionUp.EndedDown || ShipController->ActionUp.EndedDown)
-    {
-        State->CameraP.z += 100.0f*Input->dtForFrame;
-    }
-
-    if(Keyboard->ActionDown.EndedDown || ShipController->ActionDown.EndedDown)
-    {
-        State->CameraP.z -= 100.0f*Input->dtForFrame;
-    }
-    if(State->FloatingHead.Scale < 0.0f)
-    {
-        State->FloatingHead.Scale = 0.0f;
-    }
-
-    r32 LeftStickX = Keyboard->LeftStick.x ? Keyboard->LeftStick.x : ShipController->LeftStick.x;
-    r32 Thrust;
-    if(Keyboard->LeftStick.y)
-    {
-        Thrust = Clamp01(Keyboard->LeftStick.y);
-    }
-    else
-    {
-        Thrust = Clamp01(ShipController->LeftStick.y);
-        ShipController->LowFrequencyMotor = Thrust;
-    }
-
-    r32 YRotation = Input->dtForFrame*(Keyboard->RightStick.x ?
-                                       Keyboard->RightStick.x :
-                                       ShipController->RightStick.x);
-    r32 XRotation = Input->dtForFrame*(Keyboard->RightStick.y ?
-                                       Keyboard->RightStick.y :
-                                       ShipController->RightStick.y);
-    r32 ZRotation = Input->dtForFrame*((Keyboard->LeftTrigger ?
-                                        Keyboard->LeftTrigger :
-                                        ShipController->LeftTrigger) -
-                                       (Keyboard->RightTrigger ?
-                                        Keyboard->RightTrigger :
-                                        ShipController->RightTrigger));
-    
-    r32 Halfdt = Input->dtForFrame*0.5f;
-    r32 MaxDYaw = 0.2*Tau;
-    r32 dYaw = Clamp(-MaxDYaw, State->Ship.dYaw + Input->dtForFrame*-LeftStickX, MaxDYaw);
-    State->Ship.Yaw += (dYaw + State->Ship.dYaw)*Halfdt;
-    State->Ship.dYaw = dYaw;
-    v3 Facing = V3(Cos(State->Ship.Yaw), Sin(State->Ship.Yaw), 0.0f);
-
     r32 PixelsToMeters = 1.0f / State->MetersToPixels;
-    
-    v3 Acceleration = {};
-    if((WentDown(ShipController->RightShoulder1) || WentDown(Keyboard->RightShoulder1)) &&
-       State->BulletCount < ArrayCount(State->Bullets))
+    b32 IsFirstAsteroid = true;
+
+    // NOTE(chris): Pre collision pass
+    for(u32 EntityIndex = 0;
+        EntityIndex < State->EntityCount;
+        )
     {
-        if(State->Ship.Timer <= 0.0f)
+        u32 NextIndex = EntityIndex + 1;
+        entity *Entity = State->Entities + EntityIndex;
+        v3 Facing = V3(Cos(Entity->Yaw), Sin(Entity->Yaw), 0.0f);
+        switch(Entity->Type)
         {
-            entity *Bullet = State->Bullets + State->BulletCount++;
-            Bullet->Dim = V2(1.5f, 3.0f);
-            r32 BulletOffset = 0.5f*(State->Ship.Dim.y + Bullet->Dim.y);
-            Bullet->P = State->Ship.P + Facing*(BulletOffset);
-            Bullet->dP = State->Ship.dP + Facing*100.0f;
-            Bullet->Yaw = State->Ship.Yaw;
-            Bullet->Timer = 2.0f;
-            State->Ship.Timer = 0.1f;
-            Acceleration += -Facing*100.0f;
-        }
-    }
-
-    Acceleration += 50.0f*Facing*Thrust;
-    v3 dP = State->Ship.dP + Acceleration*Input->dtForFrame;
-    State->Ship.P += (dP + State->Ship.dP)*Halfdt;
-    State->Ship.dP = dP;
-
-    v3 AsteroidAcceleration = (0.25f*
-                               V3(AsteroidController->LeftStick.x, AsteroidController->LeftStick.y, 0.0f));
-
-    State->Asteroids[0].dP += AsteroidAcceleration*Input->dtForFrame;
-    
-    State->Ship.BoundingBox = CalculateBoundingBox(&State->Ship);
-    State->Ship.Collided = false;
-    for(u32 AsteroidIndex = 0;
-        AsteroidIndex < State->AsteroidCount;
-        ++AsteroidIndex)
-    {
-        entity *Asteroid = State->Asteroids + AsteroidIndex;
-        Asteroid->Collided = false;
-        Asteroid->P += Asteroid->dP*Input->dtForFrame;
-        Asteroid->BoundingBox = CalculateBoundingBox(Asteroid);
-
-        rectangle2 HitBox = AddRadius(Asteroid->BoundingBox, 0.5f*GetDim(State->Ship.BoundingBox));
-        if(Inside(HitBox, State->Ship.P.xy))
-        {
-            Asteroid->Collided = State->Ship.Collided = true;
-        }
-    }
-    
-    if(State->Ship.Timer > 0.0f)
-    {
-        State->Ship.Timer -= Input->dtForFrame;
-        ShipController->HighFrequencyMotor = 1.0f;
-    }
-    else
-    {
-        ShipController->HighFrequencyMotor = 0.0f;
-    }
-
-    {
-        v2 YAxis = Facing.xy;
-        v2 XAxis = -Perp(YAxis);
-        PushBitmap(&TranState->RenderBuffer, &State->ShipBitmap, State->Ship.P,
-                   XAxis, YAxis, State->Ship.Dim);
-    }
-
-    {
-        v2 YAxis = V2(0, 1);
-        v2 XAxis = -Perp(YAxis);
-        for(u32 AsteroidIndex = 0;
-            AsteroidIndex < State->AsteroidCount;
-            ++AsteroidIndex)
-        {
-            entity *Asteroid = State->Asteroids + AsteroidIndex;
-            PushBitmap(&TranState->RenderBuffer, &State->AsteroidBitmap, Asteroid->P,
-                       XAxis, YAxis, Asteroid->Dim);
-        }
-    }
-    
-    entity *Bullet = State->Bullets;
-    entity *End = State->Bullets + State->BulletCount;
-    while(Bullet != End)
-    {
-        if(Bullet->Timer <= 0.0f)
-        {
-            *Bullet = State->Bullets[--State->BulletCount];
-            --End;
-        }
-        else
-        {
-            v2 YAxis = V2(Cos(Bullet->Yaw), Sin(Bullet->Yaw));
-            v2 XAxis = -Perp(YAxis);
-            v3 OldP = Bullet->P;
-            v3 NewP = OldP + Input->dtForFrame*Bullet->dP;
-            Bullet->Collided = false;
-            Bullet->BoundingBox = CalculateBoundingBox(Bullet);
-
-            for(u32 AsteroidIndex = 0;
-                AsteroidIndex < State->AsteroidCount;
-                ++AsteroidIndex)
+            case EntityType_Ship:
             {
-                entity *Asteroid = State->Asteroids + AsteroidIndex;
-                rectangle2 HitBox = AddRadius(Asteroid->BoundingBox, 0.5f*GetDim(Bullet->BoundingBox));
-                if(Inside(HitBox, OldP.xy) || Inside(HitBox, NewP.xy))
+                if(Keyboard->Start.EndedDown || ShipController->Start.EndedDown)
                 {
-                        Bullet->Collided = Asteroid->Collided = true;
+                    Entity->P = ShipStartingP;
+                }
+
+                r32 LeftStickX = (Keyboard->LeftStick.x ?
+                                  Keyboard->LeftStick.x :
+                                  ShipController->LeftStick.x);
+                r32 Thrust;
+                if(Keyboard->LeftStick.y)
+                {
+                    Thrust = Clamp01(Keyboard->LeftStick.y);
                 }
                 else
                 {
-                    v3 dP = NewP - OldP;
+                    Thrust = Clamp01(ShipController->LeftStick.y);
+                    ShipController->LowFrequencyMotor = Thrust;
+                }
+    
+                r32 MaxDYaw = 0.2*Tau;
+                Entity->dYaw = Clamp(-MaxDYaw, Entity->dYaw + Input->dtForFrame*-LeftStickX, MaxDYaw);
+    
+                v3 Acceleration = {};
+                if((WentDown(ShipController->RightShoulder1) || WentDown(Keyboard->RightShoulder1)))
+                {
+                    if(Entity->Timer <= 0.0f)
+                    {
+                        entity *Bullet = CreateBullet(State, Entity->P, Entity->dP + Facing*100.0f,
+                                                      Entity->Yaw);
+                        r32 BulletOffset = 0.5f*(Entity->Dim.y + Bullet->Dim.y);
+                        Bullet->P += Facing*(BulletOffset);
+                        Entity->Timer = 0.1f;
+                        Acceleration += -Facing*100.0f;
+                    }
+                }
+
+                Acceleration += 50.0f*Facing*Thrust;
+                Entity->dP += Acceleration*Input->dtForFrame;
+
+                if(Entity->Timer > 0.0f)
+                {
+                    Entity->Timer -= Input->dtForFrame;
+                    ShipController->HighFrequencyMotor = 1.0f;
+                }
+                else
+                {
+                    ShipController->HighFrequencyMotor = 0.0f;
+                }
+
+            } break;
+
+            case EntityType_Asteroid:
+            {
+                if(IsFirstAsteroid)
+                {
+                    b32 IsFirstAsteroid = false;
+                    if(WentDown(ShipController->Select))
+                    {
+                        // NOTE(chris): Halving volume results in dividing radius by cuberoot(2)
+                        Entity->Dim *= 0.79370052598f;
+                        entity *NewAsteroid = CreateAsteroid(State, Entity->P, Entity->Dim.x);
+
+                        r32 Angle = Tau/12.0f;
+                        Entity->dP = RotateZ(Entity->dP, -Angle);
+                        NewAsteroid->dP = RotateZ(NewAsteroid->dP, Angle);
+                    }
+
+                    if(AsteroidController->Start.EndedDown)
+                    {
+                        Entity->P = AsteroidStartingP;
+                    }
+                }
+
+                v3 Acceleration = (0.25f*V3(AsteroidController->LeftStick.x,
+                                            AsteroidController->LeftStick.y,
+                                            0.0f));
+                Entity->dP += Acceleration*Input->dtForFrame;
+            } break;
+
+            case EntityType_Bullet:
+            {
+                if(Entity->Timer <= 0.0f)
+                {
+                    DestroyEntity(State, Entity);
+                    NextIndex = EntityIndex;
+                }
+                else
+                {
+                    Entity->Timer -= Input->dtForFrame;
+                }
+            } break;
+
+            case EntityType_FloatingHead:
+            {
+#if 0
+                if(Keyboard->ActionUp.EndedDown || ShipController->ActionUp.EndedDown)
+                {
+                    Entity->P.z += 100.0f*Input->dtForFrame;
+                }
+                if(Keyboard->ActionDown.EndedDown || ShipController->ActionDown.EndedDown)
+                {
+                    Entity->P.z -= 100.0f*Input->dtForFrame;
+                }
+#endif
+                r32 YRotation = Input->dtForFrame*(Keyboard->RightStick.x ?
+                                                   Keyboard->RightStick.x :
+                                                   ShipController->RightStick.x);
+                r32 XRotation = Input->dtForFrame*(Keyboard->RightStick.y ?
+                                                   Keyboard->RightStick.y :
+                                                   ShipController->RightStick.y);
+                r32 ZRotation = Input->dtForFrame*((Keyboard->LeftTrigger ?
+                                                    Keyboard->LeftTrigger :
+                                                    ShipController->LeftTrigger) -
+                                                   (Keyboard->RightTrigger ?
+                                                    Keyboard->RightTrigger :
+                                                    ShipController->RightTrigger));
+
+                r32 CosXRotation = Cos(XRotation);
+                r32 SinXRotation = Sin(XRotation);
+                r32 CosYRotation = Cos(YRotation);
+                r32 SinYRotation = Sin(YRotation);
+                r32 CosZRotation = Cos(ZRotation);
+                r32 SinZRotation = Sin(ZRotation);
+
+                m33 XRotationMatrix =
+                {
+                    1, 0,             0,
+                    0, CosXRotation, -SinXRotation,
+                    0, SinXRotation,  CosXRotation,
+                };
+                m33 YRotationMatrix =
+                {
+                    CosYRotation, 0, SinYRotation,
+                    0,            1, 0,
+                    -SinYRotation, 0, CosYRotation,
+                };
+                m33 ZRotationMatrix =
+                {
+                    CosZRotation, -SinZRotation, 0,
+                    SinZRotation,  CosZRotation, 0,
+                    0,             0,            1,
+                };
+
+                Entity->RotationMatrix =
+                    ZRotationMatrix*YRotationMatrix*XRotationMatrix*Entity->RotationMatrix;
+            } break;
+
+            InvalidDefaultCase;
+        }
+        if(Entity->Collides)
+        {
+            Entity->BoundingBox = CalculateBoundingBox(Entity);
+            Entity->Collided = false;
+        }
+        EntityIndex = NextIndex;
+    }
+
+    // NOTE(chris): Collision pass
+    for(u32 EntityIndex = 0;
+        EntityIndex < State->EntityCount;
+        ++EntityIndex)
+    {
+        entity *Entity = State->Entities + EntityIndex;
+        if(Entity->Collides)
+        {
+            v3 OldP = Entity->P;
+            v3 NewP = OldP + Input->dtForFrame*Entity->dP;
+            for(u32 OtherEntityIndex = EntityIndex + 1;
+                OtherEntityIndex < State->EntityCount;
+                ++OtherEntityIndex)
+            {
+                entity *OtherEntity = State->Entities + OtherEntityIndex;
+                if(!OtherEntity->Collides) continue;
+
+                rectangle2 HitBox = AddRadius(OtherEntity->BoundingBox,
+                                              0.5f*GetDim(Entity->BoundingBox));
+                if(Inside(HitBox, OldP.xy) || Inside(HitBox, NewP.xy))
+                {
+                    Entity->Collided = OtherEntity->Collided = true;
+                }
+                else
+                {
                     rectangle2 dPRect = MinMax(V2(Minimum(OldP.x, NewP.x), Minimum(OldP.y, NewP.y)),
                                                V2(Maximum(OldP.x, NewP.x), Maximum(OldP.y, NewP.y)));
                     r32 Y1 = 0.0f;
                     r32 Y2 = 0.0f;
                     r32 X1 = 0.0f;
                     r32 X2 = 0.0f;
-                    if(dP.x == 0)
+                    if(Entity->dP.x == 0)
                     {
                         if(InsideX(HitBox, OldP.x) &&
                            (InsideY(dPRect, HitBox.Min.y) ||
                             InsideY(dPRect,  HitBox.Max.y)))
                         {
-                            Bullet->Collided = Asteroid->Collided = true;
+                            Entity->Collided = OtherEntity->Collided = true;
                         }
                     }
-                    else if(dP.y == 0)
+                    else if(Entity->dP.y == 0)
                     {
                         if(InsideY(HitBox, OldP.y) &&
                            (InsideX(dPRect, HitBox.Min.x) ||
                             InsideX(dPRect,  HitBox.Max.x)))
                         {
-                            Bullet->Collided = Asteroid->Collided = true;
+                            Entity->Collided = OtherEntity->Collided = true;
                         }
                     }
                     else
                     {
-                        r32 m = dP.y / dP.x;
+                        r32 m = Entity->dP.y / Entity->dP.x;
                         r32 mInv = 1.0f / m;
                         r32 b = OldP.y - m*OldP.x;
                         Y1 = m*HitBox.Min.x + b;
@@ -657,86 +712,127 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                            (InsideX(HitBox, X1) && InsideX(dPRect, X1)) ||
                            (InsideX(HitBox, X2) && InsideX(dPRect, X2)))
                         {
-                            Bullet->Collided = Asteroid->Collided = true;
+                            Entity->Collided = OtherEntity->Collided = true;
                         }
                     }
                 }
             }
-            Bullet->P = NewP;
-            PushBitmap(&TranState->RenderBuffer, &State->BulletBitmap, Bullet->P, XAxis, YAxis,
-                       Bullet->Dim,
-                       V4(1.0f, 1.0f, 1.0f, Unlerp(0.0f, Bullet->Timer, 2.0f)));
-//            DrawLine(BackBuffer, State->P, Bullet->P, V4(0.0f, 0.0f, 1.0f, 1.0f));
-            Bullet->Timer -= Input->dtForFrame;
-            ++Bullet;
+            Entity->P += Entity->dP*Input->dtForFrame;
+            // TODO(chris): Detect continuous collisions through rotation. Yikes.
+            Entity->Yaw += Entity->dYaw*Input->dtForFrame;
+#if DEBUG_COLLISION
+            v3 BoundingBoxOffset = V3(0, 0, -0.0001f);
+            v3 BBOldP = OldP + BoundingBoxOffset;
+            v3 BBNewP = NewP + BoundingBoxOffset;
+            v4 Color = Entity->Collided ? V4(1, 0, 0, 1) : V4(1, 0, 1, 1);
+            v3 Dim = V3(GetDim(Entity->BoundingBox), 0);
+            v3 HalfDim = 0.5f*Dim;
+            v3 Flip1 = V3(-HalfDim.x, HalfDim.y, HalfDim.z);
+            v3 Flip2 = V3(HalfDim.x, -HalfDim.y, HalfDim.z);
+            PushRotatedRectangle(RenderBuffer, BBOldP,
+                                 Dim.xy, Color);
+            PushRotatedRectangle(RenderBuffer, BBNewP,
+                                 Dim.xy, Color);
+            PushLine(RenderBuffer,
+                     BBOldP-HalfDim,
+                     BBNewP-HalfDim,
+                     Color);
+            PushLine(RenderBuffer,
+                     BBOldP+HalfDim,
+                     BBNewP+HalfDim,
+                     Color);
+            PushLine(RenderBuffer,
+                     BBOldP+Flip1,
+                     BBNewP+Flip1,
+                     Color);
+            PushLine(RenderBuffer,
+                     BBOldP+Flip2,
+                     BBNewP+Flip2,
+                     Color);
+#if 0
+            for(u32 ShapeIndex = 0;
+                ShapeIndex < State->Ship.CollisionShapeCount;
+                ++ShapeIndex)
+            {
+                collision_shape *Shape = State->Ship.CollisionBoxes + ShapeIndex;
+                PushBitmap(RenderBuffer, &State->DebugBitmap,
+                           V3(State->Ship.P.xy + GetCenter(*Box), State->Ship.P.z+0.01f),
+                           XAxis, YAxis, GetDim(*Box));
+            }
+#endif
+#endif
         }
     }
 
-#if DEBUG_COLLISION
-        DrawCollision(&TranState->RenderBuffer, &State->Ship);
+    if(Keyboard->ActionUp.EndedDown || ShipController->ActionUp.EndedDown)
+    {
+        State->CameraP.z += 100.0f*Input->dtForFrame;
+    }
 
-        for(u32 AsteroidIndex = 0;
-            AsteroidIndex < State->AsteroidCount;
-            ++AsteroidIndex)
-        {
-            entity *Asteroid = State->Asteroids + AsteroidIndex;
-            DrawCollision(&TranState->RenderBuffer, Asteroid);
-        }
-            
-        for(u32 BulletIndex = 0;
-            BulletIndex < State->BulletCount;
-            ++BulletIndex)
-        {
-            entity *Bullet = State->Bullets + BulletIndex;
-            DrawCollision(&TranState->RenderBuffer, Bullet);
-        }
+    if(Keyboard->ActionDown.EndedDown || ShipController->ActionDown.EndedDown)
+    {
+        State->CameraP.z -= 100.0f*Input->dtForFrame;
+    }
 
+    // NOTE(chris): Post collision pass
+    for(u32 EntityIndex = 0;
+        EntityIndex < State->EntityCount;
+        ++EntityIndex)
+    {
+        entity *Entity = State->Entities + EntityIndex;
+        v3 Facing = V3(Cos(Entity->Yaw), Sin(Entity->Yaw), 0.0f);
+        v2 YAxis = Facing.xy;
+        v2 XAxis = -Perp(YAxis);
+        switch(Entity->Type)
+        {
+            case EntityType_Ship:
+            {
+                State->CameraP.xy += 0.2f*(Entity->P.xy - State->CameraP.xy);
+                State->CameraRot += 0.05f*((Entity->Yaw - 0.25f*Tau) - State->CameraRot);
+                PushBitmap(RenderBuffer, &State->ShipBitmap, Entity->P,
+                           XAxis, YAxis, Entity->Dim);
+            } break;
+
+            case EntityType_Asteroid:
+            {
+                PushBitmap(RenderBuffer, &State->AsteroidBitmap, Entity->P,
+                           XAxis, YAxis, Entity->Dim);
+            } break;
+
+            case EntityType_Bullet:
+            {
+                PushBitmap(RenderBuffer, &State->BulletBitmap, Entity->P, XAxis, YAxis,
+                           Entity->Dim,
+                           V4(1.0f, 1.0f, 1.0f, Unlerp(0.0f, Entity->Timer, 2.0f)));
+//            DrawLine(BackBuffer, State->P, Bullet->P, V4(0.0f, 0.0f, 1.0f, 1.0f));
+            } break;
+
+            case EntityType_FloatingHead:
+            {
 #if 0
-        for(u32 ShapeIndex = 0;
-            ShapeIndex < State->Ship.CollisionShapeCount;
-            ++ShapeIndex)
-        {
-            collision_shape *Shape = State->Ship.CollisionBoxes + ShapeIndex;
-            PushBitmap(&TranState->RenderBuffer, &State->DebugBitmap,
-                       V3(State->Ship.P.xy + GetCenter(*Box), State->Ship.P.z+0.01f),
-                       XAxis, YAxis, GetDim(*Box));
+                for(u32 FaceIndex = 1;
+                    FaceIndex < State->HeadMesh.FaceCount;
+                    ++FaceIndex)
+                {
+                    obj_face *Face = State->HeadMesh.Faces + FaceIndex;
+                    v3 VertexA = (State->HeadMesh.Vertices + Face->VertexIndexA)->xyz;
+                    v3 VertexB = (State->HeadMesh.Vertices + Face->VertexIndexB)->xyz;
+                    v3 VertexC = (State->HeadMesh.Vertices + Face->VertexIndexC)->xyz;
+
+                    v4 White = V4(1.0f, 1.0f, 1.0f, 1.0f);
+                    PushLine(RenderBuffer, Entity->P, Entity->RotationMatrix,
+                             VertexA, VertexB, Entity->Dim, White);
+                    PushLine(RenderBuffer, Entity->P, Entity->RotationMatrix,
+                             VertexB, VertexC, Entity->Dim, White);
+                    PushLine(RenderBuffer, Entity->P, Entity->RotationMatrix,
+                             VertexC, VertexA, Entity->Dim, White);
+                }
+#endif
+            } break;
+
+            InvalidDefaultCase;
         }
-#endif
-#endif
-
-    State->CameraP.xy += 0.2f*(State->Ship.P.xy - State->CameraP.xy);
-    State->CameraRot += 0.05f*((State->Ship.Yaw - 0.25f*Tau) - State->CameraRot);
-
-    v4 White = V4(1.0f, 1.0f, 1.0f, 1.0f);
-
-    r32 CosXRotation = Cos(XRotation);
-    r32 SinXRotation = Sin(XRotation);
-    r32 CosYRotation = Cos(YRotation);
-    r32 SinYRotation = Sin(YRotation);
-    r32 CosZRotation = Cos(ZRotation);
-    r32 SinZRotation = Sin(ZRotation);
-
-    m33 XRotationMatrix =
-    {
-        1, 0,             0,
-        0, CosXRotation, -SinXRotation,
-        0, SinXRotation,  CosXRotation,
-    };
-    m33 YRotationMatrix =
-    {
-         CosYRotation, 0, SinYRotation,
-         0,            1, 0,
-        -SinYRotation, 0, CosYRotation,
-    };
-    m33 ZRotationMatrix =
-    {
-        CosZRotation, -SinZRotation, 0,
-        SinZRotation,  CosZRotation, 0,
-        0,             0,            1,
-    };
-
-    State->FloatingHead.RotationMatrix =
-        ZRotationMatrix*YRotationMatrix*XRotationMatrix*State->FloatingHead.RotationMatrix;
+    }
 
 #if 0
     {
@@ -755,38 +851,15 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                 PushRectangle(BackBuffer, CenterDim(P, Scale*(XAxis + YAxis)),
                               V4(1.0f, 0.0f, 1.0f, 1.0f));
 #endif
-                PushBitmap(&TranState->RenderBuffer, Glyph, P, XAxis, YAxis, Scale);
+                PushBitmap(RenderBuffer, Glyph, P, XAxis, YAxis, Scale);
                 P.x += XAxis.x*Scale;
             }
         }
     }
 #endif
-
-#if 0
-    for(u32 FaceIndex = 1;
-        FaceIndex < State->HeadMesh.FaceCount;
-        ++FaceIndex)
-    {
-        v3 Translation = V3(0.5f*BackBuffer->Width, 0.5f*BackBuffer->Height, 0.0f);
-        v3 Scale = State->Scale*V3(1.0f, 1.0f, 1.0f);
-        obj_face *Face = State->HeadMesh.Faces + FaceIndex;
-        v3 VertexA = (Hadamard(State->RotationMatrix*(State->HeadMesh.Vertices + Face->VertexIndexA)->xyz, Scale) +
-                      Translation);
-        v3 VertexB = (Hadamard(State->RotationMatrix*(State->HeadMesh.Vertices + Face->VertexIndexB)->xyz, Scale) +
-                      Translation);
-        v3 VertexC = (Hadamard(State->RotationMatrix*(State->HeadMesh.Vertices + Face->VertexIndexC)->xyz, Scale) +
-                      Translation);
-
-        PushLine(&TranState->RenderBuffer, VertexA, VertexB, White);
-        PushLine(&TranState->RenderBuffer, VertexB, VertexC, White);
-        PushLine(&TranState->RenderBuffer, VertexC, VertexA, White);
-    }
-#endif
-
-
     {
         TIMED_BLOCK("RenderGame");
-        RenderBufferToBackBuffer(&TranState->RenderBuffer, BackBuffer);
+        RenderBufferToBackBuffer(RenderBuffer, BackBuffer);
     }
     EndTemporaryMemory(RenderMemory);
 }
