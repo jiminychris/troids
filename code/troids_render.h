@@ -9,10 +9,11 @@
 
 enum render_command
 {
-    RenderCommand_Bitmap,
-    RenderCommand_Rectangle,
-    RenderCommand_Line,
-    RenderCommand_Clear,
+    RenderCommand_bitmap,
+    RenderCommand_rectangle,
+    RenderCommand_circle,
+    RenderCommand_line,
+    RenderCommand_clear,
 };
 
 struct render_command_header
@@ -34,6 +35,14 @@ struct render_rectangle_data
 {
     r32 SortKey;
     rectangle2 Rect;
+    v4 Color;
+};
+
+struct render_circle_data
+{
+    r32 SortKey;
+    r32 Radius;
+    v3 P;
     v4 Color;
 };
 

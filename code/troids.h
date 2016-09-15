@@ -69,7 +69,7 @@ struct entity
 
     b32 Collides;
     b32 Collided;
-    rectangle2 BoundingBox;
+    r32 BoundingRadius;
     u32 CollisionShapeCount;
     collision_shape CollisionShapes[8];
     

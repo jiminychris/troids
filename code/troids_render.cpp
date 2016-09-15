@@ -59,7 +59,7 @@ PushBitmap(render_buffer *RenderBuffer, loaded_bitmap *Bitmap, v3 Origin, v2 XAx
 {
     if(Bitmap && Bitmap->Height && Bitmap->Width)
     {
-        PushRenderHeader(&RenderBuffer->Arena, RenderCommand_Bitmap);
+        PushRenderHeader(&RenderBuffer->Arena, RenderCommand_bitmap);
         render_bitmap_data *Data = PushStruct(&RenderBuffer->Arena, render_bitmap_data);
         Data->Bitmap = Bitmap;
         Data->Origin = Origin;
@@ -71,15 +71,14 @@ PushBitmap(render_buffer *RenderBuffer, loaded_bitmap *Bitmap, v3 Origin, v2 XAx
 }
 
 inline void
-PushRotatedRectangle(render_buffer *RenderBuffer, v3 Origin,
-                     v2 Dim, v4 Color)
+PushRotatedRectangle(render_buffer *RenderBuffer, v3 Origin, v2 XAxis, v2 YAxis, v2 Dim, v4 Color)
 {
-    PushRenderHeader(&RenderBuffer->Arena, RenderCommand_Bitmap);
+    PushRenderHeader(&RenderBuffer->Arena, RenderCommand_bitmap);
     render_bitmap_data *Data = PushStruct(&RenderBuffer->Arena, render_bitmap_data);
     Data->Bitmap = 0;
     Data->Origin = Origin;
-    Data->XAxis = V2(1, 0)*Dim.x;
-    Data->YAxis = V2(0, 1)*Dim.y;
+    Data->XAxis = XAxis*Dim.x;
+    Data->YAxis = YAxis*Dim.y;
     Data->Color = Color;
     Data->SortKey = Origin.z;
 }
@@ -87,7 +86,7 @@ PushRotatedRectangle(render_buffer *RenderBuffer, v3 Origin,
 inline rectangle2
 PushRectangle(render_buffer *RenderBuffer, v3 P, v2 Dim, v4 Color)
 {
-    PushRenderHeader(&RenderBuffer->Arena, RenderCommand_Rectangle);
+    PushRenderHeader(&RenderBuffer->Arena, RenderCommand_rectangle);
     render_rectangle_data *Data = PushStruct(&RenderBuffer->Arena, render_rectangle_data);
     rectangle2 Rect = MinDim(P.xy, Dim);
     Data->Rect = Rect;
@@ -96,11 +95,22 @@ PushRectangle(render_buffer *RenderBuffer, v3 P, v2 Dim, v4 Color)
     return(Rect);
 }
 
+inline void
+PushCircle(render_buffer *RenderBuffer, v3 P, r32 Radius, v4 Color)
+{
+    PushRenderHeader(&RenderBuffer->Arena, RenderCommand_circle);
+    render_circle_data *Data = PushStruct(&RenderBuffer->Arena, render_circle_data);
+    Data->P = P;
+    Data->Radius = Radius;
+    Data->Color = Color;
+    Data->SortKey = P.z;
+}
+
 // TODO(chris): How do I sort lines that move through z? This goes for bitmaps and rectangles also.
 inline void
 PushLine(render_buffer *RenderBuffer, v3 PointA, v3 PointB, v4 Color)
 {
-    PushRenderHeader(&RenderBuffer->Arena, RenderCommand_Line);
+    PushRenderHeader(&RenderBuffer->Arena, RenderCommand_line);
     render_line_data *Data = PushStruct(&RenderBuffer->Arena, render_line_data);
     Data->PointA = PointA;
     Data->PointB = PointB;
@@ -121,7 +131,7 @@ PushLine(render_buffer *RenderBuffer, v3 Origin, m33 RotationMatrix,
 inline void
 PushClear(render_buffer *RenderBuffer, v4 Color)
 {
-    PushRenderHeader(&RenderBuffer->Arena, RenderCommand_Clear);
+    PushRenderHeader(&RenderBuffer->Arena, RenderCommand_clear);
     render_clear_data *Data = PushStruct(&RenderBuffer->Arena, render_clear_data);
     Data->Color = Color;
 }
@@ -436,6 +446,7 @@ RenderBitmap(loaded_bitmap *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAx
         PixelRow += BackBuffer->Pitch;
     }
 }
+
 // TODO(chris): Further optimization
 internal void
 RenderRotatedSolidRectangle(loaded_bitmap *BackBuffer, v2 Origin, v2 XAxis, v2 YAxis,
@@ -454,7 +465,6 @@ RenderRotatedSolidRectangle(loaded_bitmap *BackBuffer, v2 Origin, v2 XAxis, v2 Y
     s32 YMax = Clamp(OffsetY, Ceiling(Maximum(Maximum(Origin.y, Origin.y + XAxis.y),
                                         Maximum(Origin.y + YAxis.y, Origin.y + XAxis.y + YAxis.y))),
                      OffsetY + BackBuffer->Height);
-    // TODO(chris): Crashed here once when drawing in the top right corner. Check that out.
 
     s32 AdjustedXMin = XMin;
     s32 AdjustedXMax = XMax;
@@ -513,6 +523,73 @@ RenderRotatedSolidRectangle(loaded_bitmap *BackBuffer, v2 Origin, v2 XAxis, v2 Y
 
             Mask = _mm_castps_si128(_mm_and_ps(_mm_and_ps(_mm_cmpge_ps(U, RealZero), _mm_cmpge_ps(V, RealZero)),
                                                _mm_and_ps(_mm_cmple_ps(U, RealOne), _mm_cmple_ps(V, RealOne))));
+
+            _mm_storeu_si128((__m128i *)Pixel, _mm_or_si128(_mm_andnot_si128(Mask, RawDest),
+                                                            _mm_and_si128(DestColor, Mask)));
+
+            Pixel += 4;
+            X4 = _mm_add_ps(X4, Four);
+        }
+        PixelRow += BackBuffer->Pitch;
+    }
+}
+
+// TODO(chris): Further optimization
+internal void
+RenderSolidCircle(loaded_bitmap *BackBuffer, v2 P, r32 Radius,
+                  v3 Color, s32 OffsetX = 0, s32 OffsetY = 0)
+{
+    s32 XMin = Clamp(OffsetX, RoundS32(P.x - Radius), OffsetX + BackBuffer->Width);
+    s32 YMin = Clamp(OffsetY, RoundS32(P.y - Radius), OffsetY + BackBuffer->Height);
+
+    s32 XMax = Clamp(OffsetX, RoundS32(P.x + Radius), OffsetX + BackBuffer->Width);
+    s32 YMax = Clamp(OffsetY, RoundS32(P.y  + Radius), OffsetY + BackBuffer->Height);
+
+    s32 AdjustedXMin = XMin;
+    s32 AdjustedXMax = XMax;
+    s32 Width = XMax-XMin;
+    s32 Height = YMax-YMin;
+    s32 Adjustment = 4-Width%4;
+    if(Adjustment < 4)
+    {
+        AdjustedXMin = Maximum(OffsetX, XMin-Adjustment);
+        Adjustment -= XMin-AdjustedXMin;
+        AdjustedXMax = Minimum(OffsetX + BackBuffer->Width, XMax+Adjustment);
+        Width = AdjustedXMax-AdjustedXMin;
+    }
+
+    Color *= 255.0f;
+    __m128i DestColor = _mm_set1_epi32(((RoundU32(Color.r) << 16) |
+                                        (RoundU32(Color.g) << 8) |
+                                        (RoundU32(Color.b) << 0)));
+
+    __m128 RadiusSq = _mm_set_ps1(Radius*Radius);
+    __m128 PX = _mm_set_ps1(P.x);
+    __m128 PY = _mm_set_ps1(P.y);
+    __m128 Four = _mm_set_ps1(4.0f);
+    __m128 RealZero = _mm_set_ps1(0.0f);
+    __m128 RealOne = _mm_set_ps1(1.0f);
+    __m128i Mask;
+    u8 *PixelRow = (u8 *)BackBuffer->Memory + (BackBuffer->Pitch*YMin);
+    IGNORED_TIMED_LOOP_FUNCTION(Width*Height);
+    for(s32 Y = YMin;
+        Y < YMax;
+        ++Y)
+    {
+        u32 *Pixel = (u32 *)PixelRow + AdjustedXMin;
+        __m128 X4 = _mm_set_ps((r32)AdjustedXMin + 3, (r32)AdjustedXMin + 2,
+                                   (r32)AdjustedXMin + 1, (r32)AdjustedXMin + 0);
+        __m128 Y4 = _mm_set_ps1((r32)Y);
+        for(s32 X = AdjustedXMin;
+            X < AdjustedXMax;
+            X += 4)
+        {
+            __m128i RawDest = _mm_loadu_si128((__m128i *)Pixel);
+
+            __m128 dX = _mm_sub_ps(X4, PX);
+            __m128 dY = _mm_sub_ps(Y4, PY);
+            __m128 DistanceSq = _mm_add_ps(_mm_mul_ps(dX, dX), _mm_mul_ps(dY, dY));
+            Mask = _mm_castps_si128(_mm_cmple_ps(DistanceSq, RadiusSq));
 
             _mm_storeu_si128((__m128i *)Pixel, _mm_or_si128(_mm_andnot_si128(Mask, RawDest),
                                                             _mm_and_si128(DestColor, Mask)));
@@ -828,7 +905,7 @@ RenderTree(render_buffer *RenderBuffer, binary_node *Node, loaded_bitmap *BackBu
                                                                   Chain->Index);
         switch(Header->Command)
         {
-            case RenderCommand_Bitmap:
+            case RenderCommand_bitmap:
             {
                 render_bitmap_data *Data = (render_bitmap_data *)(Header + 1);
                 v2 Align = Data->Bitmap ? Data->Bitmap->Align : V2(0.5f, 0.5f);
@@ -856,13 +933,24 @@ RenderTree(render_buffer *RenderBuffer, binary_node *Node, loaded_bitmap *BackBu
                 }
             } break;
 
-            case RenderCommand_Rectangle:
+            case RenderCommand_rectangle:
             {
                 render_rectangle_data *Data = (render_rectangle_data *)(Header + 1);
                 RenderRectangle(BackBuffer, Data->Rect, Data->Color, OffsetX, OffsetY);
             } break;
+
+            case RenderCommand_circle:
+            {
+                render_circle_data *Data = (render_circle_data *)(Header + 1);
+
+                v2 P = WorldToScreenTransform(RenderBuffer, Data->P);
+                r32 Radius = Length(WorldToScreenTransform(RenderBuffer,
+                                                           Data->P + V3(Data->Radius, 0, 0)) -
+                                    P);
+                RenderSolidCircle(BackBuffer, P, Radius, Data->Color.rgb, OffsetX, OffsetY);
+            } break;
             
-            case RenderCommand_Line:
+            case RenderCommand_line:
             {
                 render_line_data *Data = (render_line_data *)(Header + 1);
                 v2 PointA = WorldToScreenTransform(RenderBuffer, Data->PointA);
@@ -881,7 +969,7 @@ RenderTree(render_buffer *RenderBuffer, binary_node *Node, loaded_bitmap *BackBu
                 }
             } break;
             
-            case RenderCommand_Clear:
+            case RenderCommand_clear:
             {
                 render_clear_data *Data = (render_clear_data *)(Header + 1);
                 Clear(BackBuffer, Data->Color, OffsetX, OffsetY);
@@ -1012,7 +1100,14 @@ SplitWorkIntoVerticalStrips(render_buffer *RenderBuffer, binary_node *Node, void
     }
 }
 
-#if 1
+#define INSERT_RENDER_COMMAND(type, SortKey)                            \
+    case RenderCommand_##type:                                          \
+    {                                                                   \
+        PackedBufferAdvance(Data, render_##type##_data, Cursor);        \
+        Insert(&RenderBuffer->Arena, &SortTree, SortKey, Index);  \
+    } break;
+
+
 internal void
 RenderBufferToBackBuffer(render_buffer *RenderBuffer, loaded_bitmap *BackBuffer)
 {
@@ -1026,30 +1121,11 @@ RenderBufferToBackBuffer(render_buffer *RenderBuffer, loaded_bitmap *BackBuffer)
         Cursor += sizeof(render_command_header);
         switch(Header->Command)
         {
-            case RenderCommand_Bitmap:
-            {
-                PackedBufferAdvance(Data, render_bitmap_data, Cursor);
-                Insert(&RenderBuffer->Arena, &SortTree, Data->SortKey, Index);
-            } break;
-
-            case RenderCommand_Rectangle:
-            {
-                PackedBufferAdvance(Data, render_rectangle_data, Cursor);
-                Insert(&RenderBuffer->Arena, &SortTree, Data->SortKey, Index);
-            } break;
-            
-            case RenderCommand_Line:
-            {
-                PackedBufferAdvance(Data, render_line_data, Cursor);
-                Insert(&RenderBuffer->Arena, &SortTree, Data->SortKey, Index);
-            } break;
-            
-            case RenderCommand_Clear:
-            {
-                PackedBufferAdvance(Data, render_clear_data, Cursor);
-                Insert(&RenderBuffer->Arena, &SortTree, -REAL32_MAX, Index);
-            } break;
-
+            INSERT_RENDER_COMMAND(bitmap, Data->SortKey);
+            INSERT_RENDER_COMMAND(rectangle, Data->SortKey);
+            INSERT_RENDER_COMMAND(circle, Data->SortKey);
+            INSERT_RENDER_COMMAND(line, Data->SortKey);
+            INSERT_RENDER_COMMAND(clear, -REAL32_MAX);
             InvalidDefaultCase;
         }
     }
@@ -1094,129 +1170,3 @@ RenderBufferToBackBuffer(render_buffer *RenderBuffer, loaded_bitmap *BackBuffer)
         } while(!Finished);
     }
 }
-#else
-internal void
-RenderBufferToBackBufferCallback(void *Params)
-{
-    TIMED_FUNCTION();
-    render_tree_data *Data = (render_tree_data *)Params;
-    render_buffer *RenderBuffer = Data->RenderBuffer;
-    loaded_bitmap *BackBuffer = &Data->BackBuffer;
-    s32 OffsetX = Data->OffsetX;
-    s32 OffsetY = Data->OffsetY;
-    
-    u8 *Cursor = (u8 *)RenderBuffer->Arena.Memory;
-    u8 *End = Cursor + RenderBuffer->Arena.Used;
-    while(Cursor != End)
-    {
-        render_command_header *Header = (render_command_header *)Cursor;
-        u32 Index = (u32)((u8 *)Header - (u8 *)RenderBuffer->Arena.Memory);
-        Cursor += sizeof(render_command_header);
-        switch(Header->Command)
-        {
-            case RenderCommand_Bitmap:
-            {
-                PackedBufferAdvance(Data, render_bitmap_data, Cursor);
-                v2 Align = Data->Bitmap ? Data->Bitmap->Align : V2(0.5f, 0.5f);
-                v2 XAxis = Data->XAxis;
-                v2 YAxis = Data->YAxis;
-                v3 Origin = Data->Origin - V3(Hadamard(Align, XAxis + YAxis), 0);
-                
-                XAxis = WorldToScreenTransform(RenderBuffer, Origin + V3(XAxis, 0));
-                YAxis = WorldToScreenTransform(RenderBuffer, Origin + V3(YAxis, 0));
-                v2 ScreenOrigin = WorldToScreenTransform(RenderBuffer, Origin);
-                XAxis -= ScreenOrigin;
-                YAxis -= ScreenOrigin;
-
-                if(Data->Bitmap)
-                {
-                    RenderBitmap(BackBuffer, Data->Bitmap,
-                                 ScreenOrigin,
-                                 XAxis, YAxis,
-                                 Data->Color, OffsetX, OffsetY);
-                }
-                else
-                {
-                    RenderRotatedSolidRectangle(BackBuffer, ScreenOrigin, XAxis, YAxis, Data->Color.rgb,
-                                                OffsetX, OffsetY);
-                }
-            } break;
-
-            case RenderCommand_Rectangle:
-            {
-                PackedBufferAdvance(Data, render_rectangle_data, Cursor);
-                RenderRectangle(BackBuffer, Data->Rect, Data->Color, OffsetX, OffsetY);
-            } break;
-            
-            case RenderCommand_Line:
-            {
-                PackedBufferAdvance(Data, render_line_data, Cursor);
-                v2 PointA = WorldToScreenTransform(RenderBuffer, Data->Origin + Data->PointA);
-                v2 PointB = WorldToScreenTransform(RenderBuffer, Data->Origin + Data->PointB);
-                rectangle2 LineRect = MinMax(V2(Minimum(PointA.x, PointB.x),
-                                                Minimum(PointA.y, PointB.y)),
-                                             V2(Maximum(PointA.x, PointB.x),
-                                                Maximum(PointA.y, PointB.y)));
-                v2 Dim = GetDim(LineRect);
-                rectangle2 HitBox = MinMax(V2(OffsetX - Dim.x, OffsetY - Dim.y),
-                                           V2i(OffsetX + BackBuffer->Width,
-                                               OffsetY + BackBuffer->Height));
-                if(Inside(HitBox, LineRect.Min))
-                {
-                    RenderLine(BackBuffer, PointA, PointB, Data->Color, OffsetX, OffsetY);
-                }
-            } break;
-            
-            case RenderCommand_Clear:
-            {
-                PackedBufferAdvance(Data, render_clear_data, Cursor);
-                Clear(BackBuffer, Data->Color, OffsetX, OffsetY);
-            } break;
-
-            InvalidDefaultCase;
-        }
-    }
-}
-
-internal void
-RenderBufferToBackBuffer(render_buffer *RenderBuffer, loaded_bitmap *BackBuffer)
-{
-    render_tree_data RenderTreeData[64];
-    thread_progress ThreadProgress[64];
-    // TODO(chris): Optimize this for the number of logical cores.
-    u32 CoreCount = 64;
-#if 0
-    SplitWorkIntoVerticalStrips(RenderBuffer, 0, BackBuffer->Memory, CoreCount,
-                                BackBuffer->Width, BackBuffer->Height, BackBuffer->Pitch,
-                                RenderTreeData);
-#else
-    SplitWorkIntoSquares(RenderBuffer, 0, BackBuffer->Memory, CoreCount,
-                         BackBuffer->Width, BackBuffer->Height, BackBuffer->Pitch, 0, 0,
-                         RenderTreeData);
-#endif
-        
-    for(u32 RenderChunkIndex = 1;
-        RenderChunkIndex < CoreCount;
-        ++RenderChunkIndex)
-    {
-        render_tree_data *Data = RenderTreeData + RenderChunkIndex;
-        thread_progress *Progress = ThreadProgress + RenderChunkIndex;
-        PlatformPushThreadWork(RenderBufferToBackBufferCallback, Data, Progress);
-    }
-    RenderBufferToBackBufferCallback(&RenderTreeData[0]);
-    ThreadProgress[0].Finished = true;
-
-    b32 Finished;
-    do
-    {
-        Finished = true;
-        for(u32 ProgressIndex = 0;
-            ProgressIndex < CoreCount;
-            ++ProgressIndex)
-        {
-            thread_progress *Progress = ThreadProgress + ProgressIndex;
-            Finished &= Progress->Finished;
-        }
-    } while(!Finished);
-}
-#endif

@@ -39,6 +39,20 @@ Floor(r32 A)
     return(Result);
 }
 
+inline r32
+SquareRoot(r32 A)
+{
+    r32 Result = sqrtf(A);
+    return(Result);
+}
+
+inline r32
+Square(r32 A)
+{
+    r32 Result = A*A;
+    return(Result);
+}
+
 inline s32
 RoundS32(r32 A)
 {
@@ -201,6 +215,13 @@ Hadamard(v2 A, v2 B)
     v2 Result;
     Result.x = A.x*B.x;
     Result.y = A.y*B.y;
+    return(Result);
+}
+
+inline r32
+Length(v2 A)
+{
+    r32 Result = SquareRoot(A.x*A.x + A.y*A.y);
     return(Result);
 }
 
