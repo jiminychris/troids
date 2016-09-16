@@ -34,9 +34,9 @@ struct collision_shape
             v2 TrianglePoints[3];
             struct
             {
-                r32 TrianglePointA;
-                r32 TrianglePointB;
-                r32 TrianglePointC;
+                v2 TrianglePointA;
+                v2 TrianglePointB;
+                v2 TrianglePointC;
             };
         };
         struct
@@ -68,7 +68,7 @@ struct entity
     v2 Dim;
 
     b32 Collides;
-    b32 Collided;
+    r32 tMove;
     r32 BoundingRadius;
     u32 CollisionShapeCount;
     collision_shape CollisionShapes[8];
