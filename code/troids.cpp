@@ -6,9 +6,6 @@
    $Notice: $
    ======================================================================== */
 
-#define DEBUG_COLLISION 1
-#define DEBUG_COLLISION_UNDER 0
-
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -71,9 +68,9 @@ LoadBitmap(char *FileName)
             u32 B = (u32)(Blue + 0.5f);
 
             *Pixel++ = ((A << 24) |
-                      (R << 16) |
-                      (G << 8) |
-                      (B << 0));
+                        (R << 16) |
+                        (G << 8) |
+                        (B << 0));
         }
         PixelRow += Result.Pitch;
     }
@@ -271,13 +268,6 @@ LoadObj(char *FileName, memory_arena *Arena)
         DEBUG_VALUE("CenterClick", (Controller)->CenterClick.EndedDown); \
     }
 
-inline b32
-Collided(entity *Entity)
-{
-    b32 Result = Entity->tMove < 1.0f;
-    return(Result);
-}
-
 // TODO(chris): Actually look at collision geometry and calculate this. Just find point farthest from
 // center.
 internal r32
@@ -302,13 +292,6 @@ CalculateBoundingRadius(entity *Entity)
                 Radius = Maximum(Maximum(Length(Shape->TrianglePointA),
                                          Length(Shape->TrianglePointB)),
                                  Length(Shape->TrianglePointC));
-            } break;
-
-            case CollisionShapeType_Rectangle:
-            {
-                Radius = Maximum(Maximum(Length(Shape->Rectangle.Min), Length(Shape->Rectangle.Max)),
-                                 Maximum(Length(V2(Shape->Rectangle.Min.x, Shape->Rectangle.Max.y)),
-                                         Length(V2(Shape->Rectangle.Max.x, Shape->Rectangle.Min.y))));
             } break;
         }
         MaxRadius = Maximum(Radius, MaxRadius);
@@ -390,10 +373,14 @@ CreateShip(game_state *State, v3 P, r32 Yaw)
     Ship->Yaw = Yaw;
     Ship->Collides = true;
     v2 HalfDim = Ship->Dim*0.5f;
+#if 1
     AddCollisionTriangle(Ship,
-                         V2(0, HalfDim.y),
-                         V2(-HalfDim.x, -HalfDim.y),
-                         V2(HalfDim.x, -HalfDim.y));
+                         V2(HalfDim.x, 0),
+                         V2(-HalfDim.x, HalfDim.y),
+                         V2(-HalfDim.x, -HalfDim.y));
+#else
+    AddCollisionCircle(Ship, HalfDim.x);
+#endif
     return(Ship);
 }
 
@@ -405,11 +392,11 @@ CreateFloatingHead(game_state *State)
     FloatingHead->P = V3(0.0f, 0.0f, 0.0f);
     FloatingHead->Dim = V2(100.0f, 100.0f);
     FloatingHead->RotationMatrix =
-    {
-        1, 0, 0,
-        0, 1, 0,
-        0, 0, 1,
-    };
+        {
+            1, 0, 0,
+            0, 1, 0,
+            0, 0, 1,
+        };
     FloatingHead->Collides = false;
     return(FloatingHead);
 }
@@ -450,7 +437,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     PlatformReadFile = GameMemory->PlatformReadFile;
     PlatformPushThreadWork = GameMemory->PlatformPushThreadWork;
     v3 ShipStartingP = V3(0.0f, 0.0f, 0.0f);
-    r32 ShipStartingYaw = 0.25f*Tau;
+    r32 ShipStartingYaw = 0.0f;
     v3 AsteroidStartingP = V3(50.0f, 0.0f, 0.0f);
 
     if(!State->IsInitialized)
@@ -467,13 +454,12 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         entity *FloatingHead = CreateFloatingHead(State);
 
         entity *SmallAsteroid = CreateAsteroid(State, AsteroidStartingP, 5.0f);
-        entity *SmallAsteroid2 = CreateAsteroid(State, AsteroidStartingP - V3(20.0f, 0, 0), 5.0f);
-        entity *SmallAsteroid3 = CreateAsteroid(State, AsteroidStartingP - V3(40.0f, 0, 0), 5.0f);
+        entity *SmallAsteroid2 = CreateAsteroid(State, AsteroidStartingP - V3(15.0f, 0, 0), 5.0f);
+        entity *SmallAsteroid3 = CreateAsteroid(State, AsteroidStartingP - V3(30.0f, 0, 0), 5.0f);
 //        entity *SmallAsteroid2 = CreateAsteroid(State, V3(Perp(AsteroidStartingP.xy), 0), 10.0f);
         entity *LargeAsteroid = CreateAsteroid(State, AsteroidStartingP + V3(30.0f, 30.0f, 0.0f), 10.0f);
 
         State->CameraP = V3(Ship->P.xy, 100.0f);
-        State->CameraRot = Ship->Yaw;
     }
 
     transient_state *TranState = (transient_state *)GameMemory->TemporaryMemory;
@@ -673,23 +659,23 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                 r32 SinZRotation = Sin(ZRotation);
 
                 m33 XRotationMatrix =
-                {
-                    1, 0,             0,
-                    0, CosXRotation, -SinXRotation,
-                    0, SinXRotation,  CosXRotation,
-                };
+                    {
+                        1, 0,             0,
+                        0, CosXRotation, -SinXRotation,
+                        0, SinXRotation,  CosXRotation,
+                    };
                 m33 YRotationMatrix =
-                {
-                    CosYRotation, 0, SinYRotation,
-                    0,            1, 0,
-                    -SinYRotation, 0, CosYRotation,
-                };
+                    {
+                        CosYRotation, 0, SinYRotation,
+                        0,            1, 0,
+                        -SinYRotation, 0, CosYRotation,
+                    };
                 m33 ZRotationMatrix =
-                {
-                    CosZRotation, -SinZRotation, 0,
-                    SinZRotation,  CosZRotation, 0,
-                    0,             0,            1,
-                };
+                    {
+                        CosZRotation, -SinZRotation, 0,
+                        SinZRotation,  CosZRotation, 0,
+                        0,             0,            1,
+                    };
 
                 Entity->RotationMatrix =
                     ZRotationMatrix*YRotationMatrix*XRotationMatrix*Entity->RotationMatrix;
@@ -701,6 +687,16 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         {
             Entity->BoundingRadius = CalculateBoundingRadius(Entity);
             Entity->tMove = 1.0f;
+#if DEBUG_COLLISION
+            Entity->BoundingCircleCollided = false;
+            for(u32 ShapeIndex = 0;
+                ShapeIndex < Entity->CollisionShapeCount;
+                ++ShapeIndex)
+            {
+                collision_shape *Shape = Entity->CollisionShapes + ShapeIndex;
+                Shape->Collided = false;
+            }
+#endif
         }
         EntityIndex = NextIndex;
     }
@@ -711,12 +707,16 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         ++EntityIndex)
     {
         entity *Entity = State->Entities + EntityIndex;
+        entity *CollidedWith = 0;
+#if DEBUG_COLLISION
+        collision_shape *CollidedWithShape = 0;
+#endif
         v3 OldP = Entity->P;
         v3 NewP = OldP + Input->dtForFrame*Entity->dP*Entity->tMove;
         v3 dP = NewP - OldP;
-        if(Entity->Collides)
+        if(Entity->Collides && (dP.x != 0 || dP.y != 0))
         {
-            entity *CollidedWith = 0;
+            r32 InvdPY = 1.0f / dP.y;
             for(u32 OtherEntityIndex = 0;
                 OtherEntityIndex < State->EntityCount;
                 ++OtherEntityIndex)
@@ -724,79 +724,81 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                 entity *OtherEntity = State->Entities + OtherEntityIndex;
                 if(!OtherEntity->Collides || (OtherEntityIndex == EntityIndex)) continue;
 
-                v3 RelativeOldP = OldP - OtherEntity->P;
-                v3 RelativeNewP = NewP - OtherEntity->P;
-                r32 RelativeOldPLengthSq = LengthSq(RelativeOldP.xy);
-                r32 RelativeNewPLengthSq = LengthSq(RelativeNewP.xy);
-                r32 HitRadius = OtherEntity->BoundingRadius + Entity->BoundingRadius;
-                r32 HitRadiusSq = Square(HitRadius);
-                r32 tMove = Entity->tMove;
-                if(RelativeOldPLengthSq <= HitRadiusSq)
+                r32 tMin = -1.0f;
+                r32 tMax = tMin;
                 {
-                    // TODO(chris): Set this back?
-                    // TODO(chris): Overlapping things seem to also be able to collide with something
-                    // during movement
-                    tMove = 0.0f;
-                }
-                else if(dP.x != 0 || dP.y != 0)
-                {
-                    rectangle2 dPRect = MinMax(V2(Minimum(RelativeOldP.x, RelativeNewP.x), Minimum(RelativeOldP.y, RelativeNewP.y)),
-                                               V2(Maximum(RelativeOldP.x, RelativeNewP.x), Maximum(RelativeOldP.y, RelativeNewP.y)));
-                    r32 InvdPY = 1.0f / dP.y;
-                    if(dP.x == 0)
-                    {
-                        r32 YSq = HitRadiusSq - RelativeOldP.x*RelativeOldP.x;
-                        if(YSq >= 0)
-                        {
-                            r32 Y1 = SquareRoot(YSq);
-                            r32 Y2 = -Y1;
-                            tMove = Minimum((Y1 - RelativeOldP.y)*InvdPY,
-                                            (Y2 - RelativeOldP.y)*InvdPY);
-                        }
-                    }
-                    else if(dP.y == 0)
-                    {
-                        r32 XSq = HitRadiusSq - RelativeOldP.y*RelativeOldP.y;
-                        if(XSq >= 0)
-                        {
-                            r32 X1 = SquareRoot(XSq);
-                            r32 X2 = -X1;
-                            r32 InvdPX = 1.0f / dP.x;
-                            tMove = Minimum((X1 - RelativeOldP.x)*InvdPX,
-                                            (X2 - RelativeOldP.x)*InvdPX);
-                        }
-                    }
-                    else
-                    {
-                        r32 dPLengthSq = LengthSq(dP.xy);
-                        r32 D = RelativeOldP.x*RelativeNewP.y - RelativeNewP.x*RelativeOldP.y;
-                        r32 Discriminant = HitRadiusSq*dPLengthSq - D*D;
-                        if(Discriminant >= 0)
-                        {
-                            r32 Ddx = -D*dP.x;
-                            r32 Root = AbsoluteValue(dP.y)*SquareRoot(Discriminant);
-                            r32 InvdPLengthSq = 1.0f / dPLengthSq;
-                            r32 Y1 = (Ddx + Root)*InvdPLengthSq;
-                            r32 Y2 = (Ddx - Root)*InvdPLengthSq;
+                    r32 HitRadius = OtherEntity->BoundingRadius + Entity->BoundingRadius;
 
-                            tMove = Minimum((Y1 - RelativeOldP.y)*InvdPY,
-                                            (Y2 - RelativeOldP.y)*InvdPY);
+                    circle_intersection_result Intersection =
+                        CircleLineIntersection(OtherEntity->P.xy, HitRadius, OldP.xy, NewP.xy);
+
+                    if(Intersection.Discriminant > 0)
+                    {
+                        tMin = Clamp(0.0f, (Intersection.Y1 - OldP.y)*InvdPY, Entity->tMove);
+                        tMax = Clamp(0.0f, (Intersection.Y2 - OldP.y)*InvdPY, Entity->tMove);
+                        if(tMax < tMin)
+                        {
+                            r32 Temp = tMin;
+                            tMin = tMax;
+                            tMax = Temp;
                         }
                     }
-                    if(tMove >= 0.0f && tMove < Entity->tMove)
+                }
+
+                if(tMin != tMax)
+                {
+#if DEBUG_COLLISION
+                    Entity->BoundingCircleCollided = true;
+                    OtherEntity->BoundingCircleCollided = true;
+#endif
+                    // TODO(chris): Search actual collision shapes
+                    collision_shape *CollisionShape = Entity->CollisionShapes + 0;
+                    collision_shape *OtherCollisionShape = OtherEntity->CollisionShapes + 0;
+
+                    if(CollisionShape->Type == CollisionShapeType_Triangle &&
+                       OtherCollisionShape->Type == CollisionShapeType_Triangle)
                     {
-                        CollidedWith = OtherEntity;
+                        NotImplemented;
+                    }
+                    else if(CollisionShape->Type == CollisionShapeType_Circle &&
+                            OtherCollisionShape->Type == CollisionShapeType_Circle)
+                    {
+                        r32 HitRadius = CollisionShape->Radius + OtherCollisionShape->Radius;
+                        v2 HitCenter = (OtherEntity->P.xy + OtherCollisionShape->Center - CollisionShape->Center);
+
+                        b32 Overlapping = LengthSq(OldP.xy - HitCenter) < (HitRadius*HitRadius);
+                        Assert(!Overlapping);
+
+                        circle_intersection_result Intersection =
+                                                                          CircleLineIntersection(HitCenter, HitRadius, OldP.xy, NewP.xy);
+
+                        if(Intersection.Discriminant > 0)
+                        {
+                            r32 tMove = Minimum((Intersection.Y1 - OldP.y)*InvdPY,
+                                                (Intersection.Y2 - OldP.y)*InvdPY);
+                            if(tMove >= 0 && tMove < Entity->tMove)
+                            {
+                                Entity->tMove = tMove;
+                                CollidedWith = OtherEntity;
+#if DEBUG_COLLISION
+                                CollisionShape->Collided = true;
+                                CollidedWithShape = OtherCollisionShape;
+#endif
+                            }
+                        }
                     }
                     else
                     {
-                        tMove = Entity->tMove;
+                        NotImplemented;
                     }
                 }
-                Entity->tMove = tMove;
             }
             if(CollidedWith)
             {
                 CollidedWith->tMove = 0.0f;
+#if DEBUG_COLLISION
+                CollidedWithShape->Collided = true;
+#endif
             }
         }
     }
@@ -827,16 +829,19 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
         {
 #if DEBUG_COLLISION
-#if DEBUG_COLLISION_UNDER
-            v3 BoundingCircleOffset = V3(0, 0, -0.0001f);
-            v3 ExtrusionOffset = V3(0, 0, -0.0002f);
-#else
-            v3 BoundingCircleOffset = V3(0, 0, 0.0002f);
-            v3 ExtrusionOffset = V3(0, 0, 0.0001f);
-#endif
-            v4 Color = Collided(Entity) ? V4(1, 0, 0, 1) : V4(1, 0, 1, 1);
-            PushCircle(RenderBuffer, OldP + BoundingCircleOffset, Entity->BoundingRadius, Color);
-            PushCircle(RenderBuffer, NewP + BoundingCircleOffset, Entity->BoundingRadius, Color);
+#define BOUNDING_EXTRUSION_Z_OFFSET -0.0002f
+#define BOUNDING_Z_OFFSET -0.0001f
+#define SHAPE_EXTRUSION_Z_OFFSET 0.0003f
+#define SHAPE_Z_OFFSET 0.0004f
+            v3 BoundingExtrusionOffset = V3(0, 0, BOUNDING_EXTRUSION_Z_OFFSET);
+            v3 BoundingCircleOffset = V3(0, 0, BOUNDING_Z_OFFSET);
+            v3 ShapeExtrusionOffset = V3(0, 0, SHAPE_EXTRUSION_Z_OFFSET);
+            v3 ShapeOffset = V3(0, 0, SHAPE_Z_OFFSET);
+            
+            v4 BoundingColor = Entity->BoundingCircleCollided ? V4(1, 0, 0, 1) : V4(1, 0, 1, 1);
+            v4 BoundingExtrusionColor = Entity->BoundingCircleCollided ? V4(0.8f, 0, 0, 1) : V4(0.8f, 0, 0.8f, 1);
+            PushCircle(RenderBuffer, OldP + BoundingCircleOffset, Entity->BoundingRadius, BoundingColor);
+            PushCircle(RenderBuffer, NewP + BoundingCircleOffset, Entity->BoundingRadius, BoundingColor);
 
             r32 dPLength = Length(dP.xy);
             r32 InvdPLength = 1.0f / dPLength;
@@ -844,19 +849,50 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             v2 YAxis = Perp(XAxis);
 
             v2 Dim = V2(2.0f*Entity->BoundingRadius, dPLength);
-            PushRotatedRectangle(RenderBuffer, 0.5f*(OldP + NewP) + ExtrusionOffset,
-                                 XAxis, YAxis, Dim, (Collided(Entity) ?
-                                                     V4(0.8f, 0, 0, 1) :
-                                                     V4(1, 0, 0.8f, 1)));
-#if 0
+            PushRotatedRectangle(RenderBuffer, 0.5f*(OldP + NewP) + BoundingExtrusionOffset,
+                                 XAxis, YAxis, Dim, BoundingExtrusionColor);
+#if 1
             for(u32 ShapeIndex = 0;
-                ShapeIndex < State->Ship.CollisionShapeCount;
+                ShapeIndex < Entity->CollisionShapeCount;
                 ++ShapeIndex)
             {
-                collision_shape *Shape = State->Ship.CollisionBoxes + ShapeIndex;
-                PushBitmap(RenderBuffer, &State->DebugBitmap,
-                           V3(State->Ship.P.xy + GetCenter(*Box), State->Ship.P.z+0.01f),
-                           XAxis, YAxis, GetDim(*Box));
+                collision_shape *Shape = Entity->CollisionShapes + ShapeIndex;
+                v4 ShapeColor = Shape->Collided ? V4(0, 1, 0, 1) : V4(0, 1, 1, 1);
+                v4 ShapeExtrusionColor = Shape->Collided ? V4(0, 0.8f, 0, 1) : V4(0, 0.8f, 0.8f, 1);
+                switch(Shape->Type)
+                {
+                    case CollisionShapeType_Circle:
+                    {
+                        v3 Center = V3(Shape->Center, 0);
+                        PushCircle(RenderBuffer, OldP + Center + ShapeOffset,
+                                   Shape->Radius, ShapeColor);
+                        PushCircle(RenderBuffer, NewP + Center + ShapeOffset,
+                                   Shape->Radius, ShapeColor);
+                        PushRotatedRectangle(RenderBuffer,
+                                             Center + 0.5f*(OldP + NewP) + ShapeExtrusionOffset,
+                                             XAxis, YAxis, Dim, ShapeExtrusionColor);
+                    } break;
+
+                    case CollisionShapeType_Triangle:
+                    {
+                        v3 A = V3(Shape->TrianglePointA, 0);
+                        v3 B = V3(Shape->TrianglePointB, 0);
+                        v3 C = V3(Shape->TrianglePointC, 0);
+                        A = RotateZ(A, Entity->Yaw);
+                        B = RotateZ(B, Entity->Yaw);
+                        C = RotateZ(C, Entity->Yaw);
+                        PushTriangle(RenderBuffer,
+                                     OldP + A + ShapeOffset,
+                                     OldP + B + ShapeOffset,
+                                     OldP + C + ShapeOffset,
+                                     ShapeColor);
+                        PushTriangle(RenderBuffer,
+                                     NewP + A + ShapeOffset,
+                                     NewP + B + ShapeOffset,
+                                     NewP + C + ShapeOffset,
+                                     ShapeColor);
+                    } break;
+                }
             }
 #endif
 #endif
@@ -869,8 +905,8 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         {
             case EntityType_Ship:
             {
-                State->CameraP.xy += 0.2f*(Entity->P.xy - State->CameraP.xy);
-                State->CameraRot += 0.05f*((Entity->Yaw - 0.25f*Tau) - State->CameraRot);
+//                State->CameraP.xy += 0.2f*(Entity->P.xy - State->CameraP.xy);
+//                State->CameraRot += 0.05f*((Entity->Yaw - 0.25f*Tau) - State->CameraRot);
                 PushBitmap(RenderBuffer, &State->ShipBitmap, Entity->P,
                            XAxis, YAxis, Entity->Dim);
             } break;

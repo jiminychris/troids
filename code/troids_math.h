@@ -605,5 +605,34 @@ RotateZ(v3 A, r32 Angle)
     return(Result);
 }
 
+struct circle_intersection_result
+{
+    r32 Discriminant;
+    r32 Y1;
+    r32 Y2;
+};
+
+inline circle_intersection_result
+CircleLineIntersection(v2 P, r32 Radius, v2 A, v2 B)
+{
+    circle_intersection_result Result = {};
+    v2 RelativeA = A - P;
+    v2 RelativeB = B - P;
+    v2 dAB = B - A;
+    r32 dABLengthSq = LengthSq(dAB);
+    r32 InvdABLengthSq = 1.0f / dABLengthSq;
+                    
+    r32 D = RelativeA.x*RelativeB.y - RelativeB.x*RelativeA.y;
+    Result.Discriminant = Radius*Radius*dABLengthSq - D*D;
+    if(Result.Discriminant >= 0)
+    {
+        r32 Ddx = -D*dAB.x;
+        r32 Root = AbsoluteValue(dAB.y)*SquareRoot(Result.Discriminant);
+        Result.Y1 = (Ddx + Root)*InvdABLengthSq + P.y;
+        Result.Y2 = (Ddx - Root)*InvdABLengthSq + P.y;
+    }
+    return(Result);
+}
+
 #define TROIDS_MATH_H
 #endif

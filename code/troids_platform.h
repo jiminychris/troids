@@ -216,6 +216,7 @@ Maximum(r64 A, r64 B)
 #define InvalidDefaultCase default: Assert(!"Invalid default case"); break;
 #define ArrayCount(Array) (sizeof(Array) / sizeof(Array[0]))
 #define OffsetOf(type, Member) ((size_t)&(((type *)0)->Member))
+#define NotImplemented Assert(!"Not implemented");
 
 #define Kilobytes(Value) ((u64)(Value)*1024)
 #define Megabytes(Value) (Kilobytes(Value)*1024)

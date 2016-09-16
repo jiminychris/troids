@@ -83,6 +83,19 @@ PushRotatedRectangle(render_buffer *RenderBuffer, v3 Origin, v2 XAxis, v2 YAxis,
     Data->SortKey = Origin.z;
 }
 
+inline void
+PushTriangle(render_buffer *RenderBuffer, v3 PointA, v3 PointB, v3 PointC, v4 Color)
+{
+    PushRenderHeader(&RenderBuffer->Arena, RenderCommand_triangle);
+    render_triangle_data *Data = PushStruct(&RenderBuffer->Arena, render_triangle_data);
+    Data->A = PointA;
+    Data->B = PointB;
+    Data->C = PointC;
+    Data->Color = Color;
+    // TODO(chris): How to handle sorting with 3D triangles?
+    Data->SortKey = PointA.z;
+}
+
 inline rectangle2
 PushRectangle(render_buffer *RenderBuffer, v3 P, v2 Dim, v4 Color)
 {
@@ -244,7 +257,7 @@ DrawFillBar(render_buffer *RenderBuffer, text_layout *Layout, u64 Used, u64 Max)
     DrawFillBar(RenderBuffer, Layout, (r32)Used, (r32)Max);
 }
 
-#if 1
+#if 0
 #pragma optimize("gts", on)
 #endif
 // TODO(chris): Further optimization
@@ -523,6 +536,99 @@ RenderRotatedSolidRectangle(loaded_bitmap *BackBuffer, v2 Origin, v2 XAxis, v2 Y
 
             Mask = _mm_castps_si128(_mm_and_ps(_mm_and_ps(_mm_cmpge_ps(U, RealZero), _mm_cmpge_ps(V, RealZero)),
                                                _mm_and_ps(_mm_cmple_ps(U, RealOne), _mm_cmple_ps(V, RealOne))));
+
+            _mm_storeu_si128((__m128i *)Pixel, _mm_or_si128(_mm_andnot_si128(Mask, RawDest),
+                                                            _mm_and_si128(DestColor, Mask)));
+
+            Pixel += 4;
+            X4 = _mm_add_ps(X4, Four);
+        }
+        PixelRow += BackBuffer->Pitch;
+    }
+}
+
+// TODO(chris): Further optimization
+internal void
+RenderSolidTriangle(loaded_bitmap *BackBuffer, v2 A, v2 B, v2 C, v3 Color,
+                    s32 OffsetX = 0, s32 OffsetY = 0)
+{
+    s32 XMin = Clamp(OffsetX, RoundS32(Minimum(Minimum(A.x, B.x), C.x)),
+                     OffsetX + BackBuffer->Width);
+    s32 YMin = Clamp(OffsetY, RoundS32(Minimum(Minimum(A.y, B.y), C.y)),
+                     OffsetY + BackBuffer->Height);
+
+    s32 XMax = Clamp(OffsetX, RoundS32(Maximum(Maximum(A.x, B.x), C.x)),
+                     OffsetX + BackBuffer->Width);
+    s32 YMax = Clamp(OffsetY, RoundS32(Maximum(Maximum(A.y, B.y), C.y)),
+                     OffsetY + BackBuffer->Height);
+
+    s32 AdjustedXMin = XMin;
+    s32 AdjustedXMax = XMax;
+    s32 Width = XMax-XMin;
+    s32 Height = YMax-YMin;
+    s32 Adjustment = 4-Width%4;
+    if(Adjustment < 4)
+    {
+        AdjustedXMin = Maximum(OffsetX, XMin-Adjustment);
+        Adjustment -= XMin-AdjustedXMin;
+        AdjustedXMax = Minimum(OffsetX + BackBuffer->Width, XMax+Adjustment);
+        Width = AdjustedXMax-AdjustedXMin;
+    }
+
+    Color *= 255.0f;
+    __m128i DestColor = _mm_set1_epi32(((RoundU32(Color.r) << 16) |
+                                        (RoundU32(Color.g) << 8) |
+                                        (RoundU32(Color.b) << 0)));
+
+    v2 PerpAB = Perp(B - A);
+    v2 PerpBC = Perp(C - B);
+    v2 PerpCA = Perp(A - C);
+    __m128 PerpABX = _mm_set_ps1(PerpAB.x);
+    __m128 PerpBCX = _mm_set_ps1(PerpBC.x);
+    __m128 PerpCAX = _mm_set_ps1(PerpCA.x);
+    __m128 PerpABY = _mm_set_ps1(PerpAB.y);
+    __m128 PerpBCY = _mm_set_ps1(PerpBC.y);
+    __m128 PerpCAY = _mm_set_ps1(PerpCA.y);
+    __m128 AX = _mm_set_ps1(A.x);
+    __m128 BX = _mm_set_ps1(B.x);
+    __m128 CX = _mm_set_ps1(C.x);
+    __m128 AY = _mm_set_ps1(A.y);
+    __m128 BY = _mm_set_ps1(B.y);
+    __m128 CY = _mm_set_ps1(C.y);
+    __m128 Four = _mm_set_ps1(4.0f);
+    __m128 RealZero = _mm_set_ps1(0.0f);
+    __m128 RealOne = _mm_set_ps1(1.0f);
+    __m128i Mask;
+    u8 *PixelRow = (u8 *)BackBuffer->Memory + (BackBuffer->Pitch*YMin);
+    IGNORED_TIMED_LOOP_FUNCTION(Width*Height);
+    for(s32 Y = YMin;
+        Y < YMax;
+        ++Y)
+    {
+        u32 *Pixel = (u32 *)PixelRow + AdjustedXMin;
+        __m128 X4 = _mm_set_ps((r32)AdjustedXMin + 3, (r32)AdjustedXMin + 2,
+                                   (r32)AdjustedXMin + 1, (r32)AdjustedXMin + 0);
+        __m128 Y4 = _mm_set_ps1((r32)Y);
+        __m128 YRelA = _mm_sub_ps(Y4, AY);
+        __m128 YRelB = _mm_sub_ps(Y4, BY);
+        __m128 YRelC = _mm_sub_ps(Y4, CY);
+        for(s32 X = AdjustedXMin;
+            X < AdjustedXMax;
+            X += 4)
+        {
+            __m128i RawDest = _mm_loadu_si128((__m128i *)Pixel);
+
+            __m128 XRelA = _mm_sub_ps(X4, AX);
+            __m128 XRelB = _mm_sub_ps(X4, BX);
+            __m128 XRelC = _mm_sub_ps(X4, CX);
+
+            __m128 ABInner = _mm_add_ps(_mm_mul_ps(XRelA, PerpABX), _mm_mul_ps(YRelA, PerpABY));
+            __m128 BCInner = _mm_add_ps(_mm_mul_ps(XRelB, PerpBCX), _mm_mul_ps(YRelB, PerpBCY));
+            __m128 CAInner = _mm_add_ps(_mm_mul_ps(XRelC, PerpCAX), _mm_mul_ps(YRelC, PerpCAY));
+            
+            Mask = _mm_castps_si128(_mm_and_ps(_mm_and_ps(_mm_cmpge_ps(ABInner, RealZero),
+                                                          _mm_cmpge_ps(BCInner, RealZero)),
+                                               _mm_cmpge_ps(CAInner, RealZero)));
 
             _mm_storeu_si128((__m128i *)Pixel, _mm_or_si128(_mm_andnot_si128(Mask, RawDest),
                                                             _mm_and_si128(DestColor, Mask)));
@@ -933,6 +1039,16 @@ RenderTree(render_buffer *RenderBuffer, binary_node *Node, loaded_bitmap *BackBu
                 }
             } break;
 
+            case RenderCommand_triangle:
+            {
+                render_triangle_data *Data = (render_triangle_data *)(Header + 1);
+                v2 A = WorldToScreenTransform(RenderBuffer, Data->A);
+                v2 B = WorldToScreenTransform(RenderBuffer, Data->B);
+                v2 C = WorldToScreenTransform(RenderBuffer, Data->C);
+
+                RenderSolidTriangle(BackBuffer, A, B, C, Data->Color.rgb, OffsetX, OffsetY);
+            } break;
+
             case RenderCommand_rectangle:
             {
                 render_rectangle_data *Data = (render_rectangle_data *)(Header + 1);
@@ -1122,6 +1238,7 @@ RenderBufferToBackBuffer(render_buffer *RenderBuffer, loaded_bitmap *BackBuffer)
         switch(Header->Command)
         {
             INSERT_RENDER_COMMAND(bitmap, Data->SortKey);
+            INSERT_RENDER_COMMAND(triangle, Data->SortKey);
             INSERT_RENDER_COMMAND(rectangle, Data->SortKey);
             INSERT_RENDER_COMMAND(circle, Data->SortKey);
             INSERT_RENDER_COMMAND(line, Data->SortKey);
@@ -1134,7 +1251,7 @@ RenderBufferToBackBuffer(render_buffer *RenderBuffer, loaded_bitmap *BackBuffer)
         render_tree_data RenderTreeData[64];
         thread_progress ThreadProgress[64];
         // TODO(chris): Optimize this for the number of logical cores.
-        u32 CoreCount = 64;
+        u32 CoreCount = 1;
 #if 0
         SplitWorkIntoVerticalStrips(RenderBuffer, SortTree, BackBuffer->Memory, CoreCount,
             BackBuffer->Width, BackBuffer->Height, BackBuffer->Pitch,

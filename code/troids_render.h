@@ -10,6 +10,7 @@
 enum render_command
 {
     RenderCommand_bitmap,
+    RenderCommand_triangle,
     RenderCommand_rectangle,
     RenderCommand_circle,
     RenderCommand_line,
@@ -29,6 +30,15 @@ struct render_bitmap_data
     v4 Color;
     v3 Origin;
     loaded_bitmap *Bitmap;
+};
+
+struct render_triangle_data
+{
+    r32 SortKey;
+    v3 A;
+    v3 B;
+    v3 C;
+    v4 Color;
 };
 
 struct render_rectangle_data
