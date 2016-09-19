@@ -373,13 +373,17 @@ CreateShip(game_state *State, v3 P, r32 Yaw)
     Ship->Yaw = Yaw;
     Ship->Collides = true;
     v2 HalfDim = Ship->Dim*0.5f;
-#if 1
+#if 0
     AddCollisionTriangle(Ship,
-                         V2(HalfDim.x, 0),
-                         V2(-HalfDim.x, HalfDim.y),
-                         V2(-HalfDim.x, -HalfDim.y));
+                         0.97f*V2(HalfDim.x, 0),
+                         0.96f*V2(-HalfDim.x, HalfDim.y),
+                         0.69f*V2(-HalfDim.x, 0));
+    AddCollisionTriangle(Ship,
+                         0.97f*V2(HalfDim.x, 0),
+                         0.69f*V2(-HalfDim.x, 0),
+                         0.96f*V2(-HalfDim.x, -HalfDim.y));
 #else
-    AddCollisionCircle(Ship, HalfDim.x);
+    AddCollisionCircle(Ship, HalfDim.x, V2(0.0f, 0.0f));
 #endif
     return(Ship);
 }
@@ -409,7 +413,11 @@ CreateAsteroid(game_state *State, v3 P, r32 Radius)
     Asteroid->P = P;
     Asteroid->Dim = 2.0f*V2(Radius, Radius);
     Asteroid->Collides = true;
+#if 0
+    AddCollisionCircle(Asteroid, Radius, V2(2.0f, 0.0f));
+#else
     AddCollisionCircle(Asteroid, Radius);
+#endif
     return(Asteroid);
 }
 
@@ -427,6 +435,47 @@ CreateBullet(game_state *State, v3 P, v3 dP, r32 Yaw)
     return(Bullet);
 }
 
+inline b32
+ProcessIntersection(r32 Intersection, r32 *tMove, r32 *tMax, v2 dP)
+{
+    b32 Result = false;
+    if(HasIntersection(Intersection))
+    {
+        r32 NormalizedEpsilonTest = LengthSq(Intersection*dP);
+        if(-COLLISION_EPSILON < NormalizedEpsilonTest && NormalizedEpsilonTest < COLLISION_EPSILON)
+        {
+            Intersection = 0.0f;
+        }
+        if(0.0f <= Intersection && Intersection < *tMax)
+        {
+            *tMove = Intersection;
+            Result = true;
+        }
+    }
+    return(Result);
+}
+
+inline b32
+ProcessIntersection(circle_ray_intersection_result Intersection, r32 *tMove, r32 *tMax, v2 dP)
+{
+    b32 Result = false;
+    if(HasIntersection(Intersection))
+    {
+        r32 t = Minimum(Intersection.t1, Intersection.t2);
+        r32 NormalizedEpsilonTest = LengthSq(t*dP);
+        if(-COLLISION_EPSILON < NormalizedEpsilonTest && NormalizedEpsilonTest < COLLISION_EPSILON)
+        {
+            t = 0.0f;
+        }
+        if(0.0f <= t && t < *tMax)
+        {
+            *tMove = t;
+            Result = true;
+        }
+    }
+    return(Result);
+}
+
 extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 {
 #if TROIDS_INTERNAL
@@ -436,9 +485,6 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     game_state *State = (game_state *)GameMemory->PermanentMemory;
     PlatformReadFile = GameMemory->PlatformReadFile;
     PlatformPushThreadWork = GameMemory->PlatformPushThreadWork;
-    v3 ShipStartingP = V3(0.0f, 0.0f, 0.0f);
-    r32 ShipStartingYaw = 0.0f;
-    v3 AsteroidStartingP = V3(50.0f, 0.0f, 0.0f);
 
     if(!State->IsInitialized)
     {
@@ -450,15 +496,23 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         State->AsteroidBitmap = LoadBitmap("asteroid_opaque.bmp");
         State->BulletBitmap = LoadBitmap("bullet.bmp");
 
-        entity *Ship = CreateShip(State, ShipStartingP, ShipStartingYaw);
+        entity *Ship = CreateShip(State, V3(0, 0, 0), 0.0f);
         entity *FloatingHead = CreateFloatingHead(State);
 
-        entity *SmallAsteroid = CreateAsteroid(State, AsteroidStartingP, 5.0f);
-        entity *SmallAsteroid2 = CreateAsteroid(State, AsteroidStartingP - V3(15.0f, 0, 0), 5.0f);
-        entity *SmallAsteroid3 = CreateAsteroid(State, AsteroidStartingP - V3(30.0f, 0, 0), 5.0f);
+        entity *SmallAsteroid = CreateAsteroid(State, V3(50.0f, 0.0f, 0.0f), 5.0f);
+#if 0
+        SmallAsteroid->P.x = SmallAsteroid->CollisionShapes[0].Radius +
+            Ship->CollisionShapes[0].TrianglePointA.x;
+#endif
+        entity *SmallAsteroid3 = CreateAsteroid(State, Ship->P + V3(0, 40.0f, 0), 5.0f);
+        entity *SmallAsteroid2 = CreateAsteroid(State, Ship->P + V3(0, 20.0f, 0), 5.0f);
 //        entity *SmallAsteroid2 = CreateAsteroid(State, V3(Perp(AsteroidStartingP.xy), 0), 10.0f);
-        entity *LargeAsteroid = CreateAsteroid(State, AsteroidStartingP + V3(30.0f, 30.0f, 0.0f), 10.0f);
+        entity *LargeAsteroid = CreateAsteroid(State, SmallAsteroid->P + V3(30.0f, 30.0f, 0.0f), 10.0f);
 
+        State->ShipStartingP = Ship->P;
+        State->ShipStartingYaw = Ship->Yaw;
+        State->AsteroidStartingP = SmallAsteroid->P;
+        
         State->CameraP = V3(Ship->P.xy, 100.0f);
     }
 
@@ -536,7 +590,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             {
                 if(Keyboard->Start.EndedDown || ShipController->Start.EndedDown)
                 {
-                    Entity->P = ShipStartingP;
+                    Entity->P = State->ShipStartingP;
                 }
 
                 r32 LeftStickX = (Keyboard->LeftStick.x ?
@@ -570,7 +624,11 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                     }
                 }
 
+#if 0
                 Acceleration += 5000.0f*Facing*Thrust;
+#else
+                Acceleration += 100.0f*Facing*Thrust;
+#endif
                 Entity->dP += Acceleration*Input->dtForFrame;
 
                 if(Entity->Timer > 0.0f)
@@ -603,11 +661,17 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
                     if(AsteroidController->Start.EndedDown)
                     {
-                        Entity->P = AsteroidStartingP;
+                        Entity->P = State->AsteroidStartingP;
                     }
+#if 0
                     v3 Acceleration = (5000.0f*V3(AsteroidController->LeftStick.x,
                                                   AsteroidController->LeftStick.y,
                                                   0.0f));
+#else
+                    v3 Acceleration = (100.0f*V3(AsteroidController->LeftStick.x,
+                                                  AsteroidController->LeftStick.y,
+                                                  0.0f));
+#endif
 
                     Entity->dP += Acceleration*Input->dtForFrame;
                 }
@@ -686,7 +750,6 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         if(Entity->Collides)
         {
             Entity->BoundingRadius = CalculateBoundingRadius(Entity);
-            Entity->tMove = 1.0f;
 #if DEBUG_COLLISION
             Entity->BoundingCircleCollided = false;
             for(u32 ShapeIndex = 0;
@@ -707,98 +770,306 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         ++EntityIndex)
     {
         entity *Entity = State->Entities + EntityIndex;
-        entity *CollidedWith = 0;
-#if DEBUG_COLLISION
-        collision_shape *CollidedWithShape = 0;
-#endif
-        v3 OldP = Entity->P;
-        v3 NewP = OldP + Input->dtForFrame*Entity->dP*Entity->tMove;
-        v3 dP = NewP - OldP;
-        if(Entity->Collides && (dP.x != 0 || dP.y != 0))
+        r32 tMax = 1.0f;
+        if(Entity->Collides)
         {
-            r32 InvdPY = 1.0f / dP.y;
-            for(u32 OtherEntityIndex = 0;
-                OtherEntityIndex < State->EntityCount;
-                ++OtherEntityIndex)
+            for(u32 CollisionIndex = 0;
+                CollisionIndex < COLLISION_ITERATIONS;
+                ++CollisionIndex)
             {
-                entity *OtherEntity = State->Entities + OtherEntityIndex;
-                if(!OtherEntity->Collides || (OtherEntityIndex == EntityIndex)) continue;
-
-                r32 tMin = -1.0f;
-                r32 tMax = tMin;
+                entity *CollidedWith = 0;
+                collision_shape *CollidingShape = 0;
+                collision_shape *OtherCollidingShape = 0;
+                v3 PointOfIntersection = {};
+                v3 OldP = Entity->P;
+                v3 NewP = OldP + Input->dtForFrame*Entity->dP;
+                v3 dP = NewP - OldP;
+                r32 OldYaw = Entity->Yaw;
+                r32 NewYaw = OldYaw + Input->dtForFrame*Entity->dYaw;
+                r32 dYaw = NewYaw - OldYaw;
+                r32 tMove = tMax;
+                if(dP.x != 0 || dP.y != 0)
                 {
-                    r32 HitRadius = OtherEntity->BoundingRadius + Entity->BoundingRadius;
-
-                    circle_intersection_result Intersection =
-                        CircleLineIntersection(OtherEntity->P.xy, HitRadius, OldP.xy, NewP.xy);
-
-                    if(Intersection.Discriminant > 0)
+                    r32 InvdPY = 1.0f / dP.y;
+                    for(u32 OtherEntityIndex = 0;
+                        OtherEntityIndex < State->EntityCount;
+                        ++OtherEntityIndex)
                     {
-                        tMin = Clamp(0.0f, (Intersection.Y1 - OldP.y)*InvdPY, Entity->tMove);
-                        tMax = Clamp(0.0f, (Intersection.Y2 - OldP.y)*InvdPY, Entity->tMove);
-                        if(tMax < tMin)
+                        entity *OtherEntity = State->Entities + OtherEntityIndex;
+                        if(!OtherEntity->Collides || (OtherEntityIndex == EntityIndex)) continue;
+
+                        r32 t1 = -1.0f;
+                        r32 t2 = t1;
                         {
-                            r32 Temp = tMin;
-                            tMin = tMax;
-                            tMax = Temp;
-                        }
-                    }
-                }
+                            r32 HitRadius = OtherEntity->BoundingRadius + Entity->BoundingRadius;
 
-                if(tMin != tMax)
-                {
-#if DEBUG_COLLISION
-                    Entity->BoundingCircleCollided = true;
-                    OtherEntity->BoundingCircleCollided = true;
-#endif
-                    // TODO(chris): Search actual collision shapes
-                    collision_shape *CollisionShape = Entity->CollisionShapes + 0;
-                    collision_shape *OtherCollisionShape = OtherEntity->CollisionShapes + 0;
+                            circle_ray_intersection_result Intersection =
+                                CircleRayIntersection(OtherEntity->P.xy, HitRadius, OldP.xy, NewP.xy);
 
-                    if(CollisionShape->Type == CollisionShapeType_Triangle &&
-                       OtherCollisionShape->Type == CollisionShapeType_Triangle)
-                    {
-                        NotImplemented;
-                    }
-                    else if(CollisionShape->Type == CollisionShapeType_Circle &&
-                            OtherCollisionShape->Type == CollisionShapeType_Circle)
-                    {
-                        r32 HitRadius = CollisionShape->Radius + OtherCollisionShape->Radius;
-                        v2 HitCenter = (OtherEntity->P.xy + OtherCollisionShape->Center - CollisionShape->Center);
-
-                        b32 Overlapping = LengthSq(OldP.xy - HitCenter) < (HitRadius*HitRadius);
-                        Assert(!Overlapping);
-
-                        circle_intersection_result Intersection =
-                                                                          CircleLineIntersection(HitCenter, HitRadius, OldP.xy, NewP.xy);
-
-                        if(Intersection.Discriminant > 0)
-                        {
-                            r32 tMove = Minimum((Intersection.Y1 - OldP.y)*InvdPY,
-                                                (Intersection.Y2 - OldP.y)*InvdPY);
-                            if(tMove >= 0 && tMove < Entity->tMove)
+                            if(HasIntersection(Intersection))
                             {
-                                Entity->tMove = tMove;
-                                CollidedWith = OtherEntity;
+                                t1 = Clamp(0.0f, Intersection.t1, tMax);
+                                t2 = Clamp(0.0f, Intersection.t2, tMax);
+                            }
+                        }
+
+                        if(t1 != t2)
+                        {
 #if DEBUG_COLLISION
-                                CollisionShape->Collided = true;
-                                CollidedWithShape = OtherCollisionShape;
+                            Entity->BoundingCircleCollided = true;
+                            OtherEntity->BoundingCircleCollided = true;
 #endif
+                            // TODO(chris): Search actual collision shapes
+                            for(u32 CollisionShapeIndex = 0;
+                                CollisionShapeIndex < Entity->CollisionShapeCount;
+                                ++CollisionShapeIndex)
+                            {
+                                for(u32 OtherCollisionShapeIndex = 0;
+                                    OtherCollisionShapeIndex < OtherEntity->CollisionShapeCount;
+                                    ++OtherCollisionShapeIndex)
+                                {
+                                    collision_shape *CollisionShape = Entity->CollisionShapes + CollisionShapeIndex;
+                                    collision_shape *OtherCollisionShape = OtherEntity->CollisionShapes + OtherCollisionShapeIndex;
+
+                                    if(CollisionShape->Type == CollisionShapeType_Triangle &&
+                                       OtherCollisionShape->Type == CollisionShapeType_Triangle)
+                                    {
+                                        NotImplemented;
+                                    }
+                                    else if(CollisionShape->Type == CollisionShapeType_Circle &&
+                                            OtherCollisionShape->Type == CollisionShapeType_Circle)
+                                    {
+                                        r32 HitRadius = CollisionShape->Radius + OtherCollisionShape->Radius;
+                                        v2 HitCenter = (OtherEntity->P.xy +
+                                                        RotateZ(OtherCollisionShape->Center, OtherEntity->Yaw)
+                                                        - RotateZ(CollisionShape->Center, Entity->Yaw));
+
+                                        r32 OverlapDelta = LengthSq(OldP.xy - HitCenter) - (HitRadius*HitRadius);
+                                        b32 Overlapping = OverlapDelta < -COLLISION_EPSILON;
+//                                        Assert(!Overlapping);
+
+                                        circle_ray_intersection_result Intersection =
+                                                                         CircleRayIntersection(HitCenter, HitRadius, OldP.xy, NewP.xy);
+
+                                        if(ProcessIntersection(Intersection, &tMove, &tMax, NewP.xy - OldP.xy))
+                                        {
+                                            CollidedWith = OtherEntity;
+                                            CollidingShape = CollisionShape;
+                                            OtherCollidingShape = OtherCollisionShape;
+                                            PointOfIntersection = OldP + dP*tMove;
+                                        }
+                                    }
+                                    else if((CollisionShape->Type == CollisionShapeType_Triangle &&
+                                             OtherCollisionShape->Type == CollisionShapeType_Circle) ||
+                                            (CollisionShape->Type == CollisionShapeType_Circle &&
+                                             OtherCollisionShape->Type == CollisionShapeType_Triangle))
+                                    {
+                                        v3 Start;
+                                        v3 End;
+                                        r32 Radius;
+                                        v2 A, B, C;
+                        
+                                        if(CollisionShape->Type == CollisionShapeType_Triangle)
+                                        {
+                                            Start = OtherEntity->P;
+                                            End = OtherEntity->P - Input->dtForFrame*Entity->dP;
+                                            Radius = OtherCollisionShape->Radius;
+                                            v2 CenterOffset = RotateZ(OtherCollisionShape->Center, OtherEntity->Yaw);
+                                            A = Entity->P.xy + RotateZ(CollisionShape->TrianglePointA, Entity->Yaw) -
+                                                CenterOffset;
+                                            B = Entity->P.xy + RotateZ(CollisionShape->TrianglePointB, Entity->Yaw) -
+                                                CenterOffset;
+                                            C = Entity->P.xy + RotateZ(CollisionShape->TrianglePointC, Entity->Yaw) -
+                                                CenterOffset;
+                                        }
+                                        else
+                                        {
+                                            Start = OldP;
+                                            End = NewP;
+                                            Radius = CollisionShape->Radius;
+                                            v2 CenterOffset = RotateZ(CollisionShape->Center, Entity->Yaw);
+                                            A = OtherEntity->P.xy +
+                                                RotateZ(OtherCollisionShape->TrianglePointA, OtherEntity->Yaw) -
+                                                CenterOffset;
+                                            B = OtherEntity->P.xy +
+                                                RotateZ(OtherCollisionShape->TrianglePointB, OtherEntity->Yaw) -
+                                                CenterOffset;
+                                            C = OtherEntity->P.xy +
+                                                RotateZ(OtherCollisionShape->TrianglePointC, OtherEntity->Yaw) -
+                                                CenterOffset;
+                                        }
+                        
+                                        v2 AB = B - A;
+                                        v2 BC = C - B;
+                                        v2 CA = A - C;
+                                        r32 ABLength = Length(AB);
+                                        r32 BCLength = Length(BC);
+                                        r32 CALength = Length(CA);
+                                        r32 InvABLength = 1.0f/ABLength;
+                                        r32 InvBCLength = 1.0f/BCLength;
+                                        r32 InvCALength = 1.0f/CALength;
+                                        v2 ABTranslate = -Perp(AB)*InvABLength*Radius;
+                                        v2 BCTranslate = -Perp(BC)*InvBCLength*Radius;
+                                        v2 CATranslate = -Perp(CA)*InvCALength*Radius;
+                                        v2 ABHitA = A + ABTranslate;
+                                        v2 ABHitB = B + ABTranslate;
+                                        v2 BCHitB = B + BCTranslate;
+                                        v2 BCHitC = C + BCTranslate;
+                                        v2 CAHitC = C + CATranslate;
+                                        v2 CAHitA = A + CATranslate;
+
+                                        circle_ray_intersection_result IntersectionA =
+                                            CircleRayIntersection(A, Radius, Start.xy, End.xy);
+                                        circle_ray_intersection_result IntersectionB =
+                                            CircleRayIntersection(B, Radius, Start.xy, End.xy);
+                                        circle_ray_intersection_result IntersectionC =
+                                            CircleRayIntersection(C, Radius, Start.xy, End.xy);
+
+                                        r32 IntersectionAB = SegmentRayIntersection(ABHitA, ABHitB, Start.xy, End.xy);
+                                        r32 IntersectionBC = SegmentRayIntersection(BCHitB, BCHitC, Start.xy, End.xy);
+                                        r32 IntersectionCA = SegmentRayIntersection(CAHitC, CAHitA, Start.xy, End.xy);
+
+                                        b32 IntersectionAUpdated = ProcessIntersection(IntersectionA, &tMove, &tMax, (End-Start).xy);
+                                        b32 IntersectionBUpdated = ProcessIntersection(IntersectionB, &tMove, &tMax, (End-Start).xy);
+                                        b32 IntersectionCUpdated = ProcessIntersection(IntersectionC, &tMove, &tMax, (End-Start).xy);
+                                        b32 IntersectionABUpdated = ProcessIntersection(IntersectionAB, &tMove, &tMax, (End-Start).xy);
+                                        b32 IntersectionBCUpdated = ProcessIntersection(IntersectionBC, &tMove, &tMax, (End-Start).xy);
+                                        b32 IntersectionCAUpdated = ProcessIntersection(IntersectionCA, &tMove, &tMax, (End-Start).xy);
+
+                                        if(IntersectionAUpdated || IntersectionBUpdated || IntersectionCUpdated ||
+                                           IntersectionABUpdated || IntersectionBCUpdated || IntersectionCAUpdated)
+                                        {
+                                            CollidedWith = OtherEntity;
+                                            CollidingShape = CollisionShape;
+                                            OtherCollidingShape = OtherCollisionShape;
+                                            PointOfIntersection = Start + (End-Start)*tMove;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        NotImplemented;
+                                    }
+                                }
                             }
                         }
                     }
-                    else
+                    dP = Entity->dP*Input->dtForFrame*tMove;
+                    Entity->P += dP;
+                    NewP = Entity->P;
+                    tMax -= tMove;
+
+                    if(CollidedWith)
                     {
-                        NotImplemented;
+                        // TODO(chris): Collision resolution
+#if DEBUG_COLLISION
+                        CollidingShape->Collided = true;
+                        OtherCollidingShape->Collided = true;
+#endif
+                        switch(OtherCollidingShape->Type)
+                        {
+                            case CollisionShapeType_Circle:
+                            {
+                                v3 RV = CollidedWith->P + V3(OtherCollidingShape->Center, 0) -
+                                    PointOfIntersection;
+                                v3 Adjustment = (-Inner(Entity->dP, RV)/LengthSq(RV))*RV;
+                                Entity->dP += Adjustment;
+                            } break;
+                        }
                     }
                 }
-            }
-            if(CollidedWith)
-            {
-                CollidedWith->tMove = 0.0f;
+                if(dYaw)
+                {
+                    // TODO(chris): Detect continuous collisions through rotation. Yikes.
+                    dYaw = Entity->dYaw*Input->dtForFrame*tMove;
+                    Entity->Yaw += dYaw;
+                    NewYaw = Entity->Yaw;
+                }
+
+                {
 #if DEBUG_COLLISION
-                CollidedWithShape->Collided = true;
+#define BOUNDING_EXTRUSION_Z_OFFSET -0.0004f
+#define BOUNDING_Z_OFFSET -0.0002f
+#define SHAPE_EXTRUSION_Z_OFFSET 0.0002f
+#define SHAPE_Z_OFFSET 0.0004f
+#if 0
+                    PushLine(RenderBuffer,
+                             Entity->P + V3(0, 0, 0.1f),
+                             Entity->P + Entity->dP + V3(0, 0, 0.1f),
+                             V4(0, 0, 1, 0));
 #endif
+                    v3 BoundingExtrusionOffset = V3(0, 0, BOUNDING_EXTRUSION_Z_OFFSET);
+                    v3 BoundingCircleOffset = V3(0, 0, BOUNDING_Z_OFFSET);
+                    v3 ShapeExtrusionOffset = V3(0, 0, SHAPE_EXTRUSION_Z_OFFSET);
+                    v3 ShapeOffset = V3(0, 0, SHAPE_Z_OFFSET);
+            
+                    v4 BoundingColor = Entity->BoundingCircleCollided ? V4(1, 0, 0, 1) : V4(1, 0, 1, 1);
+                    v4 BoundingExtrusionColor = Entity->BoundingCircleCollided ? V4(0.8f, 0, 0, 1) : V4(0.8f, 0, 0.8f, 1);
+                    PushCircle(RenderBuffer, OldP + BoundingCircleOffset, Entity->BoundingRadius, BoundingColor);
+                    PushCircle(RenderBuffer, NewP + BoundingCircleOffset, Entity->BoundingRadius, BoundingColor);
+
+                    r32 dPLength = Length(dP.xy);
+                    r32 InvdPLength = 1.0f / dPLength;
+                    v2 XAxis = InvdPLength*-Perp(dP.xy);
+                    v2 YAxis = Perp(XAxis);
+
+                    v2 BoundingDim = V2(2.0f*Entity->BoundingRadius, dPLength);
+                    PushRotatedRectangle(RenderBuffer, 0.5f*(OldP + NewP) + BoundingExtrusionOffset,
+                                         XAxis, YAxis, BoundingDim, BoundingExtrusionColor);
+#if 1
+                    for(u32 ShapeIndex = 0;
+                        ShapeIndex < Entity->CollisionShapeCount;
+                        ++ShapeIndex)
+                    {
+                        collision_shape *Shape = Entity->CollisionShapes + ShapeIndex;
+                        v4 ShapeColor = Shape->Collided ? V4(0, 1, 0, 1) : V4(0, 1, 1, 1);
+                        v4 ShapeExtrusionColor = Shape->Collided ? V4(0, 0.8f, 0, 1) : V4(0, 0.8f, 0.8f, 1);
+                        switch(Shape->Type)
+                        {
+                            case CollisionShapeType_Circle:
+                            {
+                                v3 Center = V3(Shape->Center, 0);
+                                v3 RotatedOldCenter = RotateZ(Center, OldYaw);
+                                v3 RotatedNewCenter = RotateZ(Center, NewYaw);
+                                PushCircle(RenderBuffer, OldP + RotatedOldCenter  + ShapeOffset,
+                                           Shape->Radius, ShapeColor);
+                                PushCircle(RenderBuffer, NewP + RotatedNewCenter + ShapeOffset,
+                                           Shape->Radius, ShapeColor);
+                                v2 ShapeDim = V2(2.0f*Shape->Radius, dPLength);
+                                PushRotatedRectangle(RenderBuffer,
+                                                     RotatedOldCenter + 0.5f*(OldP + NewP) + ShapeExtrusionOffset,
+                                                     XAxis, YAxis, ShapeDim, ShapeExtrusionColor);
+                            } break;
+
+                            case CollisionShapeType_Triangle:
+                            {
+                                v3 A = V3(Shape->TrianglePointA, 0);
+                                v3 B = V3(Shape->TrianglePointB, 0);
+                                v3 C = V3(Shape->TrianglePointC, 0);
+                                A = RotateZ(A, Entity->Yaw);
+                                B = RotateZ(B, Entity->Yaw);
+                                C = RotateZ(C, Entity->Yaw);
+                                PushTriangle(RenderBuffer,
+                                             OldP + A + ShapeOffset,
+                                             OldP + B + ShapeOffset,
+                                             OldP + C + ShapeOffset,
+                                             ShapeColor);
+                                PushTriangle(RenderBuffer,
+                                             NewP + A + ShapeOffset,
+                                             NewP + B + ShapeOffset,
+                                             NewP + C + ShapeOffset,
+                                             ShapeColor);
+                            } break;
+                        }
+                    }
+#endif
+#endif
+                }
+
+
+                if(tMax <= 0.0f)
+                {
+                    break;
+                }
             }
         }
     }
@@ -819,84 +1090,6 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         ++EntityIndex)
     {
         entity *Entity = State->Entities + EntityIndex;
-
-        v3 OldP = Entity->P;
-        v3 dP = Entity->dP*Input->dtForFrame*Entity->tMove;
-        Entity->P += dP;
-        v3 NewP = Entity->P;
-        // TODO(chris): Detect continuous collisions through rotation. Yikes.
-        Entity->Yaw += Entity->dYaw*Input->dtForFrame;
-
-        {
-#if DEBUG_COLLISION
-#define BOUNDING_EXTRUSION_Z_OFFSET -0.0002f
-#define BOUNDING_Z_OFFSET -0.0001f
-#define SHAPE_EXTRUSION_Z_OFFSET 0.0003f
-#define SHAPE_Z_OFFSET 0.0004f
-            v3 BoundingExtrusionOffset = V3(0, 0, BOUNDING_EXTRUSION_Z_OFFSET);
-            v3 BoundingCircleOffset = V3(0, 0, BOUNDING_Z_OFFSET);
-            v3 ShapeExtrusionOffset = V3(0, 0, SHAPE_EXTRUSION_Z_OFFSET);
-            v3 ShapeOffset = V3(0, 0, SHAPE_Z_OFFSET);
-            
-            v4 BoundingColor = Entity->BoundingCircleCollided ? V4(1, 0, 0, 1) : V4(1, 0, 1, 1);
-            v4 BoundingExtrusionColor = Entity->BoundingCircleCollided ? V4(0.8f, 0, 0, 1) : V4(0.8f, 0, 0.8f, 1);
-            PushCircle(RenderBuffer, OldP + BoundingCircleOffset, Entity->BoundingRadius, BoundingColor);
-            PushCircle(RenderBuffer, NewP + BoundingCircleOffset, Entity->BoundingRadius, BoundingColor);
-
-            r32 dPLength = Length(dP.xy);
-            r32 InvdPLength = 1.0f / dPLength;
-            v2 XAxis = InvdPLength*-Perp(dP.xy);
-            v2 YAxis = Perp(XAxis);
-
-            v2 Dim = V2(2.0f*Entity->BoundingRadius, dPLength);
-            PushRotatedRectangle(RenderBuffer, 0.5f*(OldP + NewP) + BoundingExtrusionOffset,
-                                 XAxis, YAxis, Dim, BoundingExtrusionColor);
-#if 1
-            for(u32 ShapeIndex = 0;
-                ShapeIndex < Entity->CollisionShapeCount;
-                ++ShapeIndex)
-            {
-                collision_shape *Shape = Entity->CollisionShapes + ShapeIndex;
-                v4 ShapeColor = Shape->Collided ? V4(0, 1, 0, 1) : V4(0, 1, 1, 1);
-                v4 ShapeExtrusionColor = Shape->Collided ? V4(0, 0.8f, 0, 1) : V4(0, 0.8f, 0.8f, 1);
-                switch(Shape->Type)
-                {
-                    case CollisionShapeType_Circle:
-                    {
-                        v3 Center = V3(Shape->Center, 0);
-                        PushCircle(RenderBuffer, OldP + Center + ShapeOffset,
-                                   Shape->Radius, ShapeColor);
-                        PushCircle(RenderBuffer, NewP + Center + ShapeOffset,
-                                   Shape->Radius, ShapeColor);
-                        PushRotatedRectangle(RenderBuffer,
-                                             Center + 0.5f*(OldP + NewP) + ShapeExtrusionOffset,
-                                             XAxis, YAxis, Dim, ShapeExtrusionColor);
-                    } break;
-
-                    case CollisionShapeType_Triangle:
-                    {
-                        v3 A = V3(Shape->TrianglePointA, 0);
-                        v3 B = V3(Shape->TrianglePointB, 0);
-                        v3 C = V3(Shape->TrianglePointC, 0);
-                        A = RotateZ(A, Entity->Yaw);
-                        B = RotateZ(B, Entity->Yaw);
-                        C = RotateZ(C, Entity->Yaw);
-                        PushTriangle(RenderBuffer,
-                                     OldP + A + ShapeOffset,
-                                     OldP + B + ShapeOffset,
-                                     OldP + C + ShapeOffset,
-                                     ShapeColor);
-                        PushTriangle(RenderBuffer,
-                                     NewP + A + ShapeOffset,
-                                     NewP + B + ShapeOffset,
-                                     NewP + C + ShapeOffset,
-                                     ShapeColor);
-                    } break;
-                }
-            }
-#endif
-#endif
-        }
         
         v3 Facing = V3(Cos(Entity->Yaw), Sin(Entity->Yaw), 0.0f);
         v2 YAxis = Facing.xy;
@@ -950,7 +1143,6 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
             InvalidDefaultCase;
         }
-        Entity->P = OldP;
     }
 
 #if 0

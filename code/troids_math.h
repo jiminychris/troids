@@ -316,6 +316,20 @@ operator*=(v3 &A, r32 C)
     return(A);
 }
 
+inline r32
+Inner(v3 A, v3 B)
+{
+    r32 Result = A.x*B.x + A.y*B.y + A.z*B.z;
+    return(Result);
+}
+
+inline r32
+LengthSq(v3 A)
+{
+    r32 Result = A.x*A.x + A.y*A.y + A.z*A.z;
+    return(Result);
+}
+
 inline v3
 Hadamard(v3 A, v3 B)
 {
@@ -605,15 +619,103 @@ RotateZ(v3 A, r32 Angle)
     return(Result);
 }
 
+inline v2
+RotateZ(v2 A, r32 Angle)
+{
+    r32 CosRot = Cos(Angle);
+    r32 SinRot = Sin(Angle);
+    m22 RotMat =
+    {
+        CosRot, -SinRot,
+        SinRot, CosRot,
+    };
+    v2 Result = RotMat*A;
+    return(Result);
+}
+
+struct circle_ray_intersection_result
+{
+    r32 t1;
+    r32 t2;
+};
+
+inline b32
+HasIntersection(circle_ray_intersection_result Intersection)
+{
+    b32 Result = (Intersection.t1 == Intersection.t1);
+    return(Result);
+}
+
+inline b32
+HasIntersection(r32 Intersection)
+{
+    b32 Result = (Intersection == Intersection);
+    return(Result);
+}
+
+// NOTE(chris): Returns the proportional time of intersection between A and B.
+inline circle_ray_intersection_result
+CircleRayIntersection(v2 P, r32 Radius, v2 A, v2 B)
+{
+    circle_ray_intersection_result Result = {NAN, NAN};
+    v2 RelativeA = A - P;
+    v2 RelativeB = B - P;
+    v2 dAB = B - A;
+    r32 dABLengthSq = LengthSq(dAB);
+    r32 InvdABLengthSq = 1.0f / dABLengthSq;
+    r32 D = RelativeA.x*RelativeB.y - RelativeB.x*RelativeA.y;
+
+    r32 Discriminant = Radius*Radius*dABLengthSq - D*D;
+    if(Discriminant >= 0)
+    {
+        r32 Root = SquareRoot(Discriminant);
+        Result.t1 = (-(RelativeA.x*dAB.x + RelativeA.y*dAB.y) - Root) / dABLengthSq;
+        Result.t2 = (-(RelativeA.x*dAB.x + RelativeA.y*dAB.y) + Root) / dABLengthSq;
+    }
+    return(Result);
+}
+
+inline r32
+SegmentRayIntersection(v2 A, v2 B, v2 C, v2 D)
+{
+    r32 Result = NAN;
+    
+    v2 dRay = D - C;
+    v2 dSegment = B - A;
+    r32 a = dSegment.y;
+    r32 b = -dSegment.x;
+    r32 Divisor = a*dRay.x + b*dRay.y;
+    if(Divisor != 0)
+    {
+        r32 c = a*A.x + b*A.y;
+        r32 t = (c - a*C.x - b*C.y) / Divisor;
+
+        r32 x = C.x + dRay.x*t;
+        r32 y = C.y + dRay.y*t;
+        
+        r32 XMin = Minimum(A.x, B.x);
+        r32 XMax = Maximum(A.x, B.x);
+        r32 YMin = Minimum(A.y, B.y);
+        r32 YMax = Maximum(A.y, B.y);
+        if(XMin <= x && x <= XMax && YMin <= y && y <= YMax)
+        {
+            Result = t;
+        }
+    }
+    return(Result);
+}
+
 struct circle_intersection_result
 {
     r32 Discriminant;
+    r32 X1;
     r32 Y1;
+    r32 X2;
     r32 Y2;
 };
 
 inline circle_intersection_result
-CircleLineIntersection(v2 P, r32 Radius, v2 A, v2 B)
+CircleLineIntersection_(v2 P, r32 Radius, v2 A, v2 B)
 {
     circle_intersection_result Result = {};
     v2 RelativeA = A - P;
@@ -630,6 +732,20 @@ CircleLineIntersection(v2 P, r32 Radius, v2 A, v2 B)
         r32 Root = AbsoluteValue(dAB.y)*SquareRoot(Result.Discriminant);
         Result.Y1 = (Ddx + Root)*InvdABLengthSq + P.y;
         Result.Y2 = (Ddx - Root)*InvdABLengthSq + P.y;
+#if 0
+        // NOTE(chris): Equation of line is ax + by = c
+        // where a = dy, b = -dx, c = ax0 + by0
+        // and x = (c - by) / a if dy != 0
+        r32 a = dAB.y;
+        r32 b = -dAB.x;
+        r32 c = a*A.x + b*A.y;
+        if(dAB.y != 0)
+        {
+            Result.X1 = (c - b*Result.Y1) / a;
+        }
+        Result.X1 = (Ddx + Root)*InvdABLengthSq + P.y;
+        Result.X2 = (Ddx - Root)*InvdABLengthSq + P.y;
+#endif
     }
     return(Result);
 }

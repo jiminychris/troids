@@ -15,6 +15,8 @@
 
 #define DEBUG_COLLISION 1
 #define DEBUG_COLLISION_UNDER 0
+#define COLLISION_EPSILON 0.000001f
+#define COLLISION_ITERATIONS 4
 
 platform_read_file *PlatformReadFile;
 platform_push_thread_work *PlatformPushThreadWork;
@@ -76,7 +78,6 @@ struct entity
 #if DEBUG_COLLISION
     b32 BoundingCircleCollided;
 #endif
-    r32 tMove;
     r32 BoundingRadius;
     u32 CollisionShapeCount;
     collision_shape CollisionShapes[8];
@@ -93,6 +94,10 @@ struct game_state
     r32 CameraRot;
     
     u32 RunningSampleCount;
+
+    v3 ShipStartingP;
+    r32 ShipStartingYaw;
+    v3 AsteroidStartingP;
 
     u32 EntityCount;
     entity Entities[256];

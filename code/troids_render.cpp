@@ -257,7 +257,7 @@ DrawFillBar(render_buffer *RenderBuffer, text_layout *Layout, u64 Used, u64 Max)
     DrawFillBar(RenderBuffer, Layout, (r32)Used, (r32)Max);
 }
 
-#if 0
+#if 1
 #pragma optimize("gts", on)
 #endif
 // TODO(chris): Further optimization
@@ -1251,7 +1251,7 @@ RenderBufferToBackBuffer(render_buffer *RenderBuffer, loaded_bitmap *BackBuffer)
         render_tree_data RenderTreeData[64];
         thread_progress ThreadProgress[64];
         // TODO(chris): Optimize this for the number of logical cores.
-        u32 CoreCount = 1;
+        u32 CoreCount = 64;
 #if 0
         SplitWorkIntoVerticalStrips(RenderBuffer, SortTree, BackBuffer->Memory, CoreCount,
             BackBuffer->Width, BackBuffer->Height, BackBuffer->Pitch,
