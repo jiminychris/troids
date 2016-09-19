@@ -182,6 +182,7 @@ struct debug_state
 
     b32 Paused;
     memory_arena Arena;
+    memory_arena StringArena;
     u32 EventStart;
     // TODO(chris): This has the unintended effect of ignoring everything. e.g., I want to ignore
     // only the events raised when drawing the debug display, but this would also ignore background

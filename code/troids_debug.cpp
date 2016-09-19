@@ -51,6 +51,17 @@ GetNodeNameLength(debug_node *Node)
     return(Result);
 }
 
+inline char *
+CopyString(memory_arena *Arena, char *String)
+{
+    char *Result = (char *)PushSize(Arena, 0);
+    do
+    {
+        *PushStruct(Arena, char) = *String;
+    } while(*String++);
+    return(Result);
+}
+
 internal debug_node *
 GetNode(u32 HashCount, debug_node **NodeHash, char *GUID, debug_event_type Type)
 {
@@ -87,7 +98,7 @@ GetNode(u32 HashCount, debug_node **NodeHash, char *GUID, debug_event_type Type)
         }
         Result->Type = Type;
         // TODO(chris): Does this need to be copied? Probably only if it's not a literal.
-        Result->GUID = GUID;
+        Result->GUID = CopyString(&GlobalDebugState->StringArena, GUID);
         Result->NextInHash = FirstInHash;
         NodeHash[Index] = Result;
     }
@@ -700,6 +711,33 @@ extern "C" DEBUG_COLLATE(DebugCollate)
                             }
                             NewFrame->NodeHash[NodeIndex] = 0;
                         }
+                        // TODO(chris): IMPORTANT Instead of this, check the global hash when creating
+                        // any new node and grab the string pointer out of there if it exists.
+#if 0
+                        for(u32 NodeIndex = 0;
+                            NodeIndex < ArrayCount(Frame->NodeHash);
+                            ++NodeIndex)
+                        {
+                            for(debug_node *Chain = Frame->NodeHash[NodeIndex];
+                                Chain;
+                                Chain = Chain->NextInHash)
+                            {
+                                debug_node *NewNode;
+                                if(GlobalDebugState->FirstFreeNode)
+                                {
+                                    NewNode = GlobalDebugState->FirstFreeNode;
+                                    GlobalDebugState->FirstFreeNode = NewNode->NextFree;
+                                }
+                                else
+                                {
+                                    NewNode = PushStruct(&GlobalDebugState->Arena, debug_node, PushFlag_Zero);
+                                }
+                                *NewNode = *Chain;
+                                NewNode->NextInHash = NewFrame->NodeHash[NodeIndex];
+                                NewFrame->NodeHash[NodeIndex] = NewNode;
+                            }
+                        }
+#endif
                         for(u32 ThreadIndex = 0;
                             ThreadIndex < NewFrame->ThreadCount;
                             ++ThreadIndex)

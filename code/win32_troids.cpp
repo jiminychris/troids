@@ -554,6 +554,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
             InitializeArena(&GlobalDebugState->Arena,
                             GameMemory.DebugMemorySize - sizeof(debug_state),
                             (u8 *)GameMemory.DebugMemory + sizeof(debug_state));
+            GlobalDebugState->StringArena = SubArena(&GlobalDebugState->Arena, Megabytes(16));
         
 #endif
 

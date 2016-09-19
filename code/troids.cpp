@@ -545,7 +545,9 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         DEBUG_EVENTS();
     }   
     {DEBUG_GROUP("Memory");
-        DEBUG_VALUE("TranArena", TranState->TranArena);
+        DEBUG_VALUE("Tran Arena", TranState->TranArena);
+        DEBUG_VALUE("String Arena", GlobalDebugState->StringArena);
+        DEBUG_VALUE("Render Arena", TranState->RenderBuffer.Arena);
     }
     {DEBUG_GROUP("Profiler");
         DEBUG_FRAME_TIMELINE();
