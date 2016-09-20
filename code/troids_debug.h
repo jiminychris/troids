@@ -337,7 +337,7 @@ struct debug_group
     {                                                                   \
         debug_node *Node = GetNode(Event);                              \
         LinkNode(Node, &Prev, GroupBeginStack, GroupBeginStackCount);   \
-        debug_node *FrameNode = GetNode(Frame, Event);                  \
+        debug_node *FrameNode = GetNode(Event, Frame);                  \
         FrameNode->Value_##TypeInit = Event->Value_##TypeInit;          \
     }
 #define LOG_DEBUG_TYPE(TypeInit)                    \

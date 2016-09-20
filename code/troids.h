@@ -13,7 +13,9 @@
 #include "troids_render.h"
 #include "troids_debug.h"
 
-#define DEBUG_COLLISION 1
+#define DEBUG_LINEAR_COLLISION 0
+#define DEBUG_ANGULAR_COLLISION 1
+#define DEBUG_COLLISION DEBUG_LINEAR_COLLISION|DEBUG_ANGULAR_COLLISION
 #define DEBUG_COLLISION_UNDER 0
 #define COLLISION_EPSILON 0.000001f
 #define COLLISION_ITERATIONS 4
@@ -23,9 +25,14 @@ platform_push_thread_work *PlatformPushThreadWork;
 
 enum collision_shape_type
 {
-    CollisionShapeType_Triangle,
-    CollisionShapeType_Circle,
+    CollisionShapeType_None = 0,
+    CollisionShapeType_Triangle = 1<<0,
+    CollisionShapeType_Circle = 1<<1,
 };
+
+global_variable const u32 CollisionShapePair_TriangleTriangle = CollisionShapeType_Triangle;
+global_variable const u32 CollisionShapePair_CircleCircle = CollisionShapeType_Circle;
+global_variable const u32 CollisionShapePair_TriangleCircle = CollisionShapeType_Circle&CollisionShapeType_Triangle;
 
 struct collision_shape
 {

@@ -373,7 +373,7 @@ CreateShip(game_state *State, v3 P, r32 Yaw)
     Ship->Yaw = Yaw;
     Ship->Collides = true;
     v2 HalfDim = Ship->Dim*0.5f;
-#if 0
+#if 1
     AddCollisionTriangle(Ship,
                          0.97f*V2(HalfDim.x, 0),
                          0.96f*V2(-HalfDim.x, HalfDim.y),
@@ -470,6 +470,43 @@ ProcessIntersection(circle_ray_intersection_result Intersection, r32 *tMove, r32
         if(0.0f <= t && t < *tMax)
         {
             *tMove = t;
+            Result = true;
+        }
+    }
+    return(Result);
+}
+
+inline b32
+ProcessIntersection(arc_segment_intersection_result Intersection, r32 Radius,
+                    r32 *tSpin, r32 *tMax, r32 dSpin)
+{
+    b32 Result = false;
+    r32 t;
+    if(HasIntersection(Intersection.t1))
+    {
+        t = Intersection.t1;
+        r32 NormalizedEpsilonTest = ArcLengthSq(Radius, t*dSpin);
+        if(-COLLISION_EPSILON < NormalizedEpsilonTest && NormalizedEpsilonTest < COLLISION_EPSILON)
+        {
+            t = 0.0f;
+        }
+        if(0.0f <= t && t < *tMax)
+        {
+            *tSpin = t;
+            Result = true;
+        }
+    }
+    if(HasIntersection(Intersection.t2))
+    {
+        t = Intersection.t2;
+        r32 NormalizedEpsilonTest = ArcLengthSq(Radius, t*dSpin);
+        if(-COLLISION_EPSILON < NormalizedEpsilonTest && NormalizedEpsilonTest < COLLISION_EPSILON)
+        {
+            t = 0.0f;
+        }
+        if(0.0f <= t && t < *tMax)
+        {
+            *tSpin = t;
             Result = true;
         }
     }
@@ -786,9 +823,6 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                 v3 OldP = Entity->P;
                 v3 NewP = OldP + Input->dtForFrame*Entity->dP;
                 v3 dP = NewP - OldP;
-                r32 OldYaw = Entity->Yaw;
-                r32 NewYaw = OldYaw + Input->dtForFrame*Entity->dYaw;
-                r32 dYaw = NewYaw - OldYaw;
                 r32 tMove = tMax;
                 if(dP.x != 0 || dP.y != 0)
                 {
@@ -817,11 +851,10 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
                         if(t1 != t2)
                         {
-#if DEBUG_COLLISION
+#if DEBUG_LINEAR_COLLISION
                             Entity->BoundingCircleCollided = true;
                             OtherEntity->BoundingCircleCollided = true;
 #endif
-                            // TODO(chris): Search actual collision shapes
                             for(u32 CollisionShapeIndex = 0;
                                 CollisionShapeIndex < Entity->CollisionShapeCount;
                                 ++CollisionShapeIndex)
@@ -833,123 +866,124 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                                     collision_shape *CollisionShape = Entity->CollisionShapes + CollisionShapeIndex;
                                     collision_shape *OtherCollisionShape = OtherEntity->CollisionShapes + OtherCollisionShapeIndex;
 
-                                    if(CollisionShape->Type == CollisionShapeType_Triangle &&
-                                       OtherCollisionShape->Type == CollisionShapeType_Triangle)
+                                    switch(CollisionShape->Type&OtherCollisionShape->Type)
                                     {
-                                        NotImplemented;
-                                    }
-                                    else if(CollisionShape->Type == CollisionShapeType_Circle &&
-                                            OtherCollisionShape->Type == CollisionShapeType_Circle)
-                                    {
-                                        r32 HitRadius = CollisionShape->Radius + OtherCollisionShape->Radius;
-                                        v2 HitCenter = (OtherEntity->P.xy +
-                                                        RotateZ(OtherCollisionShape->Center, OtherEntity->Yaw)
-                                                        - RotateZ(CollisionShape->Center, Entity->Yaw));
+                                        case CollisionShapePair_TriangleTriangle:
+                                        {
+                                            NotImplemented;
+                                        } break;
 
-                                        r32 OverlapDelta = LengthSq(OldP.xy - HitCenter) - (HitRadius*HitRadius);
-                                        b32 Overlapping = OverlapDelta < -COLLISION_EPSILON;
+                                        case CollisionShapePair_CircleCircle:
+                                        {
+                                            r32 HitRadius = CollisionShape->Radius + OtherCollisionShape->Radius;
+                                            v2 HitCenter = (OtherEntity->P.xy +
+                                                            RotateZ(OtherCollisionShape->Center, OtherEntity->Yaw)
+                                                            - RotateZ(CollisionShape->Center, Entity->Yaw));
+
+                                            r32 OverlapDelta = LengthSq(OldP.xy - HitCenter) - (HitRadius*HitRadius);
+                                            b32 Overlapping = OverlapDelta < -COLLISION_EPSILON;
 //                                        Assert(!Overlapping);
 
-                                        circle_ray_intersection_result Intersection =
-                                                                         CircleRayIntersection(HitCenter, HitRadius, OldP.xy, NewP.xy);
+                                            circle_ray_intersection_result Intersection =
+                                                                             CircleRayIntersection(HitCenter, HitRadius, OldP.xy, NewP.xy);
 
-                                        if(ProcessIntersection(Intersection, &tMove, &tMax, NewP.xy - OldP.xy))
+                                            if(ProcessIntersection(Intersection, &tMove, &tMax, NewP.xy - OldP.xy))
+                                            {
+                                                CollidedWith = OtherEntity;
+                                                CollidingShape = CollisionShape;
+                                                OtherCollidingShape = OtherCollisionShape;
+                                                PointOfIntersection = OldP + dP*tMove;
+                                            }
+                                        } break;
+
+                                        case CollisionShapePair_TriangleCircle:
                                         {
-                                            CollidedWith = OtherEntity;
-                                            CollidingShape = CollisionShape;
-                                            OtherCollidingShape = OtherCollisionShape;
-                                            PointOfIntersection = OldP + dP*tMove;
-                                        }
-                                    }
-                                    else if((CollisionShape->Type == CollisionShapeType_Triangle &&
-                                             OtherCollisionShape->Type == CollisionShapeType_Circle) ||
-                                            (CollisionShape->Type == CollisionShapeType_Circle &&
-                                             OtherCollisionShape->Type == CollisionShapeType_Triangle))
-                                    {
-                                        v3 Start;
-                                        v3 End;
-                                        r32 Radius;
-                                        v2 A, B, C;
+                                            v3 Start;
+                                            v3 End;
+                                            r32 Radius;
+                                            v2 A, B, C;
                         
-                                        if(CollisionShape->Type == CollisionShapeType_Triangle)
-                                        {
-                                            Start = OtherEntity->P;
-                                            End = OtherEntity->P - Input->dtForFrame*Entity->dP;
-                                            Radius = OtherCollisionShape->Radius;
-                                            v2 CenterOffset = RotateZ(OtherCollisionShape->Center, OtherEntity->Yaw);
-                                            A = Entity->P.xy + RotateZ(CollisionShape->TrianglePointA, Entity->Yaw) -
-                                                CenterOffset;
-                                            B = Entity->P.xy + RotateZ(CollisionShape->TrianglePointB, Entity->Yaw) -
-                                                CenterOffset;
-                                            C = Entity->P.xy + RotateZ(CollisionShape->TrianglePointC, Entity->Yaw) -
-                                                CenterOffset;
-                                        }
-                                        else
-                                        {
-                                            Start = OldP;
-                                            End = NewP;
-                                            Radius = CollisionShape->Radius;
-                                            v2 CenterOffset = RotateZ(CollisionShape->Center, Entity->Yaw);
-                                            A = OtherEntity->P.xy +
-                                                RotateZ(OtherCollisionShape->TrianglePointA, OtherEntity->Yaw) -
-                                                CenterOffset;
-                                            B = OtherEntity->P.xy +
-                                                RotateZ(OtherCollisionShape->TrianglePointB, OtherEntity->Yaw) -
-                                                CenterOffset;
-                                            C = OtherEntity->P.xy +
-                                                RotateZ(OtherCollisionShape->TrianglePointC, OtherEntity->Yaw) -
-                                                CenterOffset;
-                                        }
+                                            if(CollisionShape->Type == CollisionShapeType_Triangle)
+                                            {
+                                                Start = OtherEntity->P;
+                                                End = OtherEntity->P - Input->dtForFrame*Entity->dP;
+                                                Radius = OtherCollisionShape->Radius;
+                                                v2 CenterOffset = RotateZ(OtherCollisionShape->Center, OtherEntity->Yaw);
+                                                A = Entity->P.xy + RotateZ(CollisionShape->TrianglePointA, Entity->Yaw) -
+                                                    CenterOffset;
+                                                B = Entity->P.xy + RotateZ(CollisionShape->TrianglePointB, Entity->Yaw) -
+                                                    CenterOffset;
+                                                C = Entity->P.xy + RotateZ(CollisionShape->TrianglePointC, Entity->Yaw) -
+                                                    CenterOffset;
+                                            }
+                                            else
+                                            {
+                                                Start = OldP;
+                                                End = NewP;
+                                                Radius = CollisionShape->Radius;
+                                                v2 CenterOffset = RotateZ(CollisionShape->Center, Entity->Yaw);
+                                                A = OtherEntity->P.xy +
+                                                    RotateZ(OtherCollisionShape->TrianglePointA, OtherEntity->Yaw) -
+                                                    CenterOffset;
+                                                B = OtherEntity->P.xy +
+                                                    RotateZ(OtherCollisionShape->TrianglePointB, OtherEntity->Yaw) -
+                                                    CenterOffset;
+                                                C = OtherEntity->P.xy +
+                                                    RotateZ(OtherCollisionShape->TrianglePointC, OtherEntity->Yaw) -
+                                                    CenterOffset;
+                                            }
                         
-                                        v2 AB = B - A;
-                                        v2 BC = C - B;
-                                        v2 CA = A - C;
-                                        r32 ABLength = Length(AB);
-                                        r32 BCLength = Length(BC);
-                                        r32 CALength = Length(CA);
-                                        r32 InvABLength = 1.0f/ABLength;
-                                        r32 InvBCLength = 1.0f/BCLength;
-                                        r32 InvCALength = 1.0f/CALength;
-                                        v2 ABTranslate = -Perp(AB)*InvABLength*Radius;
-                                        v2 BCTranslate = -Perp(BC)*InvBCLength*Radius;
-                                        v2 CATranslate = -Perp(CA)*InvCALength*Radius;
-                                        v2 ABHitA = A + ABTranslate;
-                                        v2 ABHitB = B + ABTranslate;
-                                        v2 BCHitB = B + BCTranslate;
-                                        v2 BCHitC = C + BCTranslate;
-                                        v2 CAHitC = C + CATranslate;
-                                        v2 CAHitA = A + CATranslate;
+                                            v2 AB = B - A;
+                                            v2 BC = C - B;
+                                            v2 CA = A - C;
+                                            r32 ABLength = Length(AB);
+                                            r32 BCLength = Length(BC);
+                                            r32 CALength = Length(CA);
+                                            r32 InvABLength = 1.0f/ABLength;
+                                            r32 InvBCLength = 1.0f/BCLength;
+                                            r32 InvCALength = 1.0f/CALength;
+                                            v2 ABTranslate = -Perp(AB)*InvABLength*Radius;
+                                            v2 BCTranslate = -Perp(BC)*InvBCLength*Radius;
+                                            v2 CATranslate = -Perp(CA)*InvCALength*Radius;
+                                            v2 ABHitA = A + ABTranslate;
+                                            v2 ABHitB = B + ABTranslate;
+                                            v2 BCHitB = B + BCTranslate;
+                                            v2 BCHitC = C + BCTranslate;
+                                            v2 CAHitC = C + CATranslate;
+                                            v2 CAHitA = A + CATranslate;
 
-                                        circle_ray_intersection_result IntersectionA =
-                                            CircleRayIntersection(A, Radius, Start.xy, End.xy);
-                                        circle_ray_intersection_result IntersectionB =
-                                            CircleRayIntersection(B, Radius, Start.xy, End.xy);
-                                        circle_ray_intersection_result IntersectionC =
-                                            CircleRayIntersection(C, Radius, Start.xy, End.xy);
+                                            circle_ray_intersection_result IntersectionA =
+                                                CircleRayIntersection(A, Radius, Start.xy, End.xy);
+                                            circle_ray_intersection_result IntersectionB =
+                                                CircleRayIntersection(B, Radius, Start.xy, End.xy);
+                                            circle_ray_intersection_result IntersectionC =
+                                                CircleRayIntersection(C, Radius, Start.xy, End.xy);
 
-                                        r32 IntersectionAB = SegmentRayIntersection(ABHitA, ABHitB, Start.xy, End.xy);
-                                        r32 IntersectionBC = SegmentRayIntersection(BCHitB, BCHitC, Start.xy, End.xy);
-                                        r32 IntersectionCA = SegmentRayIntersection(CAHitC, CAHitA, Start.xy, End.xy);
+                                            r32 IntersectionAB = SegmentRayIntersection(ABHitA, ABHitB, Start.xy, End.xy);
+                                            r32 IntersectionBC = SegmentRayIntersection(BCHitB, BCHitC, Start.xy, End.xy);
+                                            r32 IntersectionCA = SegmentRayIntersection(CAHitC, CAHitA, Start.xy, End.xy);
 
-                                        b32 IntersectionAUpdated = ProcessIntersection(IntersectionA, &tMove, &tMax, (End-Start).xy);
-                                        b32 IntersectionBUpdated = ProcessIntersection(IntersectionB, &tMove, &tMax, (End-Start).xy);
-                                        b32 IntersectionCUpdated = ProcessIntersection(IntersectionC, &tMove, &tMax, (End-Start).xy);
-                                        b32 IntersectionABUpdated = ProcessIntersection(IntersectionAB, &tMove, &tMax, (End-Start).xy);
-                                        b32 IntersectionBCUpdated = ProcessIntersection(IntersectionBC, &tMove, &tMax, (End-Start).xy);
-                                        b32 IntersectionCAUpdated = ProcessIntersection(IntersectionCA, &tMove, &tMax, (End-Start).xy);
+                                            b32 IntersectionAUpdated = ProcessIntersection(IntersectionA, &tMove, &tMax, (End-Start).xy);
+                                            b32 IntersectionBUpdated = ProcessIntersection(IntersectionB, &tMove, &tMax, (End-Start).xy);
+                                            b32 IntersectionCUpdated = ProcessIntersection(IntersectionC, &tMove, &tMax, (End-Start).xy);
+                                            b32 IntersectionABUpdated = ProcessIntersection(IntersectionAB, &tMove, &tMax, (End-Start).xy);
+                                            b32 IntersectionBCUpdated = ProcessIntersection(IntersectionBC, &tMove, &tMax, (End-Start).xy);
+                                            b32 IntersectionCAUpdated = ProcessIntersection(IntersectionCA, &tMove, &tMax, (End-Start).xy);
 
-                                        if(IntersectionAUpdated || IntersectionBUpdated || IntersectionCUpdated ||
-                                           IntersectionABUpdated || IntersectionBCUpdated || IntersectionCAUpdated)
+                                            if(IntersectionAUpdated || IntersectionBUpdated || IntersectionCUpdated ||
+                                               IntersectionABUpdated || IntersectionBCUpdated || IntersectionCAUpdated)
+                                            {
+                                                CollidedWith = OtherEntity;
+                                                CollidingShape = CollisionShape;
+                                                OtherCollidingShape = OtherCollisionShape;
+                                                PointOfIntersection = Start + (End-Start)*tMove;
+                                            }
+                                        } break;
+
+                                        default:
                                         {
-                                            CollidedWith = OtherEntity;
-                                            CollidingShape = CollisionShape;
-                                            OtherCollidingShape = OtherCollisionShape;
-                                            PointOfIntersection = Start + (End-Start)*tMove;
-                                        }
-                                    }
-                                    else
-                                    {
-                                        NotImplemented;
+                                            NotImplemented;
+                                        } break;
                                     }
                                 }
                             }
@@ -963,7 +997,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                     if(CollidedWith)
                     {
                         // TODO(chris): Collision resolution
-#if DEBUG_COLLISION
+#if DEBUG_LINEAR_COLLISION
                         CollidingShape->Collided = true;
                         OtherCollidingShape->Collided = true;
 #endif
@@ -979,12 +1013,168 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                         }
                     }
                 }
+                
+                r32 OldYaw = Entity->Yaw;
+                r32 NewYaw = OldYaw + Input->dtForFrame*Entity->dYaw;
+                r32 dYaw = NewYaw - OldYaw;
                 if(dYaw)
                 {
+                    r32 tYawMax = tMove;
+                    for(u32 OtherEntityIndex = 0;
+                        OtherEntityIndex < State->EntityCount;
+                        ++OtherEntityIndex)
+                    {
+                        entity *OtherEntity = State->Entities + OtherEntityIndex;
+                        if(!OtherEntity->Collides || (OtherEntityIndex == EntityIndex)) continue;
+
+                        b32 BoundingBoxesOverlap;
+                        {
+                            r32 HitRadius = OtherEntity->BoundingRadius + Entity->BoundingRadius;
+
+                            BoundingBoxesOverlap = (HitRadius*HitRadius >=
+                                                    LengthSq(OtherEntity->P - Entity->P));
+                        }
+
+                        if(BoundingBoxesOverlap)
+                        {
+#if DEBUG_ANGULAR_COLLISION
+                            Entity->BoundingCircleCollided = true;
+                            OtherEntity->BoundingCircleCollided = true;
+#endif
+                            for(u32 CollisionShapeIndex = 0;
+                                CollisionShapeIndex < Entity->CollisionShapeCount;
+                                ++CollisionShapeIndex)
+                            {
+                                for(u32 OtherCollisionShapeIndex = 0;
+                                    OtherCollisionShapeIndex < OtherEntity->CollisionShapeCount;
+                                    ++OtherCollisionShapeIndex)
+                                {
+                                    collision_shape *CollisionShape = Entity->CollisionShapes + CollisionShapeIndex;
+                                    collision_shape *OtherCollisionShape = OtherEntity->CollisionShapes + OtherCollisionShapeIndex;
+
+                                    switch(CollisionShape->Type&OtherCollisionShape->Type)
+                                    {
+                                        case CollisionShapePair_TriangleTriangle:
+                                        {
+                                            NotImplemented;
+                                        } break;
+
+                                        case CollisionShapePair_CircleCircle:
+                                        {
+                                            NotImplemented;
+                                        } break;
+
+                                        case CollisionShapePair_TriangleCircle:
+                                        {
+                                            r32 StartYaw;
+                                            r32 EndYaw;
+                                            r32 Radius;
+                                            r32 RotationRadius;
+                                            v2 A, B, C;
+                        
+                                            if(CollisionShape->Type == CollisionShapeType_Triangle)
+                                            {
+                                                StartYaw = OtherEntity->Yaw;
+                                                EndYaw = OtherEntity->Yaw - Input->dtForFrame*Entity->Yaw;
+                                                Radius = OtherCollisionShape->Radius;
+                                                v2 CenterOffset = RotateZ(OtherCollisionShape->Center, OtherEntity->Yaw);
+                                                RotationRadius = Length(OtherEntity->P.xy + CenterOffset - Entity->P.xy);
+                                                A = Entity->P.xy + RotateZ(CollisionShape->TrianglePointA, Entity->Yaw) -
+                                                    CenterOffset;
+                                                B = Entity->P.xy + RotateZ(CollisionShape->TrianglePointB, Entity->Yaw) -
+                                                    CenterOffset;
+                                                C = Entity->P.xy + RotateZ(CollisionShape->TrianglePointC, Entity->Yaw) -
+                                                    CenterOffset;
+                                            }
+                                            else
+                                            {
+                                                StartYaw = OldYaw;
+                                                EndYaw = NewYaw;
+                                                Radius = CollisionShape->Radius;
+                                                v2 CenterOffset = RotateZ(CollisionShape->Center, Entity->Yaw);
+                                                RotationRadius = Length(Entity->P.xy + CenterOffset - OtherEntity->P.xy);
+                                                A = OtherEntity->P.xy +
+                                                    RotateZ(OtherCollisionShape->TrianglePointA, OtherEntity->Yaw) -
+                                                    CenterOffset;
+                                                B = OtherEntity->P.xy +
+                                                    RotateZ(OtherCollisionShape->TrianglePointB, OtherEntity->Yaw) -
+                                                    CenterOffset;
+                                                C = OtherEntity->P.xy +
+                                                    RotateZ(OtherCollisionShape->TrianglePointC, OtherEntity->Yaw) -
+                                                    CenterOffset;
+                                            }
+                        
+                                            v2 AB = B - A;
+                                            v2 BC = C - B;
+                                            v2 CA = A - C;
+                                            r32 ABLength = Length(AB);
+                                            r32 BCLength = Length(BC);
+                                            r32 CALength = Length(CA);
+                                            r32 InvABLength = 1.0f/ABLength;
+                                            r32 InvBCLength = 1.0f/BCLength;
+                                            r32 InvCALength = 1.0f/CALength;
+                                            v2 ABTranslate = -Perp(AB)*InvABLength*Radius;
+                                            v2 BCTranslate = -Perp(BC)*InvBCLength*Radius;
+                                            v2 CATranslate = -Perp(CA)*InvCALength*Radius;
+                                            v2 ABHitA = A + ABTranslate;
+                                            v2 ABHitB = B + ABTranslate;
+                                            v2 BCHitB = B + BCTranslate;
+                                            v2 BCHitC = C + BCTranslate;
+                                            v2 CAHitC = C + CATranslate;
+                                            v2 CAHitA = A + CATranslate;
+
+                                            arc_segment_intersection_result IntersectionAB =
+                                                ArcSegmentIntersection(Entity->P.xy, RotationRadius, StartYaw, EndYaw, ABHitA, ABHitB);
+                                            arc_segment_intersection_result IntersectionBC =
+                                                ArcSegmentIntersection(Entity->P.xy, RotationRadius, StartYaw, EndYaw, BCHitB, BCHitC);
+                                            arc_segment_intersection_result IntersectionCA =
+                                                ArcSegmentIntersection(Entity->P.xy, RotationRadius, StartYaw, EndYaw, CAHitC, CAHitA);
+
+                                            b32 IntersectionABUpdated = ProcessIntersection(IntersectionAB, RotationRadius, &tMove, &tYawMax, EndYaw - StartYaw);
+                                            b32 IntersectionBCUpdated = ProcessIntersection(IntersectionBC, RotationRadius, &tMove, &tYawMax, EndYaw - StartYaw);
+                                            b32 IntersectionCAUpdated = ProcessIntersection(IntersectionCA, RotationRadius, &tMove, &tYawMax, EndYaw - StartYaw);
+
+                                            if(IntersectionABUpdated || IntersectionBCUpdated || IntersectionCAUpdated)
+                                            {
+                                                CollidedWith = OtherEntity;
+                                                CollidingShape = CollisionShape;
+                                                OtherCollidingShape = OtherCollisionShape;
+//                                                PointOfIntersection = Start + (End-Start)*tMove;
+                                            }
+                                        } break;
+
+                                        default:
+                                        {
+                                            NotImplemented;
+                                        } break;
+                                    }
+                                }
+                            }
+                        }
+                    }
                     // TODO(chris): Detect continuous collisions through rotation. Yikes.
                     dYaw = Entity->dYaw*Input->dtForFrame*tMove;
                     Entity->Yaw += dYaw;
                     NewYaw = Entity->Yaw;
+
+                    if(CollidedWith)
+                    {
+                        // TODO(chris): Collision resolution
+#if DEBUG_ANGULAR_COLLISION
+                        CollidingShape->Collided = true;
+                        OtherCollidingShape->Collided = true;
+#endif
+                        switch(OtherCollidingShape->Type)
+                        {
+                            case CollisionShapeType_Circle:
+                            {
+                                v3 RV = CollidedWith->P + V3(OtherCollidingShape->Center, 0) -
+                                    PointOfIntersection;
+                                v3 Adjustment = (-Inner(Entity->dP, RV)/LengthSq(RV))*RV;
+                                Entity->dP += Adjustment;
+                            } break;
+                        }
+                    }
                 }
 
                 {

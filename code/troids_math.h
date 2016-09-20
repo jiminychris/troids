@@ -25,6 +25,13 @@ Cos(r32 A)
     return(Result);
 }
 
+inline r32
+InverseCos(r32 A)
+{
+    r32 Result = acosf(A);
+    return(Result);
+}
+
 inline s32
 Ceiling(r32 A)
 {
@@ -36,6 +43,13 @@ inline s32
 Floor(r32 A)
 {
     s32 Result = (s32)floorf(A);
+    return(Result);
+}
+
+inline r32
+Sign(r32 A)
+{
+    r32 Result = (A < 0) ? -1.0f : 1.0f;
     return(Result);
 }
 
@@ -702,6 +716,72 @@ SegmentRayIntersection(v2 A, v2 B, v2 C, v2 D)
             Result = t;
         }
     }
+    return(Result);
+}
+
+inline r32
+ArcLength(r32 Radius, r32 dTheta)
+{
+    r32 Proportion = dTheta/Tau;
+    r32 Circumference = Tau*Radius;
+    r32 Result = Circumference*Proportion;
+    return(Result);
+}
+
+inline r32
+ArcLengthSq(r32 Radius, r32 dTheta)
+{
+    r32 Proportion = dTheta/Tau;
+    r32 Circumference = Tau*Radius;
+    r32 ArcLength = Circumference*Proportion;
+    r32 Result = ArcLength*ArcLength;
+    return(Result);
+}
+
+struct arc_segment_intersection_result
+{
+    r32 t1;
+    r32 t2;
+};
+
+inline arc_segment_intersection_result
+ArcSegmentIntersection(v2 P, r32 Radius, r32 StartTheta, r32 EndTheta, v2 A, v2 B)
+{
+    arc_segment_intersection_result Result = {NAN, NAN};
+    circle_ray_intersection_result RayIntersection = CircleRayIntersection(P, Radius, A, B);
+    
+    if(HasIntersection(RayIntersection))
+    {
+        v2 dAB = B-A;
+        r32 dTheta = EndTheta - StartTheta;
+        v2 StartP = Radius*V2(Cos(StartTheta), Sin(StartTheta));
+        r32 InverseRadiusSq = 1.0f / (Radius*Radius);
+        v2 StartPerp = Perp(StartP);
+        r32 InverseAbsdTheta = 1.0f / AbsoluteValue(dTheta);
+        if(0 <= RayIntersection.t1 && RayIntersection.t1 <= 1)
+        {
+            v2 EndP = A + dAB*RayIntersection.t1;
+            r32 ThetaIntersect = InverseCos(Inner(StartP, EndP)*InverseRadiusSq);
+            r32 Direction = Inner(StartPerp, EndP);
+            if(Direction*dTheta < 0)
+            {
+                ThetaIntersect = Tau-ThetaIntersect;
+            }
+            Result.t1 = ThetaIntersect*InverseAbsdTheta;
+        }
+        if(0 <= RayIntersection.t2 && RayIntersection.t2 <= 1)
+        {
+            v2 EndP = A + dAB*RayIntersection.t2;
+            r32 ThetaIntersect = InverseCos(Inner(StartP, EndP)*InverseRadiusSq);
+            r32 Direction = Inner(StartPerp, EndP);
+            if(Direction*dTheta < 0)
+            {
+                ThetaIntersect = Tau-ThetaIntersect;
+            }
+            Result.t2 = ThetaIntersect*InverseAbsdTheta;
+        }
+    }
+    
     return(Result);
 }
 

@@ -63,9 +63,17 @@ CopyString(memory_arena *Arena, char *String)
 }
 
 internal debug_node *
-GetNode(u32 HashCount, debug_node **NodeHash, char *GUID, debug_event_type Type)
+GetNode(char *GUID, debug_event_type Type, debug_frame *Frame = 0)
 {
     debug_node *Result = 0;
+
+    u32 HashCount = ArrayCount(GlobalDebugState->NodeHash);
+    debug_node **NodeHash = GlobalDebugState->NodeHash;
+    if(Frame)
+    {
+        HashCount = ArrayCount(Frame->NodeHash);
+        NodeHash = Frame->NodeHash;
+    }
     
     // TODO(chris): Pass in sub arena instead?
     memory_arena *Arena = &GlobalDebugState->Arena;
@@ -98,7 +106,14 @@ GetNode(u32 HashCount, debug_node **NodeHash, char *GUID, debug_event_type Type)
         }
         Result->Type = Type;
         // TODO(chris): Does this need to be copied? Probably only if it's not a literal.
-        Result->GUID = CopyString(&GlobalDebugState->StringArena, GUID);
+        if(Frame)
+        {
+            Result->GUID = GetNode(GUID, Type)->GUID;
+        }
+        else
+        {
+            Result->GUID = CopyString(&GlobalDebugState->StringArena, GUID);
+        }
         Result->NextInHash = FirstInHash;
         NodeHash[Index] = Result;
     }
@@ -106,41 +121,17 @@ GetNode(u32 HashCount, debug_node **NodeHash, char *GUID, debug_event_type Type)
 }
 
 inline debug_node *
-GetNode(u32 HashCount, debug_node **NodeHash, char *GUID)
+GetNode(char *GUID, debug_frame *Frame = 0)
 {
-    debug_node *Result = GetNode(HashCount, NodeHash, GUID, DebugEventType_Name);
+    debug_node *Result = GetNode(GUID, DebugEventType_Name, Frame);
 
     return(Result);
 }
 
 inline debug_node *
-GetNode(u32 HashCount, debug_node **NodeHash, debug_event *Event)
+GetNode(debug_event *Event, debug_frame *Frame = 0)
 {
-    debug_node *Result = GetNode(HashCount, NodeHash, Event->Name, Event->Type);
-
-    return(Result);
-}
-
-inline debug_node *
-GetNode(debug_frame *Frame, char *GUID)
-{
-    debug_node *Result = GetNode(ArrayCount(Frame->NodeHash), Frame->NodeHash, GUID);
-
-    return(Result);
-}
-
-inline debug_node *
-GetNode(debug_frame *Frame, debug_event *Event)
-{
-    debug_node *Result = GetNode(ArrayCount(Frame->NodeHash), Frame->NodeHash, Event);
-
-    return(Result);
-}
-
-inline debug_node *
-GetNode(debug_event *Event)
-{
-    debug_node *Result = GetNode(ArrayCount(GlobalDebugState->NodeHash), GlobalDebugState->NodeHash, Event);
+    debug_node *Result = GetNode(Event->Name, Event->Type, Frame);
 
     return(Result);
 }
@@ -420,7 +411,7 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
             }
             else
             {
-                debug_node *FrameNode = GetNode(Frame, Node->GUID);
+                debug_node *FrameNode = GetNode(Node->GUID, Frame);
                 Used = FrameNode->Value_v2.x;
                 Max = FrameNode->Value_v2.y;
                 Name = Node->Name;
@@ -447,7 +438,7 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
             }
             else
             {
-                debug_node *FrameNode = GetNode(Frame, Node->GUID);
+                debug_node *FrameNode = GetNode(Node->GUID, Frame);
                 Arena = &FrameNode->Value_memory_arena;
                 Name = Node->Name;
             }
@@ -460,7 +451,7 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
 
         case DebugEventType_v2:
         {
-            debug_node *FrameNode = GetNode(Frame, Node->GUID);
+            debug_node *FrameNode = GetNode(Node->GUID, Frame);
             TextLength = _snprintf_s(Text, sizeof(Text), "%.*s: <%f, %f>", NameLength, Node->Name,
                                      FrameNode->Value_v2.x, FrameNode->Value_v2.y);
             DrawText(RenderBuffer, Layout, TextLength, Text);
@@ -468,7 +459,7 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
 
         case DebugEventType_b32:
         {
-            debug_node *FrameNode = GetNode(Frame, Node->GUID);
+            debug_node *FrameNode = GetNode(Node->GUID, Frame);
             TextLength = _snprintf_s(Text, sizeof(Text), "%.*s: %s", NameLength, Node->Name,
                                      FrameNode->Value_b32 ? "true" : "false");
             DrawText(RenderBuffer, Layout, TextLength, Text);
@@ -476,7 +467,7 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
 
         case DebugEventType_r32:
         {
-            debug_node *FrameNode = GetNode(Frame, Node->GUID);
+            debug_node *FrameNode = GetNode(Node->GUID, Frame);
             TextLength = _snprintf_s(Text, sizeof(Text), "%.*s: %f", NameLength, Node->Name,
                                      FrameNode->Value_r32);
             DrawText(RenderBuffer, Layout, TextLength, Text);
@@ -812,7 +803,7 @@ extern "C" DEBUG_COLLATE(DebugCollate)
                 {
                     debug_node *Node = GetNode(Event);
                     LinkNode(Node, &PrevNode, GroupBeginStack, GroupBeginStackCount);
-                    debug_node *FrameNode = GetNode(Frame, Event);
+                    debug_node *FrameNode = GetNode(Event, Frame);
                     FrameNode->Value_v2 = Event->Value_v2;
                 } break;
 
