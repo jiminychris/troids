@@ -13,15 +13,43 @@
 #include "troids_render.h"
 #include "troids_debug.h"
 
-#define DEBUG_LINEAR_COLLISION 0
-#define DEBUG_ANGULAR_COLLISION 1
+#define DEBUG_LINEAR_COLLISION 1
+#define DEBUG_ANGULAR_COLLISION 0
 #define DEBUG_COLLISION DEBUG_LINEAR_COLLISION|DEBUG_ANGULAR_COLLISION
-#define DEBUG_COLLISION_UNDER 0
-#define COLLISION_EPSILON 0.000001f
+#define COLLISION_EPSILON 0.01f
+#define COLLISION_T_ADJUST 0.1f
 #define COLLISION_ITERATIONS 4
 
 platform_read_file *PlatformReadFile;
 platform_push_thread_work *PlatformPushThreadWork;
+
+enum collision_type
+{
+    CollisionType_None,
+    CollisionType_Circle,
+    CollisionType_Line,
+};
+
+struct collision
+{
+    collision_type Type;
+    union
+    {
+        union
+        {
+            v2 LinePoints[2];
+            struct
+            {
+                v2 A;
+                v2 B;
+            };
+        };
+        struct
+        {
+            v2 Deflection;
+        };
+    };
+};
 
 enum collision_shape_type
 {
@@ -48,9 +76,9 @@ struct collision_shape
             v2 TrianglePoints[3];
             struct
             {
-                v2 TrianglePointA;
-                v2 TrianglePointB;
-                v2 TrianglePointC;
+                v2 A;
+                v2 B;
+                v2 C;
             };
         };
         struct

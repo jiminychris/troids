@@ -201,6 +201,15 @@ operator*(v2 A, r32 C)
 }
 
 inline v2
+operator/(v2 A, r32 C)
+{
+    v2 Result;
+    Result.x = A.x/C;
+    Result.y = A.y/C;
+    return(Result);
+}
+
+inline v2
 operator+=(v2 &A, v2 B)
 {
     A = A + B;
@@ -257,6 +266,13 @@ inline r32
 LengthSq(v2 A)
 {
     r32 Result = A.x*A.x + A.y*A.y;
+    return(Result);
+}
+
+inline v2
+Normalize(v2 A)
+{
+    v2 Result = A/Length(A);
     return(Result);
 }
 
@@ -355,6 +371,13 @@ inline r32
 LengthSq(v3 A)
 {
     r32 Result = A.x*A.x + A.y*A.y + A.z*A.z;
+    return(Result);
+}
+
+inline r32
+Length(v3 A)
+{
+    r32 Result = SquareRoot(A.x*A.x + A.y*A.y + A.z*A.z);
     return(Result);
 }
 
@@ -722,10 +745,9 @@ CircleRayIntersection(v2 P, r32 Radius, v2 A, v2 B)
     v2 RelativeB = B - P;
     v2 dAB = B - A;
     r32 dABLengthSq = LengthSq(dAB);
-    r32 InvdABLengthSq = 1.0f / dABLengthSq;
     r32 D = RelativeA.x*RelativeB.y - RelativeB.x*RelativeA.y;
 
-    r32 Discriminant = Radius*Radius*dABLengthSq - D*D;
+    r32 Discriminant = Square(Radius)*dABLengthSq - Square(D);
     if(Discriminant >= 0)
     {
         r32 Root = SquareRoot(Discriminant);
@@ -747,8 +769,7 @@ SegmentRayIntersection(v2 A, v2 B, v2 C, v2 D)
     r32 Divisor = a*dRay.x + b*dRay.y;
     if(Divisor != 0)
     {
-        r32 c = a*A.x + b*A.y;
-        r32 t = (c - a*C.x - b*C.y) / Divisor;
+        r32 t = (dSegment.y*(A.x - C.x) + dSegment.x*(C.y - A.y)) / Divisor;
 
         r32 x = C.x + dRay.x*t;
         r32 y = C.y + dRay.y*t;
