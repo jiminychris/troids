@@ -10,15 +10,9 @@
 #include "troids_platform.h"
 #include "troids_intrinsics.h"
 #include "troids_math.h"
+#include "troids_physics.h"
 #include "troids_render.h"
 #include "troids_debug.h"
-
-#define DEBUG_LINEAR_COLLISION 1
-#define DEBUG_ANGULAR_COLLISION 0
-#define DEBUG_COLLISION DEBUG_LINEAR_COLLISION|DEBUG_ANGULAR_COLLISION
-#define COLLISION_EPSILON 0.01f
-#define COLLISION_T_ADJUST 0.1f
-#define COLLISION_ITERATIONS 4
 
 platform_read_file *PlatformReadFile;
 platform_push_thread_work *PlatformPushThreadWork;
@@ -65,7 +59,7 @@ global_variable const u32 CollisionShapePair_TriangleCircle = CollisionShapeType
 struct collision_shape
 {
     collision_shape_type Type;
-#if DEBUG_COLLISION
+#if COLLISION_DEBUG
         b32 Collided;
 #endif
     union
@@ -110,7 +104,7 @@ struct entity
     v2 Dim;
 
     b32 Collides;
-#if DEBUG_COLLISION
+#if COLLISION_DEBUG
     b32 BoundingCircleCollided;
 #endif
     r32 BoundingRadius;

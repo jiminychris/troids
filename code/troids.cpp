@@ -10,6 +10,7 @@
 #include <stdio.h>
 
 #include "troids.h"
+#include "troids_physics.cpp"
 #include "troids_render.cpp"
 
 internal loaded_bitmap
@@ -296,7 +297,8 @@ CalculateBoundingRadius(entity *Entity)
         }
         MaxRadius = Maximum(Radius, MaxRadius);
     }
-    return(MaxRadius);
+    r32 Result = MaxRadius + 1.0f;
+    return(Result);
 }
 
 inline entity *
@@ -383,7 +385,7 @@ CreateShip(game_state *State, v3 P, r32 Yaw)
                          0.69f*V2(-HalfDim.x, 0),
                          0.96f*V2(-HalfDim.x, -HalfDim.y));
 #else
-#if 1
+#if 0
     AddCollisionTriangle(Ship,
                          4.0f*V2(HalfDim.x, 0),
                          4.0f*V2(-HalfDim.x, HalfDim.y),
@@ -441,117 +443,6 @@ CreateBullet(game_state *State, v3 P, v3 dP, r32 Yaw)
     Bullet->Collides = true;
     return(Bullet);
 }
-
-inline b32
-ProcessIntersection(r32 Intersection, r32 *tMove, r32 tMax, v2 dP)
-{
-    b32 Result = false;
-    if(HasIntersection(Intersection))
-    {
-        r32 NormalizedEpsilonTest = LengthSq(Intersection*dP);
-        if(-COLLISION_EPSILON < NormalizedEpsilonTest && NormalizedEpsilonTest < COLLISION_EPSILON)
-        {
-            Intersection = 0.0f;
-        }
-        if(0.0f <= Intersection && Intersection < tMax)
-        {
-            *tMove = Intersection;
-            Result = true;
-        }
-    }
-    return(Result);
-}
-
-inline b32
-ProcessIntersection(circle_ray_intersection_result Intersection, r32 *tMove, r32 tMax, v2 dP)
-{
-    b32 Result = false;
-    if(HasIntersection(Intersection))
-    {
-        r32 t = Minimum(Intersection.t1, Intersection.t2);
-        r32 NormalizedEpsilonTest = LengthSq(t*dP);
-        if(-COLLISION_EPSILON < NormalizedEpsilonTest && NormalizedEpsilonTest < COLLISION_EPSILON)
-        {
-            t = 0.0f;
-        }
-        if(0.0f <= t && t < tMax)
-        {
-            *tMove = t;
-            Result = true;
-        }
-    }
-    return(Result);
-}
-
-inline b32
-ProcessIntersection(arc_segment_intersection_result Intersection, r32 Radius,
-                    r32 *tSpin, r32 tMax, r32 dSpin)
-{
-    b32 Result = false;
-    r32 t;
-    if(HasIntersection(Intersection.t1))
-    {
-        t = Intersection.t1;
-        r32 NormalizedEpsilonTest = ArcLengthSq(Radius, t*dSpin);
-        if(-COLLISION_EPSILON < NormalizedEpsilonTest && NormalizedEpsilonTest < COLLISION_EPSILON)
-        {
-            t = 0.0f;
-        }
-        if(0.0f <= t && t < tMax)
-        {
-            *tSpin = t;
-            Result = true;
-        }
-    }
-    if(HasIntersection(Intersection.t2))
-    {
-        t = Intersection.t2;
-        r32 NormalizedEpsilonTest = ArcLengthSq(Radius, t*dSpin);
-        if(-COLLISION_EPSILON < NormalizedEpsilonTest && NormalizedEpsilonTest < COLLISION_EPSILON)
-        {
-            t = 0.0f;
-        }
-        if(0.0f <= t && t < tMax)
-        {
-            *tSpin = t;
-            Result = true;
-        }
-    }
-    return(Result);
-}
-
-inline b32
-ProcessIntersection(arc_circle_intersection_result Intersection, r32 Radius,
-                    r32 *tSpin, r32 tMax, r32 dSpin)
-{
-    b32 Result = false;
-    if(HasIntersection(Intersection))
-    {
-        r32 t = Minimum(Intersection.t1, Intersection.t2);
-        r32 NormalizedEpsilonTest = ArcLengthSq(Radius, t*dSpin);
-        if(-COLLISION_EPSILON < NormalizedEpsilonTest && NormalizedEpsilonTest < COLLISION_EPSILON)
-        {
-            t = 0.0f;
-        }
-        if(0.0f <= t && t < tMax)
-        {
-            *tSpin = t;
-            Result = true;
-        }
-    }
-    return(Result);
-}
-
-#if TROIDS_INTERNAL
-#define AssertPointOutsideCircle(Point, Center, RadiusSq)       \
-    {                                                           \
-        r32 OverlapDelta = LengthSq(Point - Center) - RadiusSq; \
-        b32 Overlapping = OverlapDelta < -COLLISION_EPSILON;    \
-        Assert(!Overlapping);                                   \
-    }
-#else
-#define AssertPointOutsideCircle(...)
-#endif
 
 extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 {
@@ -687,6 +578,8 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                 }
     
                 r32 MaxDYaw = 0.2*Tau;
+                // TODO(chris): IMPORTANT Now that I have a pretty clear grasp of what needs to be done,
+                // work on angular collision next!
 //                Entity->dYaw = Clamp(-MaxDYaw, Entity->dYaw + Input->dtForFrame*-LeftStickX, MaxDYaw);
     
                 v3 Acceleration = {};
@@ -829,7 +722,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         if(Entity->Collides)
         {
             Entity->BoundingRadius = CalculateBoundingRadius(Entity);
-#if DEBUG_COLLISION
+#if COLLISION_DEBUG
             Entity->BoundingCircleCollided = false;
             for(u32 ShapeIndex = 0;
                 ShapeIndex < Entity->CollisionShapeCount;
@@ -874,24 +767,17 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                         entity *OtherEntity = State->Entities + OtherEntityIndex;
                         if(!OtherEntity->Collides || (OtherEntityIndex == EntityIndex)) continue;
 
-                        r32 t1 = -1.0f;
-                        r32 t2 = t1;
+                        b32 BoundingBoxesOverlap;
                         {
                             r32 HitRadius = OtherEntity->BoundingRadius + Entity->BoundingRadius;
 
-                            circle_ray_intersection_result Intersection =
-                                CircleRayIntersection(OtherEntity->P.xy, HitRadius, OldP.xy, NewP.xy);
-
-                            if(HasIntersection(Intersection))
-                            {
-                                t1 = Clamp(0.0f, Intersection.t1, tMax);
-                                t2 = Clamp(0.0f, Intersection.t2, tMax);
-                            }
+                            BoundingBoxesOverlap = (Square(HitRadius) >=
+                                                    LengthSq(OtherEntity->P - Entity->P));
                         }
 
-                        if(t1 != t2)
+                        if(BoundingBoxesOverlap)
                         {
-#if DEBUG_LINEAR_COLLISION
+#if COLLISION_DEBUG_LINEAR
                             Entity->BoundingCircleCollided = true;
                             OtherEntity->BoundingCircleCollided = true;
 #endif
@@ -921,8 +807,6 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                                             r32 HitRadius = Shape->Radius + OtherShape->Radius;
                                             v2 HitCenter = (OtherEntity->P.xy +
                                                             RotateZ(OtherShape->Center, OtherEntity->Yaw));
-
-//                                            AssertPointOutsideCircle(Start, HitCenter, Square(HitRadius));
 
                                             circle_ray_intersection_result Intersection =
                                                                              CircleRayIntersection(HitCenter, HitRadius, Start, End);
@@ -988,21 +872,6 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                                             v2 CAHitC = C + CATranslate;
                                             v2 CAHitA = A + CATranslate;
 
-                                            r32 RadiusSq = Square(Radius);
-                                            AssertPointOutsideCircle(Start, A, RadiusSq);
-                                            AssertPointOutsideCircle(Start, B, RadiusSq);
-                                            AssertPointOutsideCircle(Start, C, RadiusSq);
-                                            {
-                                                b32 Overlapping = (Inner(AB, Start-ABHitA) >= COLLISION_EPSILON &&
-                                                                   Inner(Perp(AB), Start-ABHitA) >= COLLISION_EPSILON &&
-                                                                   Inner(BC, Start-BCHitB) >= COLLISION_EPSILON &&
-                                                                   Inner(Perp(BC), Start-BCHitB) >= COLLISION_EPSILON &&
-                                                                   Inner(CA, Start-CAHitC) >= COLLISION_EPSILON &&
-                                                                   Inner(Perp(CA), Start-CAHitC) >= COLLISION_EPSILON);
-                                                Assert(!Overlapping);
-                                            }
-
-
                                             circle_ray_intersection_result IntersectionA =
                                                 CircleRayIntersection(A, Radius, Start, End);
                                             circle_ray_intersection_result IntersectionB =
@@ -1010,9 +879,9 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                                             circle_ray_intersection_result IntersectionC =
                                                 CircleRayIntersection(C, Radius, Start, End);
 
-                                            r32 IntersectionAB = SegmentRayIntersection(ABHitA, ABHitB, Start, End);
-                                            r32 IntersectionBC = SegmentRayIntersection(BCHitB, BCHitC, Start, End);
-                                            r32 IntersectionCA = SegmentRayIntersection(CAHitC, CAHitA, Start, End);
+                                            r32 IntersectionAB = TriangleEdgeRayIntersection(ABHitA, ABHitB, Start, End, C);
+                                            r32 IntersectionBC = TriangleEdgeRayIntersection(BCHitB, BCHitC, Start, End, A);
+                                            r32 IntersectionCA = TriangleEdgeRayIntersection(CAHitC, CAHitA, Start, End, B);
 
                                             b32 IntersectionAUpdated = ProcessIntersection(IntersectionA, &tMove, tMax, dMove);
                                             b32 IntersectionBUpdated = ProcessIntersection(IntersectionB, &tMove, tMax, dMove);
@@ -1129,11 +998,11 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 #endif
                     Entity->P += Entity->dP*Input->dtForFrame*tMove;
                     tMax -= tMove;
-
+                    
                     if(CollidedWith)
                     {
                         // TODO(chris): Collision resolution
-#if DEBUG_LINEAR_COLLISION
+#if COLLISION_DEBUG_LINEAR
                         CollidingShape->Collided = true;
                         OtherCollidingShape->Collided = true;
 #endif
@@ -1150,7 +1019,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                                                   DeflectionMagnitudeSq));
                                 Assert(!IsNaN(Adjustment.x));
                                 Assert(!IsNaN(Adjustment.y));
-                                Entity->dP += V3(Adjustment, 0);
+                                Entity->dP += 1.01f*V3(Adjustment, 0);
                             }
                         } break;
 
@@ -1165,7 +1034,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                                                   DeflectionMagnitudeSq));
                                 Assert(!IsNaN(Adjustment.x));
                                 Assert(!IsNaN(Adjustment.y));
-                                Entity->dP += V3(Adjustment, 0);
+                                Entity->dP += 1.01f*V3(Adjustment, 0);
                             }
                         } break;
 
@@ -1202,7 +1071,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
                         if(BoundingBoxesOverlap)
                         {
-#if DEBUG_ANGULAR_COLLISION
+#if COLLISION_DEBUG_ANGULAR
                             Entity->BoundingCircleCollided = true;
                             OtherEntity->BoundingCircleCollided = true;
 #endif
@@ -1345,7 +1214,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
                     if(CollidedWith)
                     {
-#if DEBUG_ANGULAR_COLLISION
+#if COLLISION_DEBUG_ANGULAR
                         CollidingShape->Collided = true;
                         OtherCollidingShape->Collided = true;
 #endif
@@ -1361,12 +1230,12 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                 }
 
                 {
-#if DEBUG_COLLISION
+#if COLLISION_DEBUG
 #define BOUNDING_EXTRUSION_Z_OFFSET -0.0004f
 #define BOUNDING_Z_OFFSET -0.0002f
 #define SHAPE_EXTRUSION_Z_OFFSET 0.0002f
 #define SHAPE_Z_OFFSET 0.0004f
-#if 1
+#if 0
                     PushLine(RenderBuffer,
                              Entity->P + V3(0, 0, 0.1f),
                              Entity->P + Entity->dP + V3(0, 0, 0.1f),
