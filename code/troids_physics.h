@@ -7,7 +7,7 @@
    $Notice: $
    ======================================================================== */
 
-#define COLLISION_DEBUG_LINEAR 1
+#define COLLISION_DEBUG_LINEAR 0
 #define COLLISION_DEBUG_ANGULAR 0
 #define COLLISION_DEBUG COLLISION_DEBUG_LINEAR|COLLISION_DEBUG_ANGULAR
 #define COLLISION_T_ADJUST 0.1f
@@ -19,7 +19,7 @@ struct circle_ray_intersection_result
     r32 t2;
 };
 
-struct arc_segment_intersection_result
+struct arc_triangle_edge_intersection_result
 {
     r32 t1;
     r32 t2;

@@ -375,7 +375,7 @@ CreateShip(game_state *State, v3 P, r32 Yaw)
     Ship->Yaw = Yaw;
     Ship->Collides = true;
     v2 HalfDim = Ship->Dim*0.5f;
-#if 0
+#if 1
     AddCollisionTriangle(Ship,
                          0.97f*V2(HalfDim.x, 0),
                          0.96f*V2(-HalfDim.x, HalfDim.y),
@@ -385,7 +385,7 @@ CreateShip(game_state *State, v3 P, r32 Yaw)
                          0.69f*V2(-HalfDim.x, 0),
                          0.96f*V2(-HalfDim.x, -HalfDim.y));
 #else
-#if 0
+#if 1
     AddCollisionTriangle(Ship,
                          4.0f*V2(HalfDim.x, 0),
                          4.0f*V2(-HalfDim.x, HalfDim.y),
@@ -473,7 +473,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             Ship->CollisionShapes[0].A.x;
 #endif
         entity *SmallAsteroid3 = CreateAsteroid(State, Ship->P + V3(0, 40.0f, 0), 5.0f);
-        entity *SmallAsteroid2 = CreateAsteroid(State, Ship->P + V3(0, 28.0f, 0), 5.0f);
+        entity *SmallAsteroid2 = CreateAsteroid(State, Ship->P + V3(0, 20.0f, 0), 5.0f);
 //        entity *SmallAsteroid2 = CreateAsteroid(State, V3(Perp(AsteroidStartingP.xy), 0), 10.0f);
         entity *LargeAsteroid = CreateAsteroid(State, SmallAsteroid->P + V3(30.0f, 30.0f, 0.0f), 10.0f);
 
@@ -580,7 +580,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                 r32 MaxDYaw = 0.2*Tau;
                 // TODO(chris): IMPORTANT Now that I have a pretty clear grasp of what needs to be done,
                 // work on angular collision next!
-//                Entity->dYaw = Clamp(-MaxDYaw, Entity->dYaw + Input->dtForFrame*-LeftStickX, MaxDYaw);
+                Entity->dYaw = Clamp(-MaxDYaw, Entity->dYaw + Input->dtForFrame*-LeftStickX, MaxDYaw);
     
                 v3 Acceleration = {};
                 if((WentDown(ShipController->RightShoulder1) || WentDown(Keyboard->RightShoulder1)))
@@ -767,15 +767,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                         entity *OtherEntity = State->Entities + OtherEntityIndex;
                         if(!OtherEntity->Collides || (OtherEntityIndex == EntityIndex)) continue;
 
-                        b32 BoundingBoxesOverlap;
-                        {
-                            r32 HitRadius = OtherEntity->BoundingRadius + Entity->BoundingRadius;
-
-                            BoundingBoxesOverlap = (Square(HitRadius) >=
-                                                    LengthSq(OtherEntity->P - Entity->P));
-                        }
-
-                        if(BoundingBoxesOverlap)
+                        if(BoundingCirclesIntersect(Entity, OtherEntity, NewP))
                         {
 #if COLLISION_DEBUG_LINEAR
                             Entity->BoundingCircleCollided = true;
@@ -1169,12 +1161,12 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                                             v2 CAHitC = C + CATranslate;
                                             v2 CAHitA = A + CATranslate;
 
-                                            arc_segment_intersection_result IntersectionAB =
-                                                ArcSegmentIntersection(Entity->P.xy, RotationRadius, StartP, dYaw, ABHitA, ABHitB);
-                                            arc_segment_intersection_result IntersectionBC =
-                                                ArcSegmentIntersection(Entity->P.xy, RotationRadius, StartP, dYaw, BCHitB, BCHitC);
-                                            arc_segment_intersection_result IntersectionCA =
-                                                ArcSegmentIntersection(Entity->P.xy, RotationRadius, StartP, dYaw, CAHitC, CAHitA);
+                                            arc_triangle_edge_intersection_result IntersectionAB =
+                                                ArcTriangleEdgeIntersection(Entity->P.xy, RotationRadius, StartP, dYaw, ABHitA, ABHitB, C);
+                                            arc_triangle_edge_intersection_result IntersectionBC =
+                                                ArcTriangleEdgeIntersection(Entity->P.xy, RotationRadius, StartP, dYaw, BCHitB, BCHitC, A);
+                                            arc_triangle_edge_intersection_result IntersectionCA =
+                                                ArcTriangleEdgeIntersection(Entity->P.xy, RotationRadius, StartP, dYaw, CAHitC, CAHitA, B);
 
                                             arc_circle_intersection_result IntersectionA =
                                                 ArcCircleIntersection(Entity->P.xy, RotationRadius, StartP, dYaw, A, Radius);

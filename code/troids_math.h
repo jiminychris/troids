@@ -10,6 +10,7 @@
 #include <math.h>
 
 #define Tau 6.28318530717958647692528676655900576839433879875021f
+#define Pi 0.5f*Tau
 
 inline r32
 Sin(r32 A)

@@ -52,7 +52,7 @@ ProcessIntersection(circle_ray_intersection_result Intersection, r32 *tMove, r32
 }
 
 inline b32
-ProcessIntersection(arc_segment_intersection_result Intersection, r32 Radius,
+ProcessIntersection(arc_triangle_edge_intersection_result Intersection, r32 Radius,
                     r32 *tSpin, r32 tMax, r32 dSpin)
 {
     b32 Result = false;
@@ -126,6 +126,41 @@ ProcessIntersection(arc_circle_intersection_result Intersection, r32 Radius,
 #else
 #define AssertPointOutsideCircle(...)
 #endif
+
+inline b32
+BoundingCirclesIntersect(entity *Entity, entity *OtherEntity, v3 NewP)
+{
+    b32 Result = false;
+    r32 HitRadius = Entity->BoundingRadius + OtherEntity->BoundingRadius;
+    v2 HitP = OtherEntity->P.xy;
+    v2 A = Entity->P.xy;
+    v2 B = NewP.xy;
+    
+    v2 RelativeA = A - HitP;
+    v2 RelativeB = B - HitP;
+    v2 dRay = B - A;
+    v2 RayToCenter = HitP-A;
+    r32 RadiusSq = Square(HitRadius);
+    if(LengthSq(RayToCenter) <= RadiusSq)
+    {
+        Result = true;
+    }
+    else
+    {
+        r32 RayLengthSq = LengthSq(dRay);
+        r32 D = RelativeA.x*RelativeB.y - RelativeB.x*RelativeA.y;
+
+        r32 Discriminant = RadiusSq*RayLengthSq - Square(D);
+        if(Discriminant >= 0)
+        {
+            r32 Root = SquareRoot(Discriminant);
+            r32 t1 = (-(RelativeA.x*dRay.x + RelativeA.y*dRay.y) - Root) / RayLengthSq;
+            r32 t2 = (-(RelativeA.x*dRay.x + RelativeA.y*dRay.y) + Root) / RayLengthSq;
+            Result = (0.0f <= t1 && t1 <= 1.0f) || (0.0f <= t2 && t2 <= 1.0f);
+        }
+    }
+    return(Result);
+}
 
 // NOTE(chris): Returns the proportional time of intersection between A and B.
 inline circle_ray_intersection_result
@@ -223,61 +258,67 @@ ArcLengthSq(r32 Radius, r32 dTheta)
     return(Result);
 }
 
-inline arc_segment_intersection_result
-ArcSegmentIntersection(v2 P, r32 Radius, v2 StartP, r32 dTheta, v2 A, v2 B)
+// NOTE(chris): Assuming all triangles are counter-clockwise. i.e. EdgeA, EdgeB, InteriorPoint are
+// all clockwise.
+inline arc_triangle_edge_intersection_result
+ArcTriangleEdgeIntersection(v2 ArcCenter, r32 Radius, v2 StartP, r32 dTheta,
+                            v2 EdgeA, v2 EdgeB, v2 InteriorPoint)
 {
-    arc_segment_intersection_result Result = {NAN, NAN};
-    circle_ray_intersection_result RayIntersection = CircleRayIntersection(P, Radius, A, B);
+    arc_triangle_edge_intersection_result Result = {NAN, NAN};
+    v2 EdgeNormal = Perp(EdgeA-EdgeB);
     
-    if(HasIntersection(RayIntersection))
+    v2 RotationDirection = Sign(dTheta)*Perp(StartP-ArcCenter);
+    v2 dSegment = EdgeB - EdgeA;
+    // TODO(chris): Do two passes, where the first one cannot sweep more than pi radians.
+    // Not super important unless I plan on having things spinning that fast.
+    Assert(Square(dTheta) < Square(Pi));
+    if(Inner(EdgeNormal, RotationDirection) < 0.0f)
     {
-        v2 RelativeA = A - P;
-        v2 RelativeB = B - P;
-        v2 dAB = B-A;
-        r32 InverseRadiusSq = 1.0f / (Radius*Radius);
-        v2 RelativeStartP = StartP - P;
-        v2 StartPerp = Perp(RelativeStartP);
-        r32 InverseAbsdTheta = 1.0f / AbsoluteValue(dTheta);
-        if(0 <= RayIntersection.t1 && RayIntersection.t1 <= 1)
+        if(Inner(-EdgeNormal, StartP-EdgeB) > 0.0f &&
+           Inner(Perp(InteriorPoint-EdgeB), StartP-EdgeB) > 0.0f &&
+           Inner(Perp(EdgeA-InteriorPoint), StartP-InteriorPoint) > 0.0f)
         {
-            v2 EndP = RelativeA + dAB*RayIntersection.t1;
-            r32 ThetaIntersect = InverseCos(Inner(RelativeStartP, EndP)*InverseRadiusSq);
-            r32 Direction = Inner(StartPerp, EndP);
-            if(ThetaIntersect == 0.0f && Direction != 0.0f)
-            {
-                // TODO(chris): Something smarter here?
-                Result.t1 = Sign(Direction);
-            }
-            else
-            {
-                if(Direction*dTheta < 0)
-                {
-                    ThetaIntersect = Tau-ThetaIntersect;
-                }
-                Result.t1 = ThetaIntersect*InverseAbsdTheta;
-            }
+            Result.t1 = Result.t2 = 0.0f;
         }
-        if(0 <= RayIntersection.t2 && RayIntersection.t2 <= 1)
+        else
         {
-            v2 EndP = RelativeA + dAB*RayIntersection.t2;
-            r32 ThetaIntersect = InverseCos(Inner(RelativeStartP, EndP)*InverseRadiusSq);
-            r32 Direction = Inner(StartPerp, EndP);
-            if(ThetaIntersect == 0.0f && Direction != 0.0f)
+            circle_ray_intersection_result RayIntersection = CircleRayIntersection(ArcCenter, Radius,
+                                                                                   EdgeA, EdgeB);
+
+            if(HasIntersection(RayIntersection))
             {
-                // TODO(chris): Something smarter here?
-                Result.t2 = Sign(Direction);
-            }
-            else
-            {
-                if(Direction*dTheta < 0)
+                v2 RelativeA = EdgeA - ArcCenter;
+                v2 RelativeB = EdgeB - ArcCenter;
+                v2 dAB = EdgeB-EdgeA;
+                r32 InverseRadiusSq = 1.0f / (Radius*Radius);
+                v2 RelativeStartP = StartP - ArcCenter;
+                v2 StartPerp = Perp(RelativeStartP);
+                r32 InverseAbsdTheta = 1.0f / AbsoluteValue(dTheta);
+                if(0 <= RayIntersection.t1 && RayIntersection.t1 <= 1)
                 {
-                    ThetaIntersect = Tau-ThetaIntersect;
+                    v2 EndP = RelativeA + dAB*RayIntersection.t1;
+                    r32 ThetaIntersect = InverseCos(Inner(RelativeStartP, EndP)*InverseRadiusSq);
+                    r32 Direction = Inner(StartPerp, EndP);
+                    if(Direction*dTheta < 0)
+                    {
+                        ThetaIntersect = Tau-ThetaIntersect;
+                    }
+                    Result.t1 = ThetaIntersect*InverseAbsdTheta;
                 }
-                Result.t2 = ThetaIntersect*InverseAbsdTheta;
+                if(0 <= RayIntersection.t2 && RayIntersection.t2 <= 1)
+                {
+                    v2 EndP = RelativeA + dAB*RayIntersection.t2;
+                    r32 ThetaIntersect = InverseCos(Inner(RelativeStartP, EndP)*InverseRadiusSq);
+                    r32 Direction = Inner(StartPerp, EndP);
+                    if(Direction*dTheta < 0)
+                    {
+                        ThetaIntersect = Tau-ThetaIntersect;
+                    }
+                    Result.t2 = ThetaIntersect*InverseAbsdTheta;
+                }
             }
         }
     }
-    
     return(Result);
 }
 
@@ -308,100 +349,55 @@ ArcCircleIntersection(v2 ArcCenter, r32 ArcRadius, v2 StartP, r32 dTheta,
                       v2 CircleCenter, r32 CircleRadius)
 {
     arc_circle_intersection_result Result = {NAN, NAN};
-    circle_circle_intersection_result CircleIntersection =
-        CircleCircleIntersection(ArcCenter, ArcRadius, CircleCenter, CircleRadius);
     
-    if(HasIntersection(CircleIntersection))
+    v2 StartPToCircleCenter = CircleCenter - StartP;
+    v2 RotationDirection = Sign(dTheta)*Perp(StartP-ArcCenter);
+    // TODO(chris): Do two passes, where the first one cannot sweep more than pi radians.
+    // Not super important unless I plan on having things spinning that fast.
+    Assert(Square(dTheta) < Square(Pi));
+    if(Inner(RotationDirection, StartPToCircleCenter) > 0.0f)
     {
-        v2 RelativeStartP = StartP - ArcCenter;
-        r32 InverseRadiusSq = 1.0f / Square(ArcRadius);
-        r32 InverseAbsdTheta = 1.0f / AbsoluteValue(dTheta);
-        v2 StartPerp = Perp(RelativeStartP);
-
+        r32 CircleRadiusSq = Square(CircleRadius);
+        if(LengthSq(StartPToCircleCenter) <= CircleRadiusSq)
         {
-            v2 EndP = CircleIntersection.P1 - ArcCenter;
-            r32 Dot = Inner(RelativeStartP, EndP);
-            r32 ThetaIntersect = InverseCos(Dot*InverseRadiusSq);
-            r32 Direction = Inner(StartPerp, EndP);
-            if(ThetaIntersect == 0.0f && Direction != 0.0f)
-            {
-                // TODO(chris): Something smarter here?
-                Result.t1 = Sign(Direction);
-            }
-            else
-            {
-                if(Direction*dTheta < 0)
-                {
-                    ThetaIntersect = Tau-ThetaIntersect;
-                }
-                Result.t1 = ThetaIntersect*InverseAbsdTheta;
-            }
+            Result.t1 = Result.t2 = 0.0f;
         }
+        else
         {
-            v2 EndP = CircleIntersection.P2 - ArcCenter;
-            r32 Dot = Inner(RelativeStartP, EndP);
-            r32 ThetaIntersect = InverseCos(Dot*InverseRadiusSq);
-            r32 Direction = Inner(StartPerp, EndP);
-            if(ThetaIntersect == 0.0f && Direction != 0.0f)
-            {
-                // TODO(chris): Something smarter here?
-                Result.t1 = Sign(Direction);
-            }
-            else
-            {
-                if(Direction*dTheta < 0)
-                {
-                    ThetaIntersect = Tau-ThetaIntersect;
-                }
-                Result.t2 = ThetaIntersect*InverseAbsdTheta;
-            }
-        }
-    }
+            circle_circle_intersection_result CircleIntersection =
+                CircleCircleIntersection(ArcCenter, ArcRadius, CircleCenter, CircleRadius);
     
-    return(Result);
-}
+            if(HasIntersection(CircleIntersection))
+            {
+                v2 RelativeStartP = StartP - ArcCenter;
+                r32 InverseRadiusSq = 1.0f / Square(ArcRadius);
+                r32 InverseAbsdTheta = 1.0f / AbsoluteValue(dTheta);
+                v2 StartPerp = Perp(RelativeStartP);
 
-struct circle_intersection_result
-{
-    r32 Discriminant;
-    r32 X1;
-    r32 Y1;
-    r32 X2;
-    r32 Y2;
-};
-
-inline circle_intersection_result
-CircleLineIntersection_(v2 P, r32 Radius, v2 A, v2 B)
-{
-    circle_intersection_result Result = {};
-    v2 RelativeA = A - P;
-    v2 RelativeB = B - P;
-    v2 dAB = B - A;
-    r32 dABLengthSq = LengthSq(dAB);
-    r32 InvdABLengthSq = 1.0f / dABLengthSq;
-                    
-    r32 D = RelativeA.x*RelativeB.y - RelativeB.x*RelativeA.y;
-    Result.Discriminant = Radius*Radius*dABLengthSq - D*D;
-    if(Result.Discriminant >= 0)
-    {
-        r32 Ddx = -D*dAB.x;
-        r32 Root = AbsoluteValue(dAB.y)*SquareRoot(Result.Discriminant);
-        Result.Y1 = (Ddx + Root)*InvdABLengthSq + P.y;
-        Result.Y2 = (Ddx - Root)*InvdABLengthSq + P.y;
-#if 0
-        // NOTE(chris): Equation of line is ax + by = c
-        // where a = dy, b = -dx, c = ax0 + by0
-        // and x = (c - by) / a if dy != 0
-        r32 a = dAB.y;
-        r32 b = -dAB.x;
-        r32 c = a*A.x + b*A.y;
-        if(dAB.y != 0)
-        {
-            Result.X1 = (c - b*Result.Y1) / a;
+                {
+                    v2 EndP = CircleIntersection.P1 - ArcCenter;
+                    r32 Dot = Inner(RelativeStartP, EndP);
+                    r32 ThetaIntersect = InverseCos(Dot*InverseRadiusSq);
+                    r32 Direction = Inner(StartPerp, EndP);
+                    if(Direction*dTheta < 0)
+                    {
+                        ThetaIntersect = Tau-ThetaIntersect;
+                    }
+                    Result.t1 = ThetaIntersect*InverseAbsdTheta;
+                }
+                {
+                    v2 EndP = CircleIntersection.P2 - ArcCenter;
+                    r32 Dot = Inner(RelativeStartP, EndP);
+                    r32 ThetaIntersect = InverseCos(Dot*InverseRadiusSq);
+                    r32 Direction = Inner(StartPerp, EndP);
+                    if(Direction*dTheta < 0)
+                    {
+                        ThetaIntersect = Tau-ThetaIntersect;
+                    }
+                    Result.t2 = ThetaIntersect*InverseAbsdTheta;
+                }
+            }
         }
-        Result.X1 = (Ddx + Root)*InvdABLengthSq + P.y;
-        Result.X2 = (Ddx - Root)*InvdABLengthSq + P.y;
-#endif
     }
     return(Result);
 }
