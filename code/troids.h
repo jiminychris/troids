@@ -16,6 +16,7 @@
 
 platform_read_file *PlatformReadFile;
 platform_push_thread_work *PlatformPushThreadWork;
+platform_load_font *PlatformLoadFont;
 
 enum entity_type
 {
@@ -68,6 +69,8 @@ struct game_state
     physics_state PhysicsState;
 
     s32 Lives;
+    r32 Flicker;
+    b32 GameOver;
 
     u32 EntityCount;
     entity Entities[256];
@@ -75,6 +78,7 @@ struct game_state
     loaded_bitmap ShipBitmap;
     loaded_bitmap AsteroidBitmap;
     loaded_bitmap BulletBitmap;
+    loaded_font Font;
     loaded_obj HeadMesh;
 };
 

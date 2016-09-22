@@ -116,17 +116,6 @@ ProcessIntersection(arc_circle_intersection_result Intersection, r32 Radius,
     return(Result);
 }
 
-#if TROIDS_INTERNAL
-#define AssertPointOutsideCircle(Point, Center, RadiusSq)       \
-    {                                                           \
-        r32 OverlapDelta = LengthSq(Point - Center) - RadiusSq; \
-        b32 Overlapping = OverlapDelta < -COLLISION_EPSILON;    \
-        Assert(!Overlapping);                                   \
-    }
-#else
-#define AssertPointOutsideCircle(...)
-#endif
-
 inline b32
 BoundingCirclesIntersect(entity *Entity, entity *OtherEntity, v3 NewP)
 {

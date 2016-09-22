@@ -457,8 +457,11 @@ internal void
 ResetGame(game_state *State)
 {
     State->EntityCount = 0;
+
+    State->Flicker = 0.0f;
     
-    State->Lives = 3;
+    State->Lives = 1;
+    State->GameOver = State->Lives;
 
     State->ShipStartingP = V3(0, 0, 0);
     State->ShipStartingYaw = 0;
@@ -489,12 +492,15 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     game_state *State = (game_state *)GameMemory->PermanentMemory;
     PlatformReadFile = GameMemory->PlatformReadFile;
     PlatformPushThreadWork = GameMemory->PlatformPushThreadWork;
+    PlatformLoadFont = GameMemory->PlatformLoadFont;
 
     if(!State->IsInitialized)
     {
         State->IsInitialized = true;
 
         State->MetersToPixels = 3674.9418959066769192359305459154f;
+
+        PlatformLoadFont(&State->Font, "Arial", 128, FontWeight_Normal);
 
         for(u32 ColliderIndex = 0;
             ColliderIndex < ArrayCount(State->PhysicsState.ColliderTable);
@@ -514,8 +520,6 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         State->AsteroidBitmap = LoadBitmap("asteroid_opaque.bmp");
 #endif
         State->BulletBitmap = LoadBitmap("bullet.bmp");
-
-        ResetGame(State);
     }
 
     transient_state *TranState = (transient_state *)GameMemory->TemporaryMemory;
@@ -540,7 +544,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     RenderBuffer->CameraP = State->CameraP;
     RenderBuffer->CameraRot = State->CameraRot;
     temporary_memory RenderMemory = BeginTemporaryMemory(&RenderBuffer->Arena);
-    PushClear(RenderBuffer, V4(0.1f, 0.1f, 0.1f, 1.0f));
+    PushClear(RenderBuffer, V4(0.0f, 0.0f, 0.0f, 1.0f));
 
     DEBUG_SUMMARY();
     {DEBUG_GROUP("Debug System");
@@ -1297,8 +1301,11 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                     --State->Lives;
                     if(State->Lives)
                     {
-                        // TODO(chris): Reset!
                         CreateShip(State, State->ShipStartingP, State->ShipStartingYaw);
+                    }
+                    else
+                    {
+                        State->GameOver = true;
                     }
                 } break;
 
@@ -1344,25 +1351,73 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     if(!State->Lives)
     {
+        RenderBuffer->Projection = Projection_None;
+
+        text_layout Layout = {};
+        Layout.Font = &State->Font;
+        Layout.Scale = 0.6f;
+        Layout.Color = V4(1, 1, 1, 1);
+        v2 Center = 0.5f*V2i(RenderBuffer->Width, RenderBuffer->Height); 
+
+        // TODO(chris): Change this text for keyboard/controller?
+        // TODO(chris): Account for baseline
+        char PushStartText[] = "PUSH START";
+        rectangle2 PushStartRect = DrawText(RenderBuffer, &Layout,
+                                            sizeof(PushStartText)-1, PushStartText,
+                                            DrawTextFlags_Measure|DrawTextFlags_TightBounds);
+        v2 PushStartDim = GetDim(PushStartRect);
+        
+        if(State->GameOver)
+        {
+            Layout.Scale = 1.0f;
+            char GameOverText[] = "GAME OVER";
+            rectangle2 GameOverRect = DrawText(RenderBuffer, &Layout,
+                                           sizeof(GameOverText)-1, GameOverText,
+                                           DrawTextFlags_Measure|DrawTextFlags_TightBounds);
+            v2 GameOverDim = GetDim(GameOverRect);
+            r32 TotalY = GameOverDim.y+PushStartDim.y + 50.0f;
+            r32 HalfTotalY = 0.5f*TotalY;
+            Layout.P = V2(Center.x - 0.5f*GameOverDim.x, Center.y + (HalfTotalY-GameOverDim.y));
+            DrawText(RenderBuffer, &Layout, sizeof(GameOverText)-1, GameOverText);
+
+            Layout.P = V2(Center.x - 0.5f*PushStartDim.x, Center.y - HalfTotalY);
+            Layout.Scale = 0.6f;
+        }
+        else
+        {
+            Layout.Scale = 1.0f;
+            char TroidsText[] = "TROIDS";
+            rectangle2 TroidsRect = DrawText(RenderBuffer, &Layout,
+                                           sizeof(TroidsText)-1, TroidsText,
+                                           DrawTextFlags_Measure|DrawTextFlags_TightBounds);
+            v2 TroidsDim = GetDim(TroidsRect);
+            r32 TotalY = TroidsDim.y+PushStartDim.y + 50.0f;
+            r32 HalfTotalY = 0.5f*TotalY;
+            Layout.P = V2(Center.x - 0.5f*TroidsDim.x, Center.y + (HalfTotalY-TroidsDim.y));
+            DrawText(RenderBuffer, &Layout, sizeof(TroidsText)-1, TroidsText);
+
+            Layout.P = V2(Center.x - 0.5f*PushStartDim.x, Center.y - HalfTotalY);
+            Layout.Scale = 0.6f;
+        }
+
+        r32 Period = 0.5f;
+        b32 FlickerOn = (State->Flicker <= Period);
+        if(FlickerOn)
+        {
+            DrawText(RenderBuffer, &Layout, sizeof(PushStartText)-1, PushStartText);
+        }
+
+        State->Flicker += Input->dtForFrame;
+        if(State->Flicker >= 2.0f*Period)
+        {
+            State->Flicker = 0.0f;
+        }
+
         if(WentDown(ShipController->Start))
         {
             ResetGame(State);
         }
-        
-        RenderBuffer->Projection = Projection_None;
 
-        char GameOverText[] = "GAME OVER";
-        text_layout Layout = {};
-        Layout.Font = &GlobalDebugState->Font;
-        Layout.Scale = 1.0f;
-        Layout.Color = V4(1, 1, 1, 1);
-        rectangle2 TextRect = DrawText(RenderBuffer, &Layout,
-                                       sizeof(GameOverText)-1, GameOverText,
-                                       DrawTextFlags_Measure|DrawTextFlags_TightBounds);
-        v2 TextDim = GetDim(TextRect);
-        Layout.P = 0.5f*(V2i(RenderBuffer->Width, RenderBuffer->Height)-TextDim);
-        DrawText(RenderBuffer, &Layout, sizeof(GameOverText)-1, GameOverText);
-                        
         RenderBuffer->Projection = RenderBuffer->DefaultProjection;
     }
     

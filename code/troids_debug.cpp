@@ -577,15 +577,15 @@ GetThread(debug_frame *Frame, u32 ThreadID)
 
 extern "C" DEBUG_COLLATE(DebugCollate)
 {
+#if TROIDS_INTERNAL
     TIMED_FUNCTION();
-    debug_frame *Frame = GlobalDebugState->Frames + GlobalDebugState->CollatingFrameIndex;
+
     transient_state *TranState = (transient_state *)GameMemory->TemporaryMemory;
     if(!GlobalDebugState->IsInitialized)
     {
         GlobalDebugState->IsInitialized = true;
     }
-
-#if TROIDS_PROFILE
+    debug_frame *Frame = GlobalDebugState->Frames + GlobalDebugState->CollatingFrameIndex;
     memory_arena *DebugArena = &GlobalDebugState->Arena;
     Assert(TranState->IsInitialized);
     render_buffer *RenderBuffer = &TranState->RenderBuffer;
@@ -820,7 +820,9 @@ extern "C" DEBUG_COLLATE(DebugCollate)
             Layout.DropShadow = true;
             Layout.P = V2(0, BackBuffer->Height - Layout.Font->Ascent*Layout.Scale);
             Layout.Color = V4(1, 1, 1, 1);
+#if TROIDS_DEBUG_DISPLAY
             DrawNodes(RenderBuffer, &Layout, Frame, GlobalDebugState->NodeSentinel.Next, Input);
+#endif
         }
     }
 

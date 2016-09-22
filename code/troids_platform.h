@@ -211,7 +211,11 @@ Maximum(r64 A, r64 B)
     return(A);
 }
 
+#if TROIDS_SLOW
 #define Assert(Expr) {if(!(Expr)) int A = *((int *)0);}
+#else
+#define Assert(Expr)
+#endif
 #define InvalidCodePath Assert(!"Invalid code path");
 #define InvalidDefaultCase default: Assert(!"Invalid default case"); break;
 #define ArrayCount(Array) (sizeof(Array) / sizeof(Array[0]))
@@ -240,8 +244,6 @@ struct thread_progress
 
 #define THREAD_CALLBACK(Name) void Name(void *Params)
 typedef THREAD_CALLBACK(thread_callback);
-#define PLATFORM_PUSH_THREAD_WORK(Name) void Name(thread_callback *Callback, void *Params, thread_progress *Progress)
-typedef PLATFORM_PUSH_THREAD_WORK(platform_push_thread_work);
 
 struct thread_work
 {
@@ -260,6 +262,12 @@ struct loaded_bitmap
     void *Memory;
 };
 
+enum font_weight
+{
+    FontWeight_Normal,
+    FontWeight_Bold,
+};
+
 struct loaded_font
 {
     r32 Height;
@@ -268,6 +276,11 @@ struct loaded_font
     loaded_bitmap Glyphs[128];
     r32 KerningTable[128][128];
 };
+
+#define PLATFORM_PUSH_THREAD_WORK(Name) void Name(thread_callback *Callback, void *Params, thread_progress *Progress)
+typedef PLATFORM_PUSH_THREAD_WORK(platform_push_thread_work);
+#define PLATFORM_LOAD_FONT(Name) void Name(loaded_font *Font, char *FontName, u32 FontHeight, font_weight FontWeight)
+typedef PLATFORM_LOAD_FONT(platform_load_font);
 
 struct game_memory
 {
@@ -284,6 +297,7 @@ struct game_memory
 
     platform_read_file *PlatformReadFile;
     platform_push_thread_work *PlatformPushThreadWork;
+    platform_load_font *PlatformLoadFont;
 };
 
 struct memory_arena

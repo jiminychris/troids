@@ -736,8 +736,9 @@ ProcessGamePadInput(game_input *OldInput, game_input *NewInput)
                         XINPUT_VIBRATION Vibration;
                         Vibration.wLeftMotorSpeed = (u16)(OldGamePad->LowFrequencyMotor*(r32)0xFFFF + 0.5f);
                         Vibration.wRightMotorSpeed = (u16)(OldGamePad->HighFrequencyMotor*(r32)0xFFF + 0.5f);
-                        
-                        Assert(SUCCEEDED(XInputSetState(ActiveGamePad->XInputIndex, &Vibration)));
+
+                        b32 SetStateResult = XInputSetState(ActiveGamePad->XInputIndex, &Vibration);
+                        Assert(SUCCEEDED(SetStateResult));
                     }
 #endif
 

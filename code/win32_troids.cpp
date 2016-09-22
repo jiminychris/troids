@@ -6,63 +6,7 @@
    $Notice: $
    ======================================================================== */
 
-#define THREAD_QUEUE_SIZE 256
-
-#include <windows.h>
-#include <stdio.h>
-#include <dbt.h>
-#include <gl/gl.h>
-
-#include "troids_platform.h"
-#include "troids_intrinsics.h"
-#include "troids_debug.h"
-#include "troids_opengl.h"
-
-#if TROIDS_INTERNAL
-#define DATA_PATH "..\\troids\\data"
-#else
-#define DATA_PATH "data"
-#endif
-
-typedef BOOL WINAPI wgl_swap_interval_ext(int);
-    
-#include <dsound.h>
-#define DIRECT_SOUND_CREATE(Name) HRESULT WINAPI Name(LPCGUID pcGuidDevice, LPDIRECTSOUND *ppDS, LPUNKNOWN pUnkOuter);
-typedef DIRECT_SOUND_CREATE(direct_sound_create);
-
-#define CREATE_GUID(Name, x, y, z, a, b, c, d, e, f, g, h) const GUID Name = {x, y, z, {a, b, c, d, e, f, g, h}}
-#include "troids_input.h"
-#if 1
-#include "troids_dxinput.cpp"
-#else
-#include "troids_hid.cpp"
-#endif
-
-inline u32
-Minimum(u32 A, u32 B)
-{
-    if(B < A)
-    {
-        A = B;
-    }
-    return(A);
-}
-
-struct win32_backbuffer
-{
-    s32 Width;
-    s32 Height;
-    s32 Pitch;
-    BITMAPINFO Info;
-    void *Memory;
-};
-
-global_variable v2 GlobalMousePosition;
-global_variable game_button GlobalLeftMouse;
-global_variable win32_backbuffer GlobalBackBuffer;
-global_variable b32 GlobalRunning;
-
-global_variable WINDOWPLACEMENT PreviousWindowPlacement = { sizeof(PreviousWindowPlacement) };
+#include "win32_troids.h"
 
 inline void
 ToggleFullscreen(HWND Window)
@@ -317,13 +261,6 @@ LRESULT WindowProc(HWND Window,
     return(Result);
 }
 
-enum recording_state
-{
-    RecordingState_None,
-    RecordingState_Recording,
-    RecordingState_PlayingRecord,
-};
-
 internal read_file_result
 Win32ReadFile(char *FileName)
 {
@@ -386,11 +323,6 @@ FileExists(char *Path)
 
     return(Result);
 }
-
-global_variable thread_work GlobalThreadQueue[THREAD_QUEUE_SIZE];
-global_variable volatile u32 GlobalThreadQueueStartIndex = 0;
-global_variable u32 GlobalThreadQueueNextIndex = 0;
-global_variable HANDLE GlobalThreadQueueSemaphore;
 
 inline void
 Win32PushThreadWork(thread_callback *Callback, void *Params, thread_progress *Progress)
@@ -474,26 +406,31 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
         s32 BackBufferHeight = 1080;
         s32 WindowWidth = 1920/2;
         s32 WindowHeight = 1080/2;
-        HWND Window = CreateWindowExA(0,
-                                      WindowClass.lpszClassName,
-                                      "TROIDS",
-                                      WS_OVERLAPPEDWINDOW|WS_VISIBLE,
-                                      CW_USEDEFAULT,
-                                      CW_USEDEFAULT,
-                                      WindowWidth,
-                                      WindowHeight,
-                                      0,
-                                      0,
-                                      0,
-                                      0);
-        if(Window)
+        GlobalWindow = CreateWindowExA(0,
+                                       WindowClass.lpszClassName,
+                                       "TROIDS",
+                                       WS_OVERLAPPEDWINDOW|WS_VISIBLE,
+                                       CW_USEDEFAULT,
+                                       CW_USEDEFAULT,
+                                       WindowWidth,
+                                       WindowHeight,
+                                       0,
+                                       0,
+                                       0,
+                                       0);
+        if(GlobalWindow)
         {
+#if !TROIDS_INTERNAL
+            ShowCursor(false);
+#endif
+            
             u32 PathLength;
             char Path[MAX_PATH];
 
             char *DataPath = DATA_PATH;
             PathLength = GetCurrentDirectoryA(sizeof(Path), Path);
-            Assert(SetCurrentDirectory(DataPath));
+            b32 ChangeDirectorySucceeded = SetCurrentDirectory(DataPath);
+            Assert(ChangeDirectorySucceeded);
             PathLength = GetCurrentDirectoryA(sizeof(Path), Path);
             
             GlobalBackBuffer.Width = BackBufferWidth;
@@ -511,7 +448,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
             GlobalBackBuffer.Info.bmiHeader.biClrUsed = 0;
             GlobalBackBuffer.Info.bmiHeader.biClrImportant = 0;
 
-            HDC DeviceContext = GetDC(Window);
+            HDC DeviceContext = GetDC(GlobalWindow);
             CreateDIBSection(DeviceContext, &GlobalBackBuffer.Info, DIB_RGB_COLORS,
                              &GlobalBackBuffer.Memory, 0, 0);
 
@@ -559,204 +496,14 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
 #endif
 
 #if TROIDS_INTERNAL
-            for(u32 GlyphIndex = 0;
-                GlyphIndex < ArrayCount(GlobalDebugState->Font.Glyphs);
-                ++GlyphIndex)
-            {
-                GlobalDebugState->Font.Glyphs[GlyphIndex] = {};
-            }
-            // TODO(chris): All font stuff should move into a packed asset file sometime.
-            {
-                win32_backbuffer FontBuffer;
-                FontBuffer.Height = 1024;
-                FontBuffer.Width = 1024;
-                FontBuffer.Pitch = FontBuffer.Width*sizeof(u32);
-                FontBuffer.Info.bmiHeader.biSize = sizeof(FontBuffer.Info.bmiHeader);
-                FontBuffer.Info.bmiHeader.biWidth = FontBuffer.Width;
-                FontBuffer.Info.bmiHeader.biHeight = FontBuffer.Height;
-                FontBuffer.Info.bmiHeader.biPlanes = 1;
-                FontBuffer.Info.bmiHeader.biBitCount = 32;
-                FontBuffer.Info.bmiHeader.biCompression = BI_RGB;
-                FontBuffer.Info.bmiHeader.biSizeImage = 0;
-                FontBuffer.Info.bmiHeader.biXPelsPerMeter = 1;
-                FontBuffer.Info.bmiHeader.biYPelsPerMeter = 1;
-                FontBuffer.Info.bmiHeader.biClrUsed = 0;
-                FontBuffer.Info.bmiHeader.biClrImportant = 0;
-
-                HDC FontDC = CreateCompatibleDC(DeviceContext);
-                
-                HBITMAP FontBitmap = CreateDIBSection(FontDC, &FontBuffer.Info, DIB_RGB_COLORS,
-                                                      &FontBuffer.Memory, 0, 0);
-                SelectObject(FontDC, FontBitmap);
-
-                HFONT DebugFont = CreateFont(42, 0, // NOTE(chris): Height, Width
-                                             0, // NOTE(chris): Escapement
-                                             0, // NOTE(chris): Orientation
-                                             FW_BOLD, // NOTE(chris): Weight
-                                             0, // NOTE(chris): Italic
-                                             0, // NOTE(chris): Underline
-                                             0, // NOTE(chris): Strikeout
-                                             ANSI_CHARSET,
-                                             OUT_DEFAULT_PRECIS,
-                                             CLIP_DEFAULT_PRECIS,
-                                             ANTIALIASED_QUALITY,
-                                             DEFAULT_PITCH|FF_DONTCARE,
-                                             "Courier New");
-                SelectObject(FontDC, DebugFont);
-                SetBkColor(FontDC, RGB(0, 0, 0));
-                SetTextColor(FontDC, RGB(255, 255, 255));
-
-                TEXTMETRIC Metrics;
-                GetTextMetrics(FontDC, &Metrics);
-                GlobalDebugState->Font.Height = (r32)Metrics.tmHeight;
-                GlobalDebugState->Font.Ascent = (r32)Metrics.tmAscent;
-                GlobalDebugState->Font.LineAdvance = (GlobalDebugState->Font.Height +
-                                                    (r32)Metrics.tmExternalLeading);
-
-                char FirstChar = ' ';
-                char LastChar = '~';
-                
-                ABCFLOAT ABCWidths[128];
-                Assert(GetCharABCWidthsFloat(FontDC, FirstChar, LastChar, ABCWidths));
-
-                for(char GlyphIndex = FirstChar;
-                    GlyphIndex <= LastChar;
-                    ++GlyphIndex)
-                {
-                    ABCFLOAT *FirstABCWidth = ABCWidths + GlyphIndex - FirstChar;
-                    r32 FirstGlyphAdvance = FirstABCWidth->abcfB + FirstABCWidth->abcfC;
-                    GlobalDebugState->Font.KerningTable[GlyphIndex][0] = FirstGlyphAdvance;
-                    for(char SecondGlyphIndex = FirstChar;
-                        SecondGlyphIndex <= LastChar;
-                        ++SecondGlyphIndex)
-                    {
-                        ABCFLOAT *SecondABCWidth = ABCWidths + SecondGlyphIndex - FirstChar;
-                            
-                        GlobalDebugState->Font.KerningTable[GlyphIndex][SecondGlyphIndex] =
-                            FirstGlyphAdvance + SecondABCWidth->abcfA;
-                    }
-                    if(GlyphIndex == ' ') continue;
-
-                    SIZE GlyphSize;
-                    Assert(GetTextExtentPoint32(FontDC, &GlyphIndex, 1, &GlyphSize));
-                    Assert(TextOutA(FontDC, 128, 0, &GlyphIndex, 1));
-
-                    s32 MinX = 10000;
-                    s32 MaxX = -10000;
-                    s32 MinY = 10000;
-                    s32 MaxY = -10000;
-
-                    u8 *ScanRow = (u8 *)FontBuffer.Memory;
-                    for(s32 Y = 0;
-                        Y < FontBuffer.Height;
-                        ++Y)
-                    {
-                        u32 *Scan = (u32 *)ScanRow;
-                        for(s32 X = 0;
-                            X < FontBuffer.Width;
-                            ++X)
-                        {
-                            if(*Scan++)
-                            {
-                                MinX = Minimum(X, MinX);
-                                MaxX = Maximum(X, MaxX);
-                                MinY = Minimum(Y, MinY);
-                                MaxY = Maximum(Y, MaxY);
-                            }
-                        }
-                        ScanRow += FontBuffer.Pitch;
-                    }
-
-                    loaded_bitmap *DebugGlyph = GlobalDebugState->Font.Glyphs + GlyphIndex;
-                    DebugGlyph->Height = MaxY - MinY + 3;
-                    DebugGlyph->Width = MaxX - MinX + 3;
-                    r32 Baseline = (r32)FontBuffer.Height-(r32)Metrics.tmAscent;
-                    DebugGlyph->Align = {0.0f, (Baseline-(r32)MinY)/(r32)DebugGlyph->Height};
-                    DebugGlyph->Pitch = DebugGlyph->Width*sizeof(u32);
-                    // TODO(chris): Don't do this. This should allocate from a custom asset
-                    // virtual memory system.
-                    DebugGlyph->Memory = VirtualAlloc(0,
-                                                      sizeof(u32)*DebugGlyph->Height*DebugGlyph->Width,
-                                                      MEM_COMMIT|MEM_RESERVE,
-                                                      PAGE_READWRITE);
-
-                    u8 *SourceRow = (u8 *)FontBuffer.Memory + FontBuffer.Pitch*MinY;
-                    u8 *DestRow = (u8 *)DebugGlyph->Memory + DebugGlyph->Pitch;
-                    for(s32 Y = MinY;
-                        Y <= MaxY;
-                        ++Y)
-                    {
-                        u32 *Source = (u32 *)SourceRow + MinX;
-                        u32 *Dest = (u32 *)DestRow + 1;
-                        for(s32 X = MinX;
-                            X <= MaxX;
-                            ++X)
-                        {
-                            u32 Alpha = (*Source & 0xFF);
-                            *Dest++ = ((Alpha << 24) |
-                                     (Alpha << 16) |
-                                     (Alpha << 8)  |
-                                     (Alpha << 0));
-                            *Source++ = 0;
-                        }
-                        SourceRow += FontBuffer.Pitch;
-                        DestRow += DebugGlyph->Pitch;
-                    }                    
-
-                    // NOTE(chris): Enable this to assert that the border around the glyph is pure alpha
-#if 0
-                    u8 *Row = (u8 *)DebugGlyph->Memory;
-                    for(s32 Y = 0;
-                        Y < DebugGlyph->Height;
-                        ++Y)
-                    {
-                        u32 *Pixel = (u32 *)Row;
-                        for(s32 X = 0;
-                            X < DebugGlyph->Width;
-                            ++X)
-                        {
-                            if((Y == 0) ||
-                               (Y == (DebugGlyph->Height - 1)) ||
-                               (X == 0) ||
-                               (X == (DebugGlyph->Width - 1)))
-                            {
-                                Assert(!(*Pixel));
-                            }
-                        }
-                        Row += DebugGlyph->Pitch;
-                    }
-#endif
-                }
-
-                KERNINGPAIR KerningPairs[128];
-                u32 KerningPairCount = GetKerningPairs(FontDC, ArrayCount(KerningPairs), 0);
-                Assert(KerningPairCount <= ArrayCount(KerningPairs));
-                if(KerningPairCount)
-                {
-                    Assert(GetKerningPairs(FontDC, KerningPairCount, KerningPairs));
-                    for(u32 KerningPairIndex = 0;
-                        KerningPairIndex < KerningPairCount;
-                        ++KerningPairIndex)
-                    {
-                        KERNINGPAIR *KerningPair = KerningPairs + KerningPairIndex;
-                        if((KerningPair->wFirst < ArrayCount(GlobalDebugState->Font.KerningTable)) &&
-                           (KerningPair->wSecond < ArrayCount(GlobalDebugState->Font.KerningTable[0])))
-                        {
-                            GlobalDebugState->Font.KerningTable[KerningPair->wFirst][KerningPair->wSecond] +=
-                                (r32)KerningPair->iKernAmount;
-                        }
-                    }
-                }
-
-                DeleteObject(FontBitmap);
-                DeleteDC(FontDC);
-            }
+            LoadFont(&GlobalDebugState->Font, DeviceContext, "Courier New", 42, FW_BOLD);
 #endif
             
-            ReleaseDC(Window, DeviceContext);
+            ReleaseDC(GlobalWindow, DeviceContext);
 
             GameMemory.PlatformReadFile = Win32ReadFile;
             GameMemory.PlatformPushThreadWork = Win32PushThreadWork;
+            GameMemory.PlatformLoadFont = Win32LoadFont;
             
             // TODO(chris): Query monitor refresh rate
             r32 dtForFrame = 1.0f / 60.0f;
@@ -782,7 +529,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
             
             if(DirectSoundCreate && SUCCEEDED(DirectSoundCreate(0, &DirectSound, 0)))
             {
-                if(SUCCEEDED(DirectSound->SetCooperativeLevel(Window, DSSCL_PRIORITY)))
+                if(SUCCEEDED(DirectSound->SetCooperativeLevel(GlobalWindow, DSSCL_PRIORITY)))
                 {
                     // NOTE(chris): Primary and secondary buffer need the same format
                     WAVEFORMATEX WaveFormat = {};
@@ -817,7 +564,8 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                         GameSoundBuffer.Channels = WaveFormat.nChannels;
                         GameSoundBuffer.BitsPerSample = WaveFormat.wBitsPerSample;
                         GameSoundBuffer.Size = SecondaryBufferDescription.dwBufferBytes;
-                        Assert(SUCCEEDED(SecondarySoundBuffer->Play(0, 0, DSBPLAY_LOOPING)));
+                        b32 PlayResult = SecondarySoundBuffer->Play(0, 0, DSBPLAY_LOOPING);
+                        Assert(SUCCEEDED(PlayResult));
                     }
                     else
                     {
@@ -835,14 +583,14 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
             }
 
             InitializeInput(Instance);
-            LatchGamePads(Window);
+            LatchGamePads(GlobalWindow);
             
             DEV_BROADCAST_DEVICEINTERFACE Filter = {};
             Filter.dbcc_size = sizeof(Filter);
             Filter.dbcc_devicetype =  DBT_DEVTYP_DEVICEINTERFACE;
             Filter.dbcc_classguid = GUID_DEVINTERFACE_HID;
 //            Filter->dbcc_name[1]
-            HDEVNOTIFY DeviceNotification = RegisterDeviceNotificationA(Window, &Filter,
+            HDEVNOTIFY DeviceNotification = RegisterDeviceNotificationA(GlobalWindow, &Filter,
                                                                        DEVICE_NOTIFY_WINDOW_HANDLE);
 
             game_update_and_render *GameUpdateAndRender = 0;
@@ -957,7 +705,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                     NewKeyboard->RightStick.y = OldKeyboard->RightStick.y;
                     GlobalLeftMouse.HalfTransitionCount = 0;
 
-                    while(PeekMessageA(&Message, Window, 0, 0, PM_REMOVE))
+                    while(PeekMessageA(&Message, GlobalWindow, 0, 0, PM_REMOVE))
                     {
                         switch(Message.message)
                         {                            
@@ -1026,7 +774,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                                             {
                                                 if(AltIsDown)
                                                 {
-                                                    ToggleFullscreen(Window);
+                                                    ToggleFullscreen(GlobalWindow);
                                                 }
                                             } break;
 
@@ -1186,13 +934,15 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                         BytesToWrite += PlayCursor;
                     }
                     BytesToWrite = Minimum(8192, BytesToWrite);
-                    Assert(SUCCEEDED(SecondarySoundBuffer->Lock(ByteToLock, BytesToWrite,
+                    b32 LockResult = SecondarySoundBuffer->Lock(ByteToLock, BytesToWrite,
                                                                 &GameSoundBuffer.Region1, (LPDWORD)&GameSoundBuffer.Region1Size,
                                                                 &GameSoundBuffer.Region2, (LPDWORD)&GameSoundBuffer.Region2Size,
-                                                                0)));
+                                                                0);
+                    Assert(SUCCEEDED(LockResult));
                     GameGetSoundSamples(&GameMemory, GameInput, &GameSoundBuffer);
-                    Assert(SUCCEEDED(SecondarySoundBuffer->Unlock(GameSoundBuffer.Region1, GameSoundBuffer.Region1Size,
-                                                                  GameSoundBuffer.Region2, GameSoundBuffer.Region2Size)));
+                    b32 UnlockResult = SecondarySoundBuffer->Unlock(GameSoundBuffer.Region1, GameSoundBuffer.Region1Size,
+                                                                    GameSoundBuffer.Region2, GameSoundBuffer.Region2Size);
+                    Assert(SUCCEEDED(UnlockResult));
                     ByteToLock += BytesToWrite;
                     if(ByteToLock >= GameSoundBuffer.Size)
                     {
@@ -1294,15 +1044,15 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                 }
                 else if (ElapsedSeconds > dtForFrame)
                 {
-#if TROIDS_PROFILE
+#if TROIDS_DEBUG_DISPLAY
                     OutputDebugStringA("Missed framerate!\n");
 #endif
                 }
 #endif
 
-                HDC DeviceContext = GetDC(Window);
+                HDC DeviceContext = GetDC(GlobalWindow);
                 CopyBackBufferToWindow(DeviceContext, &GlobalBackBuffer);
-                ReleaseDC(Window, DeviceContext);
+                ReleaseDC(GlobalWindow, DeviceContext);
 
                 QueryPerformanceCounter(&Counter);
                 r32 FrameSeconds = (Counter.QuadPart - LastCounter.QuadPart)*ClocksToSeconds;
