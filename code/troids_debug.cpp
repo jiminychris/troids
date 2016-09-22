@@ -589,7 +589,6 @@ extern "C" DEBUG_COLLATE(DebugCollate)
     memory_arena *DebugArena = &GlobalDebugState->Arena;
     Assert(TranState->IsInitialized);
     render_buffer *RenderBuffer = &TranState->RenderBuffer;
-    projection PoppedProjection = RenderBuffer->Projection;
     RenderBuffer->Projection = Projection_None;
     temporary_memory RenderMemory = BeginTemporaryMemory(&TranState->RenderBuffer.Arena);
     u32 EventIndex = GlobalDebugState->EventStart;
@@ -818,6 +817,7 @@ extern "C" DEBUG_COLLATE(DebugCollate)
             text_layout Layout;
             Layout.Font = &GlobalDebugState->Font;
             Layout.Scale = 21.0f / Layout.Font->Height;
+            Layout.DropShadow = true;
             Layout.P = V2(0, BackBuffer->Height - Layout.Font->Ascent*Layout.Scale);
             Layout.Color = V4(1, 1, 1, 1);
             DrawNodes(RenderBuffer, &Layout, Frame, GlobalDebugState->NodeSentinel.Next, Input);
@@ -831,6 +831,6 @@ extern "C" DEBUG_COLLATE(DebugCollate)
     END_TIMED_BLOCK();
 
     EndTemporaryMemory(RenderMemory);
-    RenderBuffer->Projection = PoppedProjection;
+    RenderBuffer->Projection = RenderBuffer->DefaultProjection;
 #endif
 }

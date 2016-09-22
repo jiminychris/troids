@@ -54,46 +54,71 @@ PushRenderHeader(memory_arena *Arena, render_command Command)
 }
 
 inline void
-PushBitmap(render_buffer *RenderBuffer, loaded_bitmap *Bitmap, v3 Origin, v2 XAxis, v2 YAxis,
+PushBitmap(render_buffer *RenderBuffer, loaded_bitmap *Bitmap, v3 P, v2 XAxis, v2 YAxis,
            v2 Dim, v4 Color)
 {
     if(Bitmap && Bitmap->Height && Bitmap->Width)
     {
         PushRenderHeader(&RenderBuffer->Arena, RenderCommand_bitmap);
         render_bitmap_data *Data = PushStruct(&RenderBuffer->Arena, render_bitmap_data);
+
+        XAxis*=Dim.x;
+        YAxis*=Dim.y;
+        v2 Align = Bitmap->Align;
+        v3 Origin = P - V3(Hadamard(Align, XAxis + YAxis), 0);
+                
+        XAxis = WorldToScreenTransform(RenderBuffer, Origin + V3(XAxis, 0));
+        YAxis = WorldToScreenTransform(RenderBuffer, Origin + V3(YAxis, 0));
+        v2 ScreenOrigin = WorldToScreenTransform(RenderBuffer, Origin);
+        XAxis -= ScreenOrigin;
+        YAxis -= ScreenOrigin;
+        
         Data->Bitmap = Bitmap;
-        Data->Origin = Origin;
-        Data->XAxis = XAxis*Dim.x;
-        Data->YAxis = YAxis*Dim.y;
+        Data->Origin = ScreenOrigin;
+        Data->XAxis = XAxis;
+        Data->YAxis = YAxis;
         Data->Color = Color;
-        Data->SortKey = Origin.z;
+        Data->SortKey = P.z;
     }
 }
 
 inline void
-PushRotatedRectangle(render_buffer *RenderBuffer, v3 Origin, v2 XAxis, v2 YAxis, v2 Dim, v4 Color)
+PushRotatedRectangle(render_buffer *RenderBuffer, v3 P, v2 XAxis, v2 YAxis, v2 Dim, v4 Color,
+                     v2 Align = V2(0.5f, 0.5f))
 {
     PushRenderHeader(&RenderBuffer->Arena, RenderCommand_bitmap);
     render_bitmap_data *Data = PushStruct(&RenderBuffer->Arena, render_bitmap_data);
+
+    XAxis*=Dim.x;
+    YAxis*=Dim.y;
+    v3 Origin = P - V3(Hadamard(Align, XAxis + YAxis), 0);
+                
+    XAxis = WorldToScreenTransform(RenderBuffer, Origin + V3(XAxis, 0));
+    YAxis = WorldToScreenTransform(RenderBuffer, Origin + V3(YAxis, 0));
+    v2 ScreenOrigin = WorldToScreenTransform(RenderBuffer, Origin);
+    XAxis -= ScreenOrigin;
+    YAxis -= ScreenOrigin;
+    
     Data->Bitmap = 0;
-    Data->Origin = Origin;
-    Data->XAxis = XAxis*Dim.x;
-    Data->YAxis = YAxis*Dim.y;
+    Data->Origin = ScreenOrigin;
+    Data->XAxis = XAxis;
+    Data->YAxis = YAxis;
     Data->Color = Color;
     Data->SortKey = Origin.z;
 }
 
 inline void
-PushTriangle(render_buffer *RenderBuffer, v3 PointA, v3 PointB, v3 PointC, v4 Color)
+PushTriangle(render_buffer *RenderBuffer, v3 A, v3 B, v3 C, v4 Color)
 {
     PushRenderHeader(&RenderBuffer->Arena, RenderCommand_triangle);
     render_triangle_data *Data = PushStruct(&RenderBuffer->Arena, render_triangle_data);
-    Data->A = PointA;
-    Data->B = PointB;
-    Data->C = PointC;
+
+    Data->A = WorldToScreenTransform(RenderBuffer, A);
+    Data->B = WorldToScreenTransform(RenderBuffer, B);
+    Data->C = WorldToScreenTransform(RenderBuffer, C);
     Data->Color = Color;
     // TODO(chris): How to handle sorting with 3D triangles?
-    Data->SortKey = PointA.z;
+    Data->SortKey = A.z;
 }
 
 inline rectangle2
@@ -113,22 +138,24 @@ PushCircle(render_buffer *RenderBuffer, v3 P, r32 Radius, v4 Color)
 {
     PushRenderHeader(&RenderBuffer->Arena, RenderCommand_circle);
     render_circle_data *Data = PushStruct(&RenderBuffer->Arena, render_circle_data);
-    Data->P = P;
-    Data->Radius = Radius;
+
+    Data->P = WorldToScreenTransform(RenderBuffer, P);
+    Data->Radius = Length(WorldToScreenTransform(RenderBuffer, P + V3(Radius, 0, 0)) - Data->P);
     Data->Color = Color;
     Data->SortKey = P.z;
 }
 
 // TODO(chris): How do I sort lines that move through z? This goes for bitmaps and rectangles also.
 inline void
-PushLine(render_buffer *RenderBuffer, v3 PointA, v3 PointB, v4 Color)
+PushLine(render_buffer *RenderBuffer, v3 A, v3 B, v4 Color)
 {
     PushRenderHeader(&RenderBuffer->Arena, RenderCommand_line);
     render_line_data *Data = PushStruct(&RenderBuffer->Arena, render_line_data);
-    Data->PointA = PointA;
-    Data->PointB = PointB;
+
+    Data->A = WorldToScreenTransform(RenderBuffer, A);
+    Data->B = WorldToScreenTransform(RenderBuffer, B);
     Data->Color = Color;
-    Data->SortKey = 0.5f*(PointA.z + PointB.z);
+    Data->SortKey = 0.5f*(A.z + B.z);
 }
 
 inline void
@@ -160,6 +187,8 @@ enum draw_text_flags
 {
     DrawTextFlags_NoLineAdvance = 1 << 0,
     DrawTextFlags_Measure = 1 << 1,
+    DrawTextFlags_TightBounds = 1 << 2,
+    DrawTextFlags_LooseBounds = 1 << 3,
 };
 
 // TODO(chris): Clean this up. Make fonts and font layout more systematic.
@@ -174,32 +203,58 @@ DrawText(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char 
     r32 Height = Layout->Scale*Layout->Font->Height;
     r32 Descent = Height - Ascent;
     r32 LineAdvance = Layout->Scale*Layout->Font->LineAdvance;
+    r32 MinY = REAL32_MAX;
+    r32 MaxY = -REAL32_MAX;
+
+    b32 Measure = IsSet(Flags, DrawTextFlags_Measure);
     for(u32 AtIndex = 0;
         AtIndex < TextLength;
         ++AtIndex)
     {
-        if(!IsSet(Flags, DrawTextFlags_Measure))
+        loaded_bitmap *Glyph = Layout->Font->Glyphs + *At;
+        if(Glyph->Height && Glyph->Width)
         {
-            loaded_bitmap *Glyph = Layout->Font->Glyphs + *At;
-            if(Glyph->Height && Glyph->Width)
-            {
-                v2 XAxis = V2(1, 0);
-                v2 YAxis = Perp(XAxis);
+            v2 XAxis = V2(1, 0);
+            v2 YAxis = Perp(XAxis);
 #if 0
+            if(!Measure)
+            {
                 PushRectangle(&TranState->RenderBuffer, CenterDim(P, Scale*(XAxis + YAxis)),
                               V4(1.0f, 0.0f, 1.0f, 1.0f));
-#endif
-                v2 Dim = Layout->Scale*V2((r32)Glyph->Width, (r32)Glyph->Height);
-                PushBitmap(RenderBuffer, Glyph, V3(Layout->P + Height*V2(0.05f, -0.05f), TEXT_Z-1),
-                           XAxis, YAxis, Dim, V4(0, 0, 0, 1));
-                PushBitmap(RenderBuffer, Glyph, V3(Layout->P, TEXT_Z), XAxis, YAxis, Dim);
             }
+#endif
+            v2 Dim = Layout->Scale*V2((r32)Glyph->Width, (r32)Glyph->Height);
+            if(Layout->DropShadow)
+            {
+                v3 P = V3(Layout->P + Height*V2(0.05f, -0.05f), TEXT_Z-1);
+                if(!Measure)
+                {
+                    PushBitmap(RenderBuffer, Glyph, P,
+                               XAxis, YAxis, Dim, V4(0, 0, 0, 1));
+                }
+                MinY = Minimum(MinY, P.y - Glyph->Align.y*Dim.y);
+                MaxY = Maximum(MaxY, P.y + (1.0f-Glyph->Align.y)*Dim.y);
+            }
+            v3 P = V3(Layout->P, TEXT_Z);
+            if(!Measure)
+            {
+                PushBitmap(RenderBuffer, Glyph, P, XAxis, YAxis, Dim);
+            }
+            MinY = Minimum(MinY, P.y - Glyph->Align.y*Dim.y);
+            MaxY = Maximum(MaxY, P.y + (1.0f-Glyph->Align.y)*Dim.y);
         }
         Prev = *At++;
         Layout->P.x += Layout->Scale*GetTextAdvance(Layout->Font, Prev, *At);
     }
-    Result = MinMax(V2(PInit.x, Layout->P.y - Descent),
-                    V2(Layout->P.x, Layout->P.y + Ascent));
+
+    Result = MinMax(V2(PInit.x, PInit.y - Descent),
+                    V2(Layout->P.x, PInit.y + Ascent));
+    if(IsSet(Flags, DrawTextFlags_TightBounds))
+    {
+        Result.Min.y = MinY;
+        Result.Max.y = MaxY;
+    }
+        
     if(!IsSet(Flags, DrawTextFlags_NoLineAdvance))
     {
         Layout->P.x = PInit.x;
@@ -1014,39 +1069,27 @@ RenderTree(render_buffer *RenderBuffer, binary_node *Node, loaded_bitmap *BackBu
             case RenderCommand_bitmap:
             {
                 render_bitmap_data *Data = (render_bitmap_data *)(Header + 1);
-                v2 Align = Data->Bitmap ? Data->Bitmap->Align : V2(0.5f, 0.5f);
-                v2 XAxis = Data->XAxis;
-                v2 YAxis = Data->YAxis;
-                v3 Origin = Data->Origin - V3(Hadamard(Align, XAxis + YAxis), 0);
-                
-                XAxis = WorldToScreenTransform(RenderBuffer, Origin + V3(XAxis, 0));
-                YAxis = WorldToScreenTransform(RenderBuffer, Origin + V3(YAxis, 0));
-                v2 ScreenOrigin = WorldToScreenTransform(RenderBuffer, Origin);
-                XAxis -= ScreenOrigin;
-                YAxis -= ScreenOrigin;
 
                 if(Data->Bitmap)
                 {
                     RenderBitmap(BackBuffer, Data->Bitmap,
-                                 ScreenOrigin,
-                                 XAxis, YAxis,
+                                 Data->Origin,
+                                 Data->XAxis, Data->YAxis,
                                  Data->Color, OffsetX, OffsetY);
                 }
                 else
                 {
-                    RenderRotatedSolidRectangle(BackBuffer, ScreenOrigin, XAxis, YAxis, Data->Color.rgb,
-                                                OffsetX, OffsetY);
+                    RenderRotatedSolidRectangle(BackBuffer, Data->Origin, Data->XAxis, Data->YAxis,
+                                                Data->Color.rgb, OffsetX, OffsetY);
                 }
             } break;
 
             case RenderCommand_triangle:
             {
                 render_triangle_data *Data = (render_triangle_data *)(Header + 1);
-                v2 A = WorldToScreenTransform(RenderBuffer, Data->A);
-                v2 B = WorldToScreenTransform(RenderBuffer, Data->B);
-                v2 C = WorldToScreenTransform(RenderBuffer, Data->C);
 
-                RenderSolidTriangle(BackBuffer, A, B, C, Data->Color.rgb, OffsetX, OffsetY);
+                RenderSolidTriangle(BackBuffer, Data->A, Data->B, Data->C,
+                                    Data->Color.rgb, OffsetX, OffsetY);
             } break;
 
             case RenderCommand_rectangle:
@@ -1059,30 +1102,14 @@ RenderTree(render_buffer *RenderBuffer, binary_node *Node, loaded_bitmap *BackBu
             {
                 render_circle_data *Data = (render_circle_data *)(Header + 1);
 
-                v2 P = WorldToScreenTransform(RenderBuffer, Data->P);
-                r32 Radius = Length(WorldToScreenTransform(RenderBuffer,
-                                                           Data->P + V3(Data->Radius, 0, 0)) -
-                                    P);
-                RenderSolidCircle(BackBuffer, P, Radius, Data->Color.rgb, OffsetX, OffsetY);
+                RenderSolidCircle(BackBuffer, Data->P, Data->Radius, Data->Color.rgb, OffsetX, OffsetY);
             } break;
             
             case RenderCommand_line:
             {
                 render_line_data *Data = (render_line_data *)(Header + 1);
-                v2 PointA = WorldToScreenTransform(RenderBuffer, Data->PointA);
-                v2 PointB = WorldToScreenTransform(RenderBuffer, Data->PointB);
-                rectangle2 LineRect = MinMax(V2(Minimum(PointA.x, PointB.x),
-                                                Minimum(PointA.y, PointB.y)),
-                                             V2(Maximum(PointA.x, PointB.x),
-                                                Maximum(PointA.y, PointB.y)));
-                v2 Dim = GetDim(LineRect);
-                rectangle2 HitBox = MinMax(V2(OffsetX - Dim.x, OffsetY - Dim.y),
-                                           V2i(OffsetX + BackBuffer->Width,
-                                               OffsetY + BackBuffer->Height));
-                if(Inside(HitBox, LineRect.Min))
-                {
-                    RenderLine(BackBuffer, PointA, PointB, Data->Color, OffsetX, OffsetY);
-                }
+
+                RenderLine(BackBuffer, Data->A, Data->B, Data->Color, OffsetX, OffsetY);
             } break;
             
             case RenderCommand_clear:

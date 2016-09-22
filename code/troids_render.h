@@ -25,19 +25,19 @@ struct render_command_header
 struct render_bitmap_data
 {
     r32 SortKey;
+    v2 Origin;
     v2 XAxis;
     v2 YAxis;
     v4 Color;
-    v3 Origin;
     loaded_bitmap *Bitmap;
 };
 
 struct render_triangle_data
 {
     r32 SortKey;
-    v3 A;
-    v3 B;
-    v3 C;
+    v2 A;
+    v2 B;
+    v2 C;
     v4 Color;
 };
 
@@ -52,15 +52,15 @@ struct render_circle_data
 {
     r32 SortKey;
     r32 Radius;
-    v3 P;
+    v2 P;
     v4 Color;
 };
 
 struct render_line_data
 {
     r32 SortKey;
-    v3 PointA;
-    v3 PointB;
+    v2 A;
+    v2 B;
     v4 Color;
 };
 
@@ -83,6 +83,7 @@ struct render_buffer
     v3 CameraP;
     r32 CameraRot;
     projection Projection;
+    projection DefaultProjection;
     memory_arena Arena;
 };
 
@@ -117,10 +118,11 @@ PushClear(render_buffer *RenderBuffer, v4 Color);
 
 struct text_layout
 {
-    loaded_font *Font;
-    v2 P;
     r32 Scale;
+    b32 DropShadow;
+    v2 P;
     v4 Color;
+    loaded_font *Font;
 };
 
 internal rectangle2

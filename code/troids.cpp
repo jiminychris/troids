@@ -269,8 +269,6 @@ LoadObj(char *FileName, memory_arena *Arena)
         DEBUG_VALUE("CenterClick", (Controller)->CenterClick.EndedDown); \
     }
 
-// TODO(chris): Actually look at collision geometry and calculate this. Just find point farthest from
-// center.
 internal r32
 CalculateBoundingRadius(entity *Entity)
 {
@@ -313,6 +311,7 @@ CreateEntity(game_state *State)
     {
         Assert(!"Created too many entities.");
     }
+    *Result = {};
     return(Result);
 }
 
@@ -347,6 +346,14 @@ AddCollisionTriangle(entity *Entity, v2 PointA, v2 PointB, v2 PointC)
     Triangle->C = PointC;
 }
 
+// TODO(chris): Allow a special shape for rectangles?
+inline void
+AddCollisionRectangle(entity *Entity, rectangle2 Rect)
+{
+    AddCollisionTriangle(Entity, Rect.Min, V2(Rect.Max.x, Rect.Min.y), Rect.Max);
+    AddCollisionTriangle(Entity, Rect.Max, V2(Rect.Min.x, Rect.Max.y), Rect.Min);
+}
+
 inline void
 AddCollisionCircle(entity *Entity, r32 Radius, v2 Center = V2(0, 0))
 {
@@ -370,10 +377,10 @@ CreateShip(game_state *State, v3 P, r32 Yaw)
 {
     entity *Ship = CreateEntity(State);
     Ship->Type = EntityType_Ship;
+    Ship->ColliderType = ColliderType_Ship;
     Ship->Dim = V2(10.0f, 10.0f);
     Ship->P = P;
     Ship->Yaw = Yaw;
-    Ship->Collides = true;
     v2 HalfDim = Ship->Dim*0.5f;
 #if 1
     AddCollisionTriangle(Ship,
@@ -402,6 +409,7 @@ CreateFloatingHead(game_state *State)
 {
     entity *FloatingHead = CreateEntity(State);
     FloatingHead->Type = EntityType_FloatingHead;
+    FloatingHead->ColliderType = ColliderType_None;
     FloatingHead->P = V3(0.0f, 0.0f, 0.0f);
     FloatingHead->Dim = V2(100.0f, 100.0f);
     FloatingHead->RotationMatrix =
@@ -410,18 +418,18 @@ CreateFloatingHead(game_state *State)
             0, 1, 0,
             0, 0, 1,
         };
-    FloatingHead->Collides = false;
     return(FloatingHead);
 }
 
 inline entity *
-CreateAsteroid(game_state *State, v3 P, r32 Radius)
+CreateAsteroid(game_state *State, v3 P, r32 Radius, v3 dP)
 {
     entity *Asteroid = CreateEntity(State);
+    Asteroid->ColliderType = ColliderType_Asteroid;
     Asteroid->Type = EntityType_Asteroid;
     Asteroid->P = P;
+    Asteroid->dP = dP;
     Asteroid->Dim = 2.0f*V2(Radius, Radius);
-    Asteroid->Collides = true;
 #if 0
     AddCollisionCircle(Asteroid, Radius, V2(2.0f, 0.0f));
 #else
@@ -434,14 +442,42 @@ inline entity *
 CreateBullet(game_state *State, v3 P, v3 dP, r32 Yaw)
 {
     entity *Bullet = CreateEntity(State);
+    Bullet->ColliderType = ColliderType_Ship;
     Bullet->Type = EntityType_Bullet;
     Bullet->P = P;
     Bullet->dP = dP;
     Bullet->Yaw = Yaw;
     Bullet->Dim = V2(1.5f, 3.0f);
+    AddCollisionRectangle(Bullet, CenterDim(V2(0, 0), V2(0.75f*Bullet->Dim.y, 0.3f*Bullet->Dim.x)));
     Bullet->Timer = 2.0f;
-    Bullet->Collides = true;
     return(Bullet);
+}
+
+internal void
+ResetGame(game_state *State)
+{
+    State->EntityCount = 0;
+    
+    State->Lives = 3;
+
+    State->ShipStartingP = V3(0, 0, 0);
+    State->ShipStartingYaw = 0;
+    if(State->Lives)
+    {
+        entity *Ship = CreateShip(State, State->ShipStartingP, State->ShipStartingYaw);
+    }
+    entity *FloatingHead = CreateFloatingHead(State);
+
+    entity *SmallAsteroid = CreateAsteroid(State, V3(50.0f, 0.0f, 0.0f), 5.0f, V3(2.0f, 3.0f, 0));
+#if 0
+    SmallAsteroid->P.x = SmallAsteroid->CollisionShapes[0].Radius +
+        Ship->CollisionShapes[0].A.x;
+#endif
+    entity *SmallAsteroid3 = CreateAsteroid(State, State->ShipStartingP + V3(0, 40.0f, 0), 5.0f, V3(-2.0f, 3.0f, 0));
+    entity *SmallAsteroid2 = CreateAsteroid(State, State->ShipStartingP + V3(0, 20.0f, 0), 5.0f, V3(2.0f, -1.0f, 0));
+    entity *LargeAsteroid = CreateAsteroid(State, SmallAsteroid->P + V3(30.0f, 30.0f, 0.0f), 10.0f, V3(-0.5f, -1.3f, 0));
+        
+    State->CameraP = V3(State->ShipStartingP.xy, 100.0f);
 }
 
 extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
@@ -460,28 +496,26 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
         State->MetersToPixels = 3674.9418959066769192359305459154f;
 
+        for(u32 ColliderIndex = 0;
+            ColliderIndex < ArrayCount(State->PhysicsState.ColliderTable);
+            ++ColliderIndex)
+        {
+            State->PhysicsState.ColliderTable[ColliderIndex] = 0;
+        }
+
+        AllowCollision(&State->PhysicsState, ColliderType_Ship, ColliderType_Asteroid);
+        AllowCollision(&State->PhysicsState, ColliderType_Asteroid, ColliderType_Asteroid);
+
+#if 1
         State->ShipBitmap = LoadBitmap("ship_opaque.bmp");
         State->AsteroidBitmap = LoadBitmap("asteroid_opaque.bmp");
+#else
+        State->ShipBitmap = LoadBitmap("ship_opaque.bmp");
+        State->AsteroidBitmap = LoadBitmap("asteroid_opaque.bmp");
+#endif
         State->BulletBitmap = LoadBitmap("bullet.bmp");
 
-        entity *Ship = CreateShip(State, V3(0, 0, 0), 0.0f);
-        entity *FloatingHead = CreateFloatingHead(State);
-
-        entity *SmallAsteroid = CreateAsteroid(State, V3(50.0f, 0.0f, 0.0f), 5.0f);
-#if 0
-        SmallAsteroid->P.x = SmallAsteroid->CollisionShapes[0].Radius +
-            Ship->CollisionShapes[0].A.x;
-#endif
-        entity *SmallAsteroid3 = CreateAsteroid(State, Ship->P + V3(0, 40.0f, 0), 5.0f);
-        entity *SmallAsteroid2 = CreateAsteroid(State, Ship->P + V3(0, 20.0f, 0), 5.0f);
-//        entity *SmallAsteroid2 = CreateAsteroid(State, V3(Perp(AsteroidStartingP.xy), 0), 10.0f);
-        entity *LargeAsteroid = CreateAsteroid(State, SmallAsteroid->P + V3(30.0f, 30.0f, 0.0f), 10.0f);
-
-        State->ShipStartingP = Ship->P;
-        State->ShipStartingYaw = Ship->Yaw;
-        State->AsteroidStartingP = SmallAsteroid->P;
-        
-        State->CameraP = V3(Ship->P.xy, 100.0f);
+        ResetGame(State);
     }
 
     transient_state *TranState = (transient_state *)GameMemory->TemporaryMemory;
@@ -495,7 +529,8 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         TranState->RenderBuffer.Width = BackBuffer->Width;
         TranState->RenderBuffer.Height = BackBuffer->Height;
         TranState->RenderBuffer.MetersToPixels = State->MetersToPixels;
-        TranState->RenderBuffer.Projection = Projection_Orthographic;
+        TranState->RenderBuffer.DefaultProjection = Projection_Orthographic;
+        TranState->RenderBuffer.Projection = TranState->RenderBuffer.DefaultProjection;
         
         State->HeadMesh = LoadObj("head.obj", &TranState->TranArena);
 
@@ -516,6 +551,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         DEBUG_VALUE("Tran Arena", TranState->TranArena);
         DEBUG_VALUE("String Arena", GlobalDebugState->StringArena);
         DEBUG_VALUE("Render Arena", TranState->RenderBuffer.Arena);
+        DEBUG_FILL_BAR("Entities", State->EntityCount, ArrayCount(State->Entities));
     }
     {DEBUG_GROUP("Profiler");
         DEBUG_FRAME_TIMELINE();
@@ -544,7 +580,6 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     game_controller *AsteroidController = Input->GamePads + 1;
 
     r32 PixelsToMeters = 1.0f / State->MetersToPixels;
-    b32 IsFirstAsteroid = true;
 
     // NOTE(chris): Pre collision pass
     for(u32 EntityIndex = 0;
@@ -578,8 +613,6 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                 }
     
                 r32 MaxDYaw = 0.2*Tau;
-                // TODO(chris): IMPORTANT Now that I have a pretty clear grasp of what needs to be done,
-                // work on angular collision next!
                 Entity->dYaw = Clamp(-MaxDYaw, Entity->dYaw + Input->dtForFrame*-LeftStickX, MaxDYaw);
     
                 v3 Acceleration = {};
@@ -617,36 +650,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
             case EntityType_Asteroid:
             {
-                if(IsFirstAsteroid)
-                {
-                    IsFirstAsteroid = false;
-                    if(WentDown(ShipController->Select))
-                    {
-                        // NOTE(chris): Halving volume results in dividing radius by cuberoot(2)
-                        Entity->Dim *= 0.79370052598f;
-                        entity *NewAsteroid = CreateAsteroid(State, Entity->P, Entity->Dim.x);
-
-                        r32 Angle = Tau/12.0f;
-                        Entity->dP = RotateZ(Entity->dP, -Angle);
-                        NewAsteroid->dP = RotateZ(NewAsteroid->dP, Angle);
-                    }
-
-                    if(AsteroidController->Start.EndedDown)
-                    {
-                        Entity->P = State->AsteroidStartingP;
-                    }
-#if 0
-                    v3 Acceleration = (5000.0f*V3(AsteroidController->LeftStick.x,
-                                                  AsteroidController->LeftStick.y,
-                                                  0.0f));
-#else
-                    v3 Acceleration = (100.0f*V3(AsteroidController->LeftStick.x,
-                                                  AsteroidController->LeftStick.y,
-                                                  0.0f));
-#endif
-
-                    Entity->dP += Acceleration*Input->dtForFrame;
-                }
+                // TODO(chris): Destroy if out of bounds
             } break;
 
             case EntityType_Bullet:
@@ -719,7 +723,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
             InvalidDefaultCase;
         }
-        if(Entity->Collides)
+        if(CanCollide(Entity))
         {
             Entity->BoundingRadius = CalculateBoundingRadius(Entity);
 #if COLLISION_DEBUG
@@ -743,7 +747,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     {
         entity *Entity = State->Entities + EntityIndex;
         r32 tMax = 1.0f;
-        if(Entity->Collides)
+        if(CanCollide(Entity))
         {
             for(u32 CollisionIndex = 0;
                 CollisionIndex < COLLISION_ITERATIONS;
@@ -765,7 +769,8 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                         ++OtherEntityIndex)
                     {
                         entity *OtherEntity = State->Entities + OtherEntityIndex;
-                        if(!OtherEntity->Collides || (OtherEntityIndex == EntityIndex)) continue;
+                        if(!CanCollide(State, Entity, OtherEntity) ||
+                           (OtherEntityIndex == EntityIndex)) continue;
 
                         if(BoundingCirclesIntersect(Entity, OtherEntity, NewP))
                         {
@@ -784,7 +789,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                                     collision_shape *Shape = Entity->CollisionShapes + ShapeIndex;
                                     collision_shape *OtherShape = OtherEntity->CollisionShapes + OtherShapeIndex;
 
-                                    switch(Shape->Type&OtherShape->Type)
+                                    switch(Shape->Type|OtherShape->Type)
                                     {
                                         case CollisionShapePair_TriangleTriangle:
                                         {
@@ -993,48 +998,11 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                     
                     if(CollidedWith)
                     {
-                        // TODO(chris): Collision resolution
 #if COLLISION_DEBUG_LINEAR
                         CollidingShape->Collided = true;
                         OtherCollidingShape->Collided = true;
 #endif
-                    }
-                    switch(Collision.Type)
-                    {
-                        case CollisionType_Circle:
-                        {
-                            r32 DeflectionMagnitudeSq = LengthSq(Collision.Deflection);
-                            if(DeflectionMagnitudeSq > 0.0f)
-                            {
-                                v2 Adjustment = (-Collision.Deflection *
-                                                 (Inner(Entity->dP.xy, Collision.Deflection) /
-                                                  DeflectionMagnitudeSq));
-                                Assert(!IsNaN(Adjustment.x));
-                                Assert(!IsNaN(Adjustment.y));
-                                Entity->dP += 1.01f*V3(Adjustment, 0);
-                            }
-                        } break;
-
-                        case CollisionType_Line:
-                        {
-                            v2 DeflectionVector = Perp(Collision.A - Collision.B);
-                            r32 DeflectionMagnitudeSq = LengthSq(DeflectionVector);
-                            if(DeflectionMagnitudeSq > 0.0f)
-                            {
-                                v2 Adjustment = (-DeflectionVector *
-                                                 (Inner(Entity->dP.xy, DeflectionVector) /
-                                                  DeflectionMagnitudeSq));
-                                Assert(!IsNaN(Adjustment.x));
-                                Assert(!IsNaN(Adjustment.y));
-                                Entity->dP += 1.01f*V3(Adjustment, 0);
-                            }
-                        } break;
-
-                        case CollisionType_None:
-                        {
-                        } break;
-
-                        InvalidDefaultCase;
+                        ResolveLinearCollision(&Collision, Entity, CollidedWith);
                     }
                 }
 
@@ -1051,7 +1019,8 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                         ++OtherEntityIndex)
                     {
                         entity *OtherEntity = State->Entities + OtherEntityIndex;
-                        if(!OtherEntity->Collides || (OtherEntityIndex == EntityIndex)) continue;
+                        if(!CanCollide(State, Entity, OtherEntity) ||
+                           (OtherEntityIndex == EntityIndex)) continue;
 
                         b32 BoundingBoxesOverlap;
                         {
@@ -1078,7 +1047,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                                     collision_shape *Shape = Entity->CollisionShapes + ShapeIndex;
                                     collision_shape *OtherShape = OtherEntity->CollisionShapes + OtherShapeIndex;
 
-                                    switch(Shape->Type&OtherShape->Type)
+                                    switch(Shape->Type|OtherShape->Type)
                                     {
                                         case CollisionShapePair_TriangleTriangle:
                                         {
@@ -1201,7 +1170,6 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                             }
                         }
                     }
-                    // TODO(chris): Detect continuous collisions through rotation. Yikes.
                     Entity->Yaw += Entity->dYaw*Input->dtForFrame*tMove;
 
                     if(CollidedWith)
@@ -1210,14 +1178,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                         CollidingShape->Collided = true;
                         OtherCollidingShape->Collided = true;
 #endif
-#if 0
-                        Entity->dP = V3(0, 0, 0);
-                        CollidedWith->dP = V3(0, 0, 0);
-#endif
-                        Entity->dYaw = -0.1f*Entity->dYaw;
-//                        CollidedWith->dYaw -= Entity->dYaw*2.0f;
-                        
-                        // TODO(chris): Collision resolution
+                        ResolveAngularCollision(Entity, CollidedWith);
                     }
                 }
 
@@ -1323,6 +1284,91 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     // NOTE(chris): Post collision pass
     for(u32 EntityIndex = 0;
         EntityIndex < State->EntityCount;
+        )
+    {
+        entity *Entity = State->Entities + EntityIndex;
+
+        if(Entity->Destroyed)
+        {
+            switch(Entity->Type)
+            {
+                case EntityType_Ship:
+                {
+                    --State->Lives;
+                    if(State->Lives)
+                    {
+                        // TODO(chris): Reset!
+                        CreateShip(State, State->ShipStartingP, State->ShipStartingYaw);
+                    }
+                } break;
+
+                case EntityType_Asteroid:
+                {
+#if 0
+                    // NOTE(chris): Halving volume results in dividing radius by cuberoot(2)
+                    Entity->Dim *= 0.79370052598f;
+                    entity *NewAsteroid = CreateAsteroid(State, Entity->P, Entity->Dim.x);
+#endif
+                    r32 NewRadius = 0.25f*Entity->Dim.x;
+                    if(NewRadius >= 2.0f)
+                    {
+                        entity *Piece1 = CreateAsteroid(State, Entity->P-V3(NewRadius, 0, 0),
+                                                        NewRadius, Entity->dP);
+                        entity *Piece2 = CreateAsteroid(State, Entity->P+V3(NewRadius, 0, 0),
+                                                        NewRadius, Entity->dP);
+                    }
+#if 0
+                    r32 Angle = Tau/12.0f;
+                    Entity->dP = RotateZ(Entity->dP, -Angle);
+                    NewAsteroid->dP = RotateZ(NewAsteroid->dP, Angle);
+#endif
+                } break;
+
+                case EntityType_Bullet:
+                {
+                } break;
+
+                case EntityType_FloatingHead:
+                {
+                } break;
+
+                InvalidDefaultCase;
+            }
+            DestroyEntity(State, Entity);
+        }
+        else
+        {
+            ++EntityIndex;
+        }
+    }
+
+    if(!State->Lives)
+    {
+        if(WentDown(ShipController->Start))
+        {
+            ResetGame(State);
+        }
+        
+        RenderBuffer->Projection = Projection_None;
+
+        char GameOverText[] = "GAME OVER";
+        text_layout Layout = {};
+        Layout.Font = &GlobalDebugState->Font;
+        Layout.Scale = 1.0f;
+        Layout.Color = V4(1, 1, 1, 1);
+        rectangle2 TextRect = DrawText(RenderBuffer, &Layout,
+                                       sizeof(GameOverText)-1, GameOverText,
+                                       DrawTextFlags_Measure|DrawTextFlags_TightBounds);
+        v2 TextDim = GetDim(TextRect);
+        Layout.P = 0.5f*(V2i(RenderBuffer->Width, RenderBuffer->Height)-TextDim);
+        DrawText(RenderBuffer, &Layout, sizeof(GameOverText)-1, GameOverText);
+                        
+        RenderBuffer->Projection = RenderBuffer->DefaultProjection;
+    }
+    
+    // NOTE(chris): Render pass
+    for(u32 EntityIndex = 0;
+        EntityIndex < State->EntityCount;
         ++EntityIndex)
     {
         entity *Entity = State->Entities + EntityIndex;
@@ -1381,31 +1427,26 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         }
     }
 
-#if 0
     {
-        v2 P = V2(0, BackBuffer->Height*0.5f);
-        for(char GlyphIndex = 'A';
-            GlyphIndex <= 'Z';
-            ++GlyphIndex)
+        RenderBuffer->Projection = Projection_None;
+        v2 XAxis = V2(1, 0);
+        v2 YAxis = Perp(XAxis);
+        v2 Dim = 32.0f*V2(1.0f, 1.0f);
+        v2 HalfDim = 0.5f*Dim;
+        v3 P = V3(V2i(RenderBuffer->Width, RenderBuffer->Height) - 1.2f*HalfDim, 0);
+        for(s32 LifeIndex = 0;
+            LifeIndex < State->Lives;
+            ++LifeIndex)
         {
-            loaded_bitmap *Glyph = GameMemory->DebugFont.Glyphs + GlyphIndex;
-            if(Glyph->Memory)
-            {
-                v2 YAxis = V2(0, 1);
-                v2 XAxis = -Perp(YAxis);
-                r32 Scale = (r32)Glyph->Height;
-#if 0
-                PushRectangle(BackBuffer, CenterDim(P, Scale*(XAxis + YAxis)),
-                              V4(1.0f, 0.0f, 1.0f, 1.0f));
-#endif
-                PushBitmap(RenderBuffer, Glyph, P, XAxis, YAxis, Scale);
-                P.x += XAxis.x*Scale;
-            }
+            PushBitmap(RenderBuffer, &State->ShipBitmap, P, XAxis, YAxis, Dim);
+            P.x -= 1.2f*Dim.x;
         }
+        
+        RenderBuffer->Projection = RenderBuffer->DefaultProjection;
     }
-#endif
+
     {
-        TIMED_BLOCK("RenderGame");
+        TIMED_BLOCK("Render Game");
         RenderBufferToBackBuffer(RenderBuffer, BackBuffer);
     }
     EndTemporaryMemory(RenderMemory);

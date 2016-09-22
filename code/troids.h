@@ -17,83 +17,21 @@
 platform_read_file *PlatformReadFile;
 platform_push_thread_work *PlatformPushThreadWork;
 
-enum collision_type
-{
-    CollisionType_None,
-    CollisionType_Circle,
-    CollisionType_Line,
-};
-
-struct collision
-{
-    collision_type Type;
-    union
-    {
-        union
-        {
-            v2 LinePoints[2];
-            struct
-            {
-                v2 A;
-                v2 B;
-            };
-        };
-        struct
-        {
-            v2 Deflection;
-        };
-    };
-};
-
-enum collision_shape_type
-{
-    CollisionShapeType_None = 0,
-    CollisionShapeType_Triangle = 1<<0,
-    CollisionShapeType_Circle = 1<<1,
-};
-
-global_variable const u32 CollisionShapePair_TriangleTriangle = CollisionShapeType_Triangle;
-global_variable const u32 CollisionShapePair_CircleCircle = CollisionShapeType_Circle;
-global_variable const u32 CollisionShapePair_TriangleCircle = CollisionShapeType_Circle&CollisionShapeType_Triangle;
-
-struct collision_shape
-{
-    collision_shape_type Type;
-#if COLLISION_DEBUG
-        b32 Collided;
-#endif
-    union
-    {
-        rectangle2 Rectangle;
-        union
-        {
-            v2 TrianglePoints[3];
-            struct
-            {
-                v2 A;
-                v2 B;
-                v2 C;
-            };
-        };
-        struct
-        {
-            r32 Radius;
-            v2 Center;
-        };
-    };
-};
-
 enum entity_type
 {
-    EntityType_Ship,
-    EntityType_FloatingHead,
-    EntityType_Bullet,
-    EntityType_Asteroid,
+    EntityType_Ship = 1<<0,
+    EntityType_FloatingHead = 1<<1,
+    EntityType_Bullet = 1<<2,
+    EntityType_Asteroid = 1<<3,
 };
+
+global_variable const u32 EntityPair_AsteroidBullet = EntityType_Asteroid|EntityType_Bullet;
+global_variable const u32 EntityPair_AsteroidShip = EntityType_Asteroid|EntityType_Ship;
 
 struct entity
 {
     entity_type Type;
+    collider_type ColliderType;
     v3 P;
     v3 dP;
     r32 Yaw;
@@ -103,7 +41,7 @@ struct entity
     r32 Timer;
     v2 Dim;
 
-    b32 Collides;
+    b32 Destroyed;
 #if COLLISION_DEBUG
     b32 BoundingCircleCollided;
 #endif
@@ -126,7 +64,10 @@ struct game_state
 
     v3 ShipStartingP;
     r32 ShipStartingYaw;
-    v3 AsteroidStartingP;
+
+    physics_state PhysicsState;
+
+    s32 Lives;
 
     u32 EntityCount;
     entity Entities[256];
@@ -136,6 +77,21 @@ struct game_state
     loaded_bitmap BulletBitmap;
     loaded_obj HeadMesh;
 };
+
+inline b32
+CanCollide(entity *Entity)
+{
+    b32 Result = !Entity->Destroyed && (Entity->ColliderType != ColliderType_None);
+    return(Result);
+}
+
+inline b32
+CanCollide(game_state *State, entity *A, entity *B)
+{
+    b32 Result = !A->Destroyed && !B->Destroyed &&
+        CanCollide(&State->PhysicsState, A->ColliderType, B->ColliderType);
+    return(Result);
+}
 
 struct transient_state
 {

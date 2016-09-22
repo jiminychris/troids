@@ -401,3 +401,84 @@ ArcCircleIntersection(v2 ArcCenter, r32 ArcRadius, v2 StartP, r32 dTheta,
     }
     return(Result);
 }
+
+internal b32
+ResolveCollision(entity *Entity, entity *OtherEntity)
+{
+    b32 Result = false;
+    u32 Pair = (Entity->Type|OtherEntity->Type);
+    switch(Pair)
+    {
+        case EntityPair_AsteroidBullet:
+        {
+            Entity->Destroyed = OtherEntity->Destroyed = true;
+            Result = true;
+        } break;
+
+        case EntityPair_AsteroidShip:
+        {
+            Entity->Destroyed = OtherEntity->Destroyed = true;
+            Result = true;
+        } break;
+
+        default:
+        {
+        }
+    }
+
+    return(Result);
+}
+
+internal void
+ResolveLinearCollision(collision *Collision, entity *Entity, entity *OtherEntity)
+{
+    if(!ResolveCollision(Entity, OtherEntity))
+    {
+        switch(Collision->Type)
+        {
+            case CollisionType_Circle:
+            {
+                r32 DeflectionMagnitudeSq = LengthSq(Collision->Deflection);
+                if(DeflectionMagnitudeSq > 0.0f)
+                {
+                    v2 Adjustment = (-Collision->Deflection *
+                                     (Inner(Entity->dP.xy, Collision->Deflection) /
+                                      DeflectionMagnitudeSq));
+                    Assert(!IsNaN(Adjustment.x));
+                    Assert(!IsNaN(Adjustment.y));
+                    Entity->dP += 1.01f*V3(Adjustment, 0);
+                }
+            } break;
+
+            case CollisionType_Line:
+            {
+                v2 DeflectionVector = Perp(Collision->A - Collision->B);
+                r32 DeflectionMagnitudeSq = LengthSq(DeflectionVector);
+                if(DeflectionMagnitudeSq > 0.0f)
+                {
+                    v2 Adjustment = (-DeflectionVector *
+                                     (Inner(Entity->dP.xy, DeflectionVector) /
+                                      DeflectionMagnitudeSq));
+                    Assert(!IsNaN(Adjustment.x));
+                    Assert(!IsNaN(Adjustment.y));
+                    Entity->dP += 1.01f*V3(Adjustment, 0);
+                }
+            } break;
+
+            case CollisionType_None:
+            {
+            } break;
+
+            InvalidDefaultCase;
+        }
+    }
+}
+
+internal void
+ResolveAngularCollision(entity *Entity, entity *OtherEntity)
+{
+    if(!ResolveCollision(Entity, OtherEntity))
+    {
+        Entity->dYaw = -0.1f*Entity->dYaw;
+    }
+}

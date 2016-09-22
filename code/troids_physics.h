@@ -13,6 +13,99 @@
 #define COLLISION_T_ADJUST 0.1f
 #define COLLISION_ITERATIONS 2
 
+enum collider_type
+{
+    ColliderType_Identity = 0,
+    
+    ColliderType_None = 1<<0,
+    ColliderType_Ship = 1<<1,
+    ColliderType_Asteroid = 1<<2,
+};
+
+struct physics_state
+{
+    b32 ColliderTable[256];
+};
+
+inline void
+AllowCollision(physics_state *State, collider_type A, collider_type B)
+{
+    State->ColliderTable[A|B] = 1;
+}
+
+inline b32
+CanCollide(physics_state *State, collider_type A, collider_type B)
+{
+    b32 Result = State->ColliderTable[A|B];
+    return(Result);
+}
+
+enum collision_type
+{
+    CollisionType_None,
+    CollisionType_Circle,
+    CollisionType_Line,
+};
+
+struct collision
+{
+    collision_type Type;
+    union
+    {
+        union
+        {
+            v2 LinePoints[2];
+            struct
+            {
+                v2 A;
+                v2 B;
+            };
+        };
+        struct
+        {
+            v2 Deflection;
+        };
+    };
+};
+
+enum collision_shape_type
+{
+    CollisionShapeType_None = 0,
+    CollisionShapeType_Triangle = 1<<0,
+    CollisionShapeType_Circle = 1<<1,
+};
+
+global_variable const u32 CollisionShapePair_TriangleTriangle = CollisionShapeType_Triangle;
+global_variable const u32 CollisionShapePair_CircleCircle = CollisionShapeType_Circle;
+global_variable const u32 CollisionShapePair_TriangleCircle = CollisionShapeType_Circle|CollisionShapeType_Triangle;
+
+struct collision_shape
+{
+    collision_shape_type Type;
+#if COLLISION_DEBUG
+        b32 Collided;
+#endif
+    union
+    {
+        rectangle2 Rectangle;
+        union
+        {
+            v2 TrianglePoints[3];
+            struct
+            {
+                v2 A;
+                v2 B;
+                v2 C;
+            };
+        };
+        struct
+        {
+            r32 Radius;
+            v2 Center;
+        };
+    };
+};
+
 struct circle_ray_intersection_result
 {
     r32 t1;
