@@ -279,8 +279,6 @@ struct loaded_font
 
 #define PLATFORM_PUSH_THREAD_WORK(Name) void Name(thread_callback *Callback, void *Params, thread_progress *Progress)
 typedef PLATFORM_PUSH_THREAD_WORK(platform_push_thread_work);
-#define PLATFORM_LOAD_FONT(Name) void Name(loaded_font *Font, char *FontName, u32 FontHeight, font_weight FontWeight)
-typedef PLATFORM_LOAD_FONT(platform_load_font);
 
 struct game_memory
 {
@@ -297,7 +295,7 @@ struct game_memory
 
     platform_read_file *PlatformReadFile;
     platform_push_thread_work *PlatformPushThreadWork;
-    platform_load_font *PlatformLoadFont;
+    loaded_font Font;
 };
 
 struct memory_arena

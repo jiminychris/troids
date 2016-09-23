@@ -7,7 +7,7 @@
    $Notice: $
    ======================================================================== */
 
-#define COLLISION_DEBUG_LINEAR 0
+#define COLLISION_DEBUG_LINEAR 1
 #define COLLISION_DEBUG_ANGULAR 0
 #define COLLISION_DEBUG COLLISION_DEBUG_LINEAR|COLLISION_DEBUG_ANGULAR
 #define COLLISION_T_ADJUST 0.1f
@@ -82,9 +82,6 @@ global_variable const u32 CollisionShapePair_TriangleCircle = CollisionShapeType
 struct collision_shape
 {
     collision_shape_type Type;
-#if COLLISION_DEBUG
-        b32 Collided;
-#endif
     union
     {
         rectangle2 Rectangle;
@@ -104,6 +101,9 @@ struct collision_shape
             v2 Center;
         };
     };
+#if TROIDS_INTERNAL
+        b32 Collided;
+#endif
 };
 
 struct circle_ray_intersection_result

@@ -8,7 +8,7 @@
    ======================================================================== */
 
 internal void
-LoadFont(loaded_font *Font, HDC DeviceContext, char *FontName, DWORD FontHeight, DWORD FontWeight)
+Win32LoadFont(loaded_font *Font, HDC DeviceContext, char *FontName, DWORD FontHeight, DWORD FontWeight)
 {
     for(u32 GlyphIndex = 0;
         GlyphIndex < ArrayCount(Font->Glyphs);
@@ -206,29 +206,6 @@ LoadFont(loaded_font *Font, HDC DeviceContext, char *FontName, DWORD FontHeight,
         DeleteObject(FontBitmap);
         DeleteDC(FontDC);
     }
-}
-
-internal void
-Win32LoadFont(loaded_font *Font, char *FontName, u32 FontHeight, font_weight FontWeight)
-{
-    Assert(GlobalWindow);
-    DWORD Win32FontWeight;
-    switch(FontWeight)
-    {
-        case FontWeight_Bold:
-        {
-            Win32FontWeight = FW_BOLD;
-        } break;
-
-        default:
-        {
-            Win32FontWeight = FW_NORMAL;
-        };
-    }
-
-    HDC DeviceContext = GetDC(GlobalWindow);
-    LoadFont(Font, DeviceContext, FontName, FontHeight, Win32FontWeight);
-    ReleaseDC(GlobalWindow, DeviceContext);
 }
 
 #define WIN32_TROIDS_FONT_H

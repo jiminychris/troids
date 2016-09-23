@@ -496,14 +496,14 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
 #endif
 
 #if TROIDS_INTERNAL
-            LoadFont(&GlobalDebugState->Font, DeviceContext, "Courier New", 42, FW_BOLD);
+            Win32LoadFont(&GlobalDebugState->Font, DeviceContext, "Courier New", 42, FW_BOLD);
 #endif
+            Win32LoadFont(&GameMemory.Font, DeviceContext, "Arial", 128, FW_NORMAL);
             
             ReleaseDC(GlobalWindow, DeviceContext);
 
             GameMemory.PlatformReadFile = Win32ReadFile;
             GameMemory.PlatformPushThreadWork = Win32PushThreadWork;
-            GameMemory.PlatformLoadFont = Win32LoadFont;
             
             // TODO(chris): Query monitor refresh rate
             r32 dtForFrame = 1.0f / 60.0f;
@@ -676,6 +676,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
             game_input *OldInput = GameInput;
             game_input *NewInput = GameInput + 1;
 
+            ToggleFullscreen(GlobalWindow);
             QueryPerformanceCounter(&LastCounter);
             while(GlobalRunning)
             {

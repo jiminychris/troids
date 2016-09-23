@@ -125,7 +125,36 @@ struct text_layout
     loaded_font *Font;
 };
 
-internal rectangle2
+struct text_measurement
+{
+    r32 MinX;
+    r32 MaxX;
+    r32 LineMaxY;
+    r32 TextMaxY;
+    r32 BaseLine;
+    r32 TextMinY;
+    r32 LineMinY;
+};
+
+inline rectangle2
+GetLineRect(text_measurement TextMeasurement)
+{
+    rectangle2 Result = MinMax(V2(TextMeasurement.MinX, TextMeasurement.LineMinY),
+                               V2(TextMeasurement.MaxX, TextMeasurement.LineMaxY));
+    return(Result);
+}
+
+inline v2
+GetTightCenteredOffset(text_measurement TextMeasurement)
+{
+    v2 AlignP = V2(TextMeasurement.MinX, TextMeasurement.BaseLine);
+    v2 Center = 0.5f*V2(TextMeasurement.MinX + TextMeasurement.MaxX,
+                        TextMeasurement.TextMinY + TextMeasurement.TextMaxY);
+    v2 Result = AlignP - Center;
+    return(Result);
+}
+
+internal text_measurement
 DrawText(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char *Text, u32 Flags = 0);
 
 internal rectangle2

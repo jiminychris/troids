@@ -361,6 +361,29 @@ LOG_DEBUG_TYPE(b32)
 LOG_DEBUG_TYPE(u32)
 LOG_DEBUG_TYPE(memory_arena)
 
+#define LOG_CONTROLLER(Controller)                                      \
+    {                                                                   \
+        DEBUG_VALUE("LeftStick", (Controller)->LeftStick);              \
+        DEBUG_VALUE("RightStick", (Controller)->RightStick);            \
+        DEBUG_VALUE("LeftTrigger", (Controller)->LeftTrigger);          \
+        DEBUG_VALUE("RightTrigger", (Controller)->RightTrigger);        \
+        DEBUG_VALUE("ActionUp", (Controller)->ActionUp.EndedDown);      \
+        DEBUG_VALUE("ActionLeft", (Controller)->ActionLeft.EndedDown);  \
+        DEBUG_VALUE("ActionDown", (Controller)->ActionDown.EndedDown);  \
+        DEBUG_VALUE("ActionRight", (Controller)->ActionRight.EndedDown); \
+        DEBUG_VALUE("LeftShoulder1", (Controller)->LeftShoulder1.EndedDown); \
+        DEBUG_VALUE("RightShoulder1", (Controller)->RightShoulder1.EndedDown); \
+        DEBUG_VALUE("LeftShoulder2", (Controller)->LeftShoulder2.EndedDown); \
+        DEBUG_VALUE("RightShoulder2", (Controller)->RightShoulder2.EndedDown); \
+        DEBUG_VALUE("Select", (Controller)->Select.EndedDown);          \
+        DEBUG_VALUE("Start", (Controller)->Start.EndedDown);            \
+        DEBUG_VALUE("LeftClick", (Controller)->LeftClick.EndedDown);    \
+        DEBUG_VALUE("RightClick", (Controller)->RightClick.EndedDown);  \
+        DEBUG_VALUE("Power", (Controller)->Power.EndedDown);            \
+        DEBUG_VALUE("CenterClick", (Controller)->CenterClick.EndedDown); \
+    }
+
+
 #else
 #define TIMED_LOOP(...)
 #define TIMED_BLOCK(...)

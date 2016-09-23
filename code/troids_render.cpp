@@ -11,7 +11,7 @@
 #define DEBUG_BITMAPS 0
 
 inline v2
-WorldToScreenTransform(render_buffer *RenderBuffer, v3 WorldP)
+Project(render_buffer *RenderBuffer, v3 WorldP)
 {
     v2 Result = {};
     switch(RenderBuffer->Projection)
@@ -46,6 +46,46 @@ WorldToScreenTransform(render_buffer *RenderBuffer, v3 WorldP)
     return(Result);
 }
 
+inline v3
+Unproject(render_buffer *RenderBuffer, v2 ScreenP, r32 Z)
+{
+    v3 Result = {};
+    switch(RenderBuffer->Projection)
+    {
+        case Projection_Orthographic:
+        {
+            r32 DistanceFromCamera = Z - RenderBuffer->CameraP.z;
+            r32 ScaleFactor = -(5.0f*DistanceFromCamera);
+            r32 PixelsToMeters = 1.0f / RenderBuffer->MetersToPixels;
+            v3 WorldP = V3((ScreenP - 0.5f*V2i(RenderBuffer->Width,
+                                            RenderBuffer->Height))
+                           *ScaleFactor*PixelsToMeters, DistanceFromCamera);
+
+            r32 CosRot = Cos(-RenderBuffer->CameraRot);
+            r32 SinRot = Sin(-RenderBuffer->CameraRot);
+            {
+                m33 RotMat =
+                    {
+                        CosRot, SinRot, 0,
+                        -SinRot, CosRot, 0,
+                        0, 0, 1,
+                    };
+                WorldP = RotMat*WorldP;
+            }
+
+            Result = WorldP + RenderBuffer->CameraP;
+        } break;
+
+        case Projection_None:
+        {
+            Result = V3(ScreenP, 0.0f);
+        } break;
+
+        InvalidDefaultCase;
+    }
+    return(Result);
+}
+
 inline void
 PushRenderHeader(memory_arena *Arena, render_command Command)
 {
@@ -67,9 +107,9 @@ PushBitmap(render_buffer *RenderBuffer, loaded_bitmap *Bitmap, v3 P, v2 XAxis, v
         v2 Align = Bitmap->Align;
         v3 Origin = P - V3(Hadamard(Align, XAxis + YAxis), 0);
                 
-        XAxis = WorldToScreenTransform(RenderBuffer, Origin + V3(XAxis, 0));
-        YAxis = WorldToScreenTransform(RenderBuffer, Origin + V3(YAxis, 0));
-        v2 ScreenOrigin = WorldToScreenTransform(RenderBuffer, Origin);
+        XAxis = Project(RenderBuffer, Origin + V3(XAxis, 0));
+        YAxis = Project(RenderBuffer, Origin + V3(YAxis, 0));
+        v2 ScreenOrigin = Project(RenderBuffer, Origin);
         XAxis -= ScreenOrigin;
         YAxis -= ScreenOrigin;
         
@@ -93,9 +133,9 @@ PushRotatedRectangle(render_buffer *RenderBuffer, v3 P, v2 XAxis, v2 YAxis, v2 D
     YAxis*=Dim.y;
     v3 Origin = P - V3(Hadamard(Align, XAxis + YAxis), 0);
                 
-    XAxis = WorldToScreenTransform(RenderBuffer, Origin + V3(XAxis, 0));
-    YAxis = WorldToScreenTransform(RenderBuffer, Origin + V3(YAxis, 0));
-    v2 ScreenOrigin = WorldToScreenTransform(RenderBuffer, Origin);
+    XAxis = Project(RenderBuffer, Origin + V3(XAxis, 0));
+    YAxis = Project(RenderBuffer, Origin + V3(YAxis, 0));
+    v2 ScreenOrigin = Project(RenderBuffer, Origin);
     XAxis -= ScreenOrigin;
     YAxis -= ScreenOrigin;
     
@@ -113,9 +153,9 @@ PushTriangle(render_buffer *RenderBuffer, v3 A, v3 B, v3 C, v4 Color)
     PushRenderHeader(&RenderBuffer->Arena, RenderCommand_triangle);
     render_triangle_data *Data = PushStruct(&RenderBuffer->Arena, render_triangle_data);
 
-    Data->A = WorldToScreenTransform(RenderBuffer, A);
-    Data->B = WorldToScreenTransform(RenderBuffer, B);
-    Data->C = WorldToScreenTransform(RenderBuffer, C);
+    Data->A = Project(RenderBuffer, A);
+    Data->B = Project(RenderBuffer, B);
+    Data->C = Project(RenderBuffer, C);
     Data->Color = Color;
     // TODO(chris): How to handle sorting with 3D triangles?
     Data->SortKey = A.z;
@@ -139,8 +179,8 @@ PushCircle(render_buffer *RenderBuffer, v3 P, r32 Radius, v4 Color)
     PushRenderHeader(&RenderBuffer->Arena, RenderCommand_circle);
     render_circle_data *Data = PushStruct(&RenderBuffer->Arena, render_circle_data);
 
-    Data->P = WorldToScreenTransform(RenderBuffer, P);
-    Data->Radius = Length(WorldToScreenTransform(RenderBuffer, P + V3(Radius, 0, 0)) - Data->P);
+    Data->P = Project(RenderBuffer, P);
+    Data->Radius = Length(Project(RenderBuffer, P + V3(Radius, 0, 0)) - Data->P);
     Data->Color = Color;
     Data->SortKey = P.z;
 }
@@ -152,8 +192,8 @@ PushLine(render_buffer *RenderBuffer, v3 A, v3 B, v4 Color)
     PushRenderHeader(&RenderBuffer->Arena, RenderCommand_line);
     render_line_data *Data = PushStruct(&RenderBuffer->Arena, render_line_data);
 
-    Data->A = WorldToScreenTransform(RenderBuffer, A);
-    Data->B = WorldToScreenTransform(RenderBuffer, B);
+    Data->A = Project(RenderBuffer, A);
+    Data->B = Project(RenderBuffer, B);
     Data->Color = Color;
     Data->SortKey = 0.5f*(A.z + B.z);
 }
@@ -187,15 +227,13 @@ enum draw_text_flags
 {
     DrawTextFlags_NoLineAdvance = 1 << 0,
     DrawTextFlags_Measure = 1 << 1,
-    DrawTextFlags_TightBounds = 1 << 2,
-    DrawTextFlags_LooseBounds = 1 << 3,
 };
 
 // TODO(chris): Clean this up. Make fonts and font layout more systematic.
-internal rectangle2
+internal text_measurement
 DrawText(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char *Text, u32 Flags)
 {
-    rectangle2 Result;
+    text_measurement Result;
     v2 PInit = Layout->P;
     char Prev = 0;
     char *At = Text;
@@ -203,8 +241,8 @@ DrawText(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char 
     r32 Height = Layout->Scale*Layout->Font->Height;
     r32 Descent = Height - Ascent;
     r32 LineAdvance = Layout->Scale*Layout->Font->LineAdvance;
-    r32 MinY = REAL32_MAX;
-    r32 MaxY = -REAL32_MAX;
+    Result.TextMinY = REAL32_MAX;
+    Result.TextMaxY = -REAL32_MAX;
 
     b32 Measure = IsSet(Flags, DrawTextFlags_Measure);
     for(u32 AtIndex = 0;
@@ -230,30 +268,28 @@ DrawText(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char 
                 if(!Measure)
                 {
                     PushBitmap(RenderBuffer, Glyph, P,
-                               XAxis, YAxis, Dim, V4(0, 0, 0, 1));
+                               XAxis, YAxis, Dim, V4(0, 0, 0, Layout->Color.a));
                 }
-                MinY = Minimum(MinY, P.y - Glyph->Align.y*Dim.y);
-                MaxY = Maximum(MaxY, P.y + (1.0f-Glyph->Align.y)*Dim.y);
+                Result.TextMinY = Minimum(Result.TextMinY, P.y - Glyph->Align.y*Dim.y);
+                Result.TextMaxY = Maximum(Result.TextMaxY, P.y + (1.0f-Glyph->Align.y)*Dim.y);
             }
             v3 P = V3(Layout->P, TEXT_Z);
             if(!Measure)
             {
-                PushBitmap(RenderBuffer, Glyph, P, XAxis, YAxis, Dim);
+                PushBitmap(RenderBuffer, Glyph, P, XAxis, YAxis, Dim, Layout->Color);
             }
-            MinY = Minimum(MinY, P.y - Glyph->Align.y*Dim.y);
-            MaxY = Maximum(MaxY, P.y + (1.0f-Glyph->Align.y)*Dim.y);
+            Result.TextMinY = Minimum(Result.TextMinY, P.y - Glyph->Align.y*Dim.y);
+            Result.TextMaxY = Maximum(Result.TextMaxY, P.y + (1.0f-Glyph->Align.y)*Dim.y);
         }
         Prev = *At++;
         Layout->P.x += Layout->Scale*GetTextAdvance(Layout->Font, Prev, *At);
     }
 
-    Result = MinMax(V2(PInit.x, PInit.y - Descent),
-                    V2(Layout->P.x, PInit.y + Ascent));
-    if(IsSet(Flags, DrawTextFlags_TightBounds))
-    {
-        Result.Min.y = MinY;
-        Result.Max.y = MaxY;
-    }
+    Result.BaseLine = PInit.y;
+    Result.MinX = PInit.x;
+    Result.LineMinY = Result.BaseLine - Descent;
+    Result.MaxX = Layout->P.x;
+    Result.LineMaxY = Result.BaseLine + Ascent;
         
     if(!IsSet(Flags, DrawTextFlags_NoLineAdvance))
     {
@@ -276,7 +312,7 @@ DrawButton(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, cha
     v2 PInit = Layout->P;
     Layout->P.x += Border;
     Layout->P.y -= Border;
-    Result = AddRadius(DrawText(RenderBuffer, Layout, TextLength, Text), Border);
+    Result = AddRadius(GetLineRect(DrawText(RenderBuffer, Layout, TextLength, Text)), Border);
     PushRectangle(RenderBuffer, V3(Result.Min, HUD_Z), GetDim(Result), Color);
     
     return(Result);
@@ -287,7 +323,7 @@ DrawFillBar(render_buffer *RenderBuffer, text_layout *Layout, r32 Used, r32 Max,
 {
     char Text[256];
     u32 TextLength = _snprintf_s(Text, sizeof(Text), "%.*f / %.*f", Precision, Used, Precision, Max);
-    rectangle2 TextRect = DrawText(RenderBuffer, Layout, TextLength, Text);
+    rectangle2 TextRect = GetLineRect(DrawText(RenderBuffer, Layout, TextLength, Text));
     r32 Percentage = Used / Max;
 
     v2 SizeDim;

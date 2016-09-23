@@ -215,8 +215,8 @@ DrawThread(render_buffer *RenderBuffer, text_layout *Layout, debug_thread *Threa
             Layout->P = V2(Left, RegionRect.Max.y - Layout->Font->Ascent*Layout->Scale);
             if(Inside(RegionRect, Input->MousePosition))
             {
-                rectangle2 HoverRect =
-                    DrawText(RenderBuffer, Layout, TextLength, Text, DrawTextFlags_Measure);
+                rectangle2 HoverRect = GetLineRect(
+                    DrawText(RenderBuffer, Layout, TextLength, Text, DrawTextFlags_Measure));
                 if(HoverRect.Max.x > RenderBuffer->Width)
                 {
                     Layout->P.x = RenderBuffer->Width - GetDim(HoverRect).x;
@@ -359,13 +359,13 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
             rectangle2 HitBox;
             if(Node->Type == DebugEventType_GroupBegin)
             {
-                HitBox = DrawText(RenderBuffer, Layout, NameLength, Node->GUID);
+                HitBox = GetLineRect(DrawText(RenderBuffer, Layout, NameLength, Node->GUID));
             }
             else
             {
                 TextLength = _snprintf_s(Text, sizeof(Text), "Frame time: %fms",
                                          Frame->ElapsedSeconds*1000);
-                HitBox = DrawText(RenderBuffer, Layout, TextLength, Text);
+                HitBox = GetLineRect(DrawText(RenderBuffer, Layout, TextLength, Text));
             }
             if(Inside(HitBox, Input->MousePosition) && WentDown(Input->LeftMouse))
             {
