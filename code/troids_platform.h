@@ -325,6 +325,16 @@ enum push_flags
     PushFlag_Zero = 1 << 0,
 };
 
+inline b32
+HasRoom(memory_arena *Arena, memory_size Size, u32 Flags = 0)
+{
+    b32 Result = ((Arena->Used + Size) <= Arena->Size);
+    return(Result);
+}
+
+#define HasRoomForStruct(Arena, type, ...) HasRoom(Arena, sizeof(type), __VA_ARGS__)
+#define HasRoomForArray(Arena, Count, type, ...) HasRoom(Arena, Count*sizeof(type), __VA_ARGS__)
+
 inline void *
 PushSize(memory_arena *Arena, memory_size Size, u32 Flags = 0)
 {

@@ -44,13 +44,15 @@ struct game_state
     loaded_bitmap AsteroidBitmap;
     loaded_bitmap BulletBitmap;
     loaded_obj HeadMesh;
+
+    memory_arena Arena;
 };
 
 struct transient_state
 {
     b32 IsInitialized;
 
-    memory_arena TranArena;
+    memory_arena Arena;
     render_buffer RenderBuffer;
 };
 

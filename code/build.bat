@@ -4,7 +4,7 @@ if not exist w:\build mkdir w:\build
 pushd w:\build
 
 set Internal=1
-set DebugDisplay=0
+set DebugDisplay=1
 set Slow=1
 set Rumble=0
 set DataPath=\"..\\troids\\data\"

@@ -263,6 +263,10 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     {
         State->IsInitialized = true;
 
+        InitializeArena(&State->Arena,
+                        GameMemory->PermanentMemorySize - sizeof(game_state),
+                        (u8 *)GameMemory->PermanentMemory + sizeof(game_state));
+
         State->MetersToPixels = 3674.9418959066769192359305459154f;
 
 #if 1
@@ -278,20 +282,55 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     transient_state *TranState = (transient_state *)GameMemory->TemporaryMemory;
     if(!TranState->IsInitialized)
     {
-        InitializeArena(&TranState->TranArena,
+        InitializeArena(&TranState->Arena,
                         GameMemory->TemporaryMemorySize - sizeof(transient_state),
                         (u8 *)GameMemory->TemporaryMemory + sizeof(transient_state));
 
-        TranState->RenderBuffer.Arena = SubArena(&TranState->TranArena, Megabytes(1));
+        TranState->RenderBuffer.Arena = SubArena(&TranState->Arena, Megabytes(1));
         TranState->RenderBuffer.Width = BackBuffer->Width;
         TranState->RenderBuffer.Height = BackBuffer->Height;
         TranState->RenderBuffer.MetersToPixels = State->MetersToPixels;
         TranState->RenderBuffer.DefaultProjection = Projection_Orthographic;
         TranState->RenderBuffer.Projection = TranState->RenderBuffer.DefaultProjection;
         
-        State->HeadMesh = LoadObj("head.obj", &TranState->TranArena);
+        State->HeadMesh = LoadObj("head.obj", &TranState->Arena);
 
         TranState->IsInitialized = true;
+    }
+
+    DEBUG_SUMMARY();
+    {DEBUG_GROUP("Global");
+        {DEBUG_GROUP("Debug System");
+            DEBUG_MEMORY();
+            DEBUG_EVENTS();
+        }   
+        {DEBUG_GROUP("Profiler");
+            DEBUG_FRAME_TIMELINE();
+            DEBUG_PROFILER();
+        }
+        {DEBUG_GROUP("Controllers");
+            {DEBUG_GROUP("Keyboard");
+                LOG_CONTROLLER(&Input->Keyboard);
+            }
+            {DEBUG_GROUP("Game Pad 0");
+                LOG_CONTROLLER(Input->GamePads + 0);
+            }
+            {DEBUG_GROUP("Game Pad 1");
+                LOG_CONTROLLER(Input->GamePads + 1);
+            }
+            {DEBUG_GROUP("Game Pad 2");
+                LOG_CONTROLLER(Input->GamePads + 2);
+            }
+            {DEBUG_GROUP("Game Pad 3");
+                LOG_CONTROLLER(Input->GamePads + 3);
+            }
+        }
+        {DEBUG_GROUP("Memory");
+            DEBUG_VALUE("Permanent Arena", State->Arena);
+            DEBUG_VALUE("Tran Arena", TranState->Arena);
+            DEBUG_VALUE("String Arena", GlobalDebugState->StringArena);
+            DEBUG_VALUE("Render Arena", TranState->RenderBuffer.Arena);
+        }
     }
 
     if(State->Mode != State->NextMode)
@@ -309,6 +348,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             } break;
         }
         State->Mode = State->NextMode;
+        State->Arena.Used = 0;
     }
     
     switch(State->Mode)
@@ -323,7 +363,6 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             PlayMode(GameMemory, Input, BackBuffer);
         } break;
     }
-    
 }
 
 extern "C" GAME_GET_SOUND_SAMPLES(GameGetSoundSamples)

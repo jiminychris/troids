@@ -34,8 +34,7 @@ struct entity
 
     b32 Destroyed;
     r32 BoundingRadius;
-    u32 CollisionShapeCount;
-    collision_shape CollisionShapes[8];
+    collision_shape *CollisionShapes;
     
     m33 RotationMatrix;
     char Character;
@@ -63,25 +62,63 @@ struct play_state
 };
 
 inline entity *
-CreateEntity(play_state *State)
+CreateEntity(play_state *State, u32 ShapeCount = 0, collision_shape *Shapes = 0)
 {
     entity *Result = 0;
+    physics_state *PhysicsState = &State->PhysicsState;
+    memory_arena *ShapeArena = &PhysicsState->ShapeArena;
     if(State->EntityCount < ArrayCount(State->Entities))
     {
-        Result = State->Entities + State->EntityCount++;
+        if(HasRoomForArray(ShapeArena, ShapeCount, collision_shape))
+        {
+            Result = State->Entities + State->EntityCount++;
+            *Result = {};
+            for(u32 ShapeIndex = 0;
+                ShapeIndex < ShapeCount;
+                ++ShapeIndex)
+            {
+                collision_shape *Shape = PhysicsState->FirstFreeShape;
+                if(Shape)
+                {
+                    PhysicsState->FirstFreeShape = Shape->NextFree;
+                }
+                else
+                {
+                    Shape = PushStruct(ShapeArena, collision_shape);
+                }
+                *Shape = *(Shapes + ShapeIndex);
+                Shape->Next = Result->CollisionShapes;
+                Result->CollisionShapes = Shape;
+            }
+        }
+        else
+        {
+            Assert(!"Created too many collision shapes.");
+        }
     }
     else
     {
         Assert(!"Created too many entities.");
     }
-    *Result = {};
     return(Result);
 }
 
 inline void
 DestroyEntity(play_state *State, entity *Entity)
 {
+    physics_state *PhysicsState = &State->PhysicsState;
     *Entity = State->Entities[--State->EntityCount];
+    for(collision_shape *Shape = Entity->CollisionShapes;
+        Shape;
+        )
+    {
+        collision_shape *Next = Shape->Next;
+
+        Shape->NextFree = PhysicsState->FirstFreeShape;
+        PhysicsState->FirstFreeShape = Shape;
+        
+        Shape = Next;
+    }
 }
 
 inline b32

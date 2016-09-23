@@ -10,7 +10,6 @@
 #define COLLISION_DEBUG_LINEAR 1
 #define COLLISION_DEBUG_ANGULAR 0
 #define COLLISION_DEBUG COLLISION_DEBUG_LINEAR|COLLISION_DEBUG_ANGULAR
-#define COLLISION_T_ADJUST 0.1f
 #define COLLISION_ITERATIONS 2
 
 enum collider_type
@@ -22,10 +21,64 @@ enum collider_type
     ColliderType_Asteroid = 1<<2,
 };
 
+enum collision_shape_type
+{
+    CollisionShapeType_None = 0,
+    CollisionShapeType_Triangle = 1<<0,
+    CollisionShapeType_Circle = 1<<1,
+};
+
+struct collision_shape
+{
+    collision_shape_type Type;
+    union
+    {
+        rectangle2 Rectangle;
+        union
+        {
+            v2 TrianglePoints[3];
+            struct
+            {
+                v2 A;
+                v2 B;
+                v2 C;
+            };
+        };
+        struct
+        {
+            r32 Radius;
+            v2 Center;
+        };
+    };
+    union
+    {
+        collision_shape *Next;
+        collision_shape *NextFree;
+    };
+#if TROIDS_INTERNAL
+        b32 Collided;
+#endif
+};
+
 struct physics_state
 {
     b32 ColliderTable[256];
+    memory_arena ShapeArena;
+    collision_shape *FirstFreeShape;
 };
+
+inline void
+InitializePhysicsState(physics_state *State, memory_arena *Arena)
+{
+    for(u32 ColliderIndex = 0;
+        ColliderIndex < ArrayCount(State->ColliderTable);
+        ++ColliderIndex)
+    {
+        State->ColliderTable[ColliderIndex] = 0;
+    }
+
+    State->ShapeArena = SubArena(Arena, Megabytes(1));
+}
 
 inline void
 AllowCollision(physics_state *State, collider_type A, collider_type B)
@@ -68,43 +121,9 @@ struct collision
     };
 };
 
-enum collision_shape_type
-{
-    CollisionShapeType_None = 0,
-    CollisionShapeType_Triangle = 1<<0,
-    CollisionShapeType_Circle = 1<<1,
-};
-
 global_variable const u32 CollisionShapePair_TriangleTriangle = CollisionShapeType_Triangle;
 global_variable const u32 CollisionShapePair_CircleCircle = CollisionShapeType_Circle;
 global_variable const u32 CollisionShapePair_TriangleCircle = CollisionShapeType_Circle|CollisionShapeType_Triangle;
-
-struct collision_shape
-{
-    collision_shape_type Type;
-    union
-    {
-        rectangle2 Rectangle;
-        union
-        {
-            v2 TrianglePoints[3];
-            struct
-            {
-                v2 A;
-                v2 B;
-                v2 C;
-            };
-        };
-        struct
-        {
-            r32 Radius;
-            v2 Center;
-        };
-    };
-#if TROIDS_INTERNAL
-        b32 Collided;
-#endif
-};
 
 struct circle_ray_intersection_result
 {
