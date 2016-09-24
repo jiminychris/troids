@@ -176,6 +176,12 @@ struct debug_frame
     debug_thread Threads[MAX_DEBUG_THREADS];
 };
 
+struct hashed_string
+{
+    hashed_string *NextInHash;
+    // NOTE(chris): Stored after this is a null-terminated string
+};
+
 struct debug_state
 {
     b32 IsInitialized;
@@ -201,6 +207,9 @@ struct debug_state
     debug_node *NodeHash[256];
     debug_node *FirstFreeNode;
 
+    // TODO(chris): These never get freed!
+    hashed_string *StringHash[256];
+    
     profiler_element *FirstFreeProfilerElement;
 
     loaded_font Font;

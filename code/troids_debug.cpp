@@ -12,6 +12,20 @@ struct debug_node_hash_result
     u32 HashValue;
 };
 
+inline u32
+HashString(char *String)
+{
+    Assert(String);
+    u32 Result = 0;
+    for(char *At = String;
+        *At;
+        ++At)
+    {
+        Result += Result*65521 + *At;
+    }
+    return(Result);
+}
+
 internal debug_node_hash_result
 HashNode(char *GUID)
 {
@@ -62,6 +76,39 @@ CopyString(memory_arena *Arena, char *String)
     return(Result);
 }
 
+inline char *
+GetStringFromHash(char *String)
+{
+    char *Result = 0;
+    
+    u32 HashValue = HashString(String);
+    u32 Index = HashValue & (ArrayCount(GlobalDebugState->StringHash) - 1);
+    Assert(Index < ArrayCount(GlobalDebugState->StringHash));
+    hashed_string *FirstInHash = GlobalDebugState->StringHash[Index];
+
+    for(hashed_string *Chain = FirstInHash;
+        Chain;
+        Chain = Chain->NextInHash)
+    {
+        char *HashedString = (char *)Chain + 1;
+        if(StringsMatch(String, HashedString))
+        {
+            Result = HashedString;
+            break;
+        }
+    }
+
+    if(!Result)
+    {
+        hashed_string *Header = PushStruct(&GlobalDebugState->StringArena, hashed_string);
+        Result = CopyString(&GlobalDebugState->StringArena, String);
+        Header->NextInHash = FirstInHash;
+        GlobalDebugState->StringHash[Index] = Header;
+    }
+
+    return(Result);
+}
+
 internal debug_node *
 GetNode(char *GUID, debug_event_type Type, debug_frame *Frame = 0)
 {
@@ -105,15 +152,7 @@ GetNode(char *GUID, debug_event_type Type, debug_frame *Frame = 0)
             Result = PushStruct(Arena, debug_node, PushFlag_Zero);
         }
         Result->Type = Type;
-        // TODO(chris): Does this need to be copied? Probably only if it's not a literal.
-        if(Frame)
-        {
-            Result->GUID = GetNode(GUID, Type)->GUID;
-        }
-        else
-        {
-            Result->GUID = CopyString(&GlobalDebugState->StringArena, GUID);
-        }
+        Result->GUID = GetStringFromHash(GUID);
         Result->NextInHash = FirstInHash;
         NodeHash[Index] = Result;
     }
@@ -164,7 +203,7 @@ DrawThread(render_buffer *RenderBuffer, text_layout *Layout, debug_thread *Threa
     u32 TextLength;
     char Text[256];
     for(profiler_element *Element = Thread->CurrentElement->Child;
-        Element;
+        Element != Thread->CurrentElement;
         )
     {
         if(!FinishedChildren && Element->Child && (Depth < MaxDepth))
@@ -242,7 +281,6 @@ DrawThread(render_buffer *RenderBuffer, text_layout *Layout, debug_thread *Threa
                     --Depth;
                 }
             }
-
         }
     }
 }

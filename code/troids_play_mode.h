@@ -54,9 +54,6 @@ struct play_state
 
     s32 Lives;
 
-    // TODO(chris): Remove this
-    entity *DEBUGEntity;
-
     u32 EntityCount;
     entity Entities[256];
 };
