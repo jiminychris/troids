@@ -406,8 +406,8 @@ ResolveCollision(entity *Entity, entity *OtherEntity)
 
         case EntityPair_AsteroidShip:
         {
-//            Entity->Destroyed = OtherEntity->Destroyed = true;
-//            Result = true;
+            Entity->Destroyed = OtherEntity->Destroyed = true;
+            Result = true;
         } break;
 
         default:

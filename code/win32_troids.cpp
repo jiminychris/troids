@@ -890,6 +890,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                                              (FileInfo.ftLastWriteTime.dwLowDateTime << 0));
                         if((LastWriteTime > CodeWriteTime) && !FileExists(PDBLockPath))
                         {
+                            // TODO(chris): Wait on all threads to finish here.
                             if(GameCode)
                             {
                                 // TODO(chris): Is this necessary?

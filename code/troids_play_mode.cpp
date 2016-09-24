@@ -611,9 +611,11 @@ ResetGame(play_state *State, render_buffer *RenderBuffer, loaded_font *Font)
 {
     RenderBuffer->CameraP = V3(State->ShipStartingP.xy, 100.0f);
     RenderBuffer->CameraRot = 0.0f;
-    
-    State->EntityCount = 0;
+
+    // NOTE(chris): Null entity
+    State->EntityCount = 1;
     State->PhysicsState.ShapeArena.Used = 0;
+    State->PhysicsState.FirstFreeShape = 0;
 
     State->Lives = 3;
 
@@ -627,7 +629,7 @@ ResetGame(play_state *State, render_buffer *RenderBuffer, loaded_font *Font)
     {
         GameOver(State, RenderBuffer, Font);
     }
-    entity *FloatingHead = CreateFloatingHead(State);
+    //entity *FloatingHead = CreateFloatingHead(State);
 
     entity *SmallAsteroid = CreateAsteroid(State, V3(50.0f, 0.0f, 0.0f), 5.0f, V3(2.0f, 3.0f, 0));
 #if 0
@@ -663,6 +665,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
     {DEBUG_GROUP("Play Mode");
         DEBUG_FILL_BAR("Entities", State->EntityCount, ArrayCount(State->Entities));
         DEBUG_VALUE("Shape Arena", State->PhysicsState.ShapeArena);
+        DEBUG_VALUE("Shape Freelist", (b32)State->PhysicsState.FirstFreeShape);
     }
     
     temporary_memory RenderMemory = BeginTemporaryMemory(&RenderBuffer->Arena);
@@ -675,7 +678,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
 
     b32 FirstAsteroid = true;
     // NOTE(chris): Pre collision pass
-    for(u32 EntityIndex = 0;
+    for(u32 EntityIndex = 1;
         EntityIndex < State->EntityCount;
         )
     {
@@ -839,7 +842,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
 
     BEGIN_TIMED_BLOCK("Collision");
     // NOTE(chris): Collision pass
-    for(u32 EntityIndex = 0;
+    for(u32 EntityIndex = 1;
         EntityIndex < State->EntityCount;
         ++EntityIndex)
     {
@@ -862,7 +865,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
                 if(dP.x != 0 || dP.y != 0)
                 {
                     r32 InvdPY = 1.0f / dP.y;
-                    for(u32 OtherEntityIndex = 0;
+                    for(u32 OtherEntityIndex = 1;
                         OtherEntityIndex < State->EntityCount;
                         ++OtherEntityIndex)
                     {
@@ -1109,7 +1112,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
                 if(dYaw)
                 {
                     r32 tYawMax = tMove;
-                    for(u32 OtherEntityIndex = 0;
+                    for(u32 OtherEntityIndex = 1;
                         OtherEntityIndex < State->EntityCount;
                         ++OtherEntityIndex)
                     {
@@ -1375,7 +1378,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
     }
 
     // NOTE(chris): Post collision pass
-    for(u32 EntityIndex = 0;
+    for(u32 EntityIndex = 1;
         EntityIndex < State->EntityCount;
         )
     {
@@ -1432,40 +1435,20 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
         }
     }
 
-    if(!State->Lives)
+    if(State->Lives <= 0)
     {
-        text_layout Layout = {};
-        Layout.Font = &GameMemory->Font;
-        Layout.Scale = 0.6f;
-        Layout.Color = V4(1, 1, 1, 1);
-        
-        if(State->Lives <= 0)
-        {
-            Layout.Scale = 1.0f;
-            char GameOverText[] = "GAME OVER";
-            text_measurement GameOverMeasurement = DrawText(RenderBuffer, &Layout,
-                                                            sizeof(GameOverText)-1, GameOverText,
-                                                            DrawTextFlags_Measure);
-            Layout.P = ScreenCenter + GetTightCenteredOffset(GameOverMeasurement);
-#if 0
-            RenderBuffer->Projection = Projection_None;
-            DrawText(RenderBuffer, &Layout, sizeof(GameOverText)-1, GameOverText);
-            RenderBuffer->Projection = RenderBuffer->DefaultProjection;
-            Layout.P = ScreenCenter + GetTightCenteredOffset(GameOverMeasurement);
-#endif
-            v3 P = V3(0.0f, -65.0f, 0.0f);
-            r32 Scale = 0.6f;
-        }
-
         if(WentDown(ShipController->Start))
         {
             ResetGame(State, RenderBuffer, &GameMemory->Font);
         }
-
+    }
+    if(WentDown(ShipController->Select))
+    {
+        GameState->NextMode = GameMode_TitleScreen;
     }
     
     // NOTE(chris): Render pass
-    for(u32 EntityIndex = 0;
+    for(u32 EntityIndex = 1;
         EntityIndex < State->EntityCount;
         ++EntityIndex)
     {

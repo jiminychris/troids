@@ -6,33 +6,29 @@
    $Notice: $
    ======================================================================== */
 
-struct debug_node_hash_result
+struct guid_hash_result
 {
-    u32 NameLength;
     u32 HashValue;
+
+    u32 NameOffset;
+    u32 NameLength;
+
+    u32 FileOffset;
+    u32 FileLength;
+
+    u32 LineOffset;
+    u32 LineLength;
 };
 
-inline u32
-HashString(char *String)
-{
-    Assert(String);
-    u32 Result = 0;
-    for(char *At = String;
-        *At;
-        ++At)
-    {
-        Result += Result*65521 + *At;
-    }
-    return(Result);
-}
-
-internal debug_node_hash_result
-HashNode(char *GUID)
+internal guid_hash_result
+HashGUID(char *GUID)
 {
     Assert(GUID);
-    debug_node_hash_result Result = {};
+    guid_hash_result Result = {};
+    Result.NameOffset = 0;
     u32 PipeCount = 0;
-    for(char *At = GUID;
+    char *At;
+    for(At = GUID;
         *At;
         ++At)
     {
@@ -41,19 +37,26 @@ HashNode(char *GUID)
             ++PipeCount;
             if(PipeCount == 1)
             {
-                Result.NameLength = (u32)(At - GUID);
+                Result.NameLength = (u32)(At - GUID) - Result.NameOffset;
+                Result.FileOffset = Result.NameOffset + Result.NameLength + 1;
+            }
+            if(PipeCount == 2)
+            {
+                Result.FileLength = (u32)(At - GUID) - Result.FileOffset;
+                Result.LineOffset = Result.FileOffset + Result.FileLength + 1;
             }
         }
         Result.HashValue += Result.HashValue*65521 + *At;
     }
+    Result.LineLength = (u32)(At - GUID) - Result.LineOffset;
     return(Result);
 }
 
-inline debug_node_hash_result
+inline guid_hash_result
 HashNode(debug_node *Node)
 {
     Assert(Node);
-    debug_node_hash_result Result = HashNode(Node->GUID);
+    guid_hash_result Result = HashGUID(Node->GUID);
     return(Result);
 }
 
@@ -61,50 +64,6 @@ inline u32
 GetNodeNameLength(debug_node *Node)
 {
     u32 Result = HashNode(Node).NameLength;
-
-    return(Result);
-}
-
-inline char *
-CopyString(memory_arena *Arena, char *String)
-{
-    char *Result = (char *)PushSize(Arena, 0);
-    do
-    {
-        *PushStruct(Arena, char) = *String;
-    } while(*String++);
-    return(Result);
-}
-
-inline char *
-GetStringFromHash(char *String)
-{
-    char *Result = 0;
-    
-    u32 HashValue = HashString(String);
-    u32 Index = HashValue & (ArrayCount(GlobalDebugState->StringHash) - 1);
-    Assert(Index < ArrayCount(GlobalDebugState->StringHash));
-    hashed_string *FirstInHash = GlobalDebugState->StringHash[Index];
-
-    for(hashed_string *Chain = FirstInHash;
-        Chain;
-        Chain = Chain->NextInHash)
-    {
-        char *HashedString = (char *)Chain + 1;
-        if(StringsMatch(String, HashedString))
-        {
-            Result = HashedString;
-            break;
-        }
-    }
-
-    if(!Result)
-    {
-        hashed_string *Header = PushStruct(&GlobalDebugState->StringArena, hashed_string);
-        Result = CopyString(&GlobalDebugState->StringArena, String);
-        Header->NextInHash = FirstInHash;
-        GlobalDebugState->StringHash[Index] = Header;
-    }
 
     return(Result);
 }
@@ -125,7 +84,7 @@ GetNode(char *GUID, debug_event_type Type, debug_frame *Frame = 0)
     // TODO(chris): Pass in sub arena instead?
     memory_arena *Arena = &GlobalDebugState->Arena;
 
-    u32 HashValue = HashNode(GUID).HashValue;
+    u32 HashValue = HashGUID(GUID).HashValue;
     u32 Index = HashValue & (HashCount - 1);
     Assert(Index < HashCount);
 
@@ -152,7 +111,8 @@ GetNode(char *GUID, debug_event_type Type, debug_frame *Frame = 0)
             Result = PushStruct(Arena, debug_node, PushFlag_Zero);
         }
         Result->Type = Type;
-        Result->GUID = GetStringFromHash(GUID);
+        Assert(GetStringFromHash(GUID) == GUID);
+        Result->GUID = GUID;
         Result->NextInHash = FirstInHash;
         NodeHash[Index] = Result;
     }
@@ -170,7 +130,7 @@ GetNode(char *GUID, debug_frame *Frame = 0)
 inline debug_node *
 GetNode(debug_event *Event, debug_frame *Frame = 0)
 {
-    debug_node *Result = GetNode(Event->Name, Event->Type, Frame);
+    debug_node *Result = GetNode(Event->GUID, Event->Type, Frame);
 
     return(Result);
 }
@@ -238,18 +198,26 @@ DrawThread(render_buffer *RenderBuffer, text_layout *Layout, debug_thread *Threa
             {
                 ColorIndex = 0;
             }
+            guid_hash_result GUIDHash = HashGUID(Element->GUID);
+            char *ElementName = Element->GUID + GUIDHash.NameOffset;
+            char *ElementFile = Element->GUID + GUIDHash.FileOffset;
+            char *ElementLine = Element->GUID + GUIDHash.LineOffset;
             if(Element->Iterations > 1)
             {
-                TextLength = _snprintf_s(Text, sizeof(Text), "%s %s(%u) %llucy/%lu=%llu",
-                                         Element->Name, Element->File,
-                                         Element->Line, CyclesPassed,
+                TextLength = _snprintf_s(Text, sizeof(Text), "%.*s %.*s(%.*s) %llucy/%lu=%llu",
+                                         GUIDHash.NameLength, ElementName,
+                                         GUIDHash.FileLength, ElementFile,
+                                         GUIDHash.LineLength, ElementLine,
+                                         CyclesPassed,
                                          Element->Iterations, CyclesPassed/Element->Iterations);
             }
             else
             {
-                TextLength = _snprintf_s(Text, sizeof(Text), "%s %s(%u) %llucy",
-                                         Element->Name, Element->File,
-                                         Element->Line, CyclesPassed);
+                TextLength = _snprintf_s(Text, sizeof(Text), "%.*s %.*s(%.*s) %llucy",
+                                         GUIDHash.NameLength, ElementName,
+                                         GUIDHash.FileLength, ElementFile,
+                                         GUIDHash.LineLength, ElementLine,
+                                         CyclesPassed);
             }
             Layout->P = V2(Left, RegionRect.Max.y - Layout->Font->Ascent*Layout->Scale);
             if(Inside(RegionRect, Input->MousePosition))
@@ -661,12 +629,10 @@ extern "C" DEBUG_COLLATE(DebugCollate)
                             Element = PushStruct(DebugArena, profiler_element);
                         }
                     
-                        Element->Line = Event->Line;
                         Element->Iterations = Event->Iterations;
                         Element->BeginTicks = Event->Value_u64;
                         Element->EndTicks = 0;
-                        Element->File = Event->File;
-                        Element->Name = Event->Name;
+                        Element->GUID = Event->GUID;
                         Element->Next = 0;
                         Element->Child = 0;
 

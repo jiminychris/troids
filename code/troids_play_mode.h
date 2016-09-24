@@ -61,7 +61,7 @@ struct play_state
 inline entity *
 CreateEntity(play_state *State, u32 ShapeCount = 0, collision_shape *Shapes = 0)
 {
-    entity *Result = 0;
+    entity *Result = State->Entities;
     physics_state *PhysicsState = &State->PhysicsState;
     memory_arena *ShapeArena = &PhysicsState->ShapeArena;
     if(State->EntityCount < ArrayCount(State->Entities))
