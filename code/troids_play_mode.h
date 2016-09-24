@@ -107,7 +107,6 @@ inline void
 DestroyEntity(play_state *State, entity *Entity)
 {
     physics_state *PhysicsState = &State->PhysicsState;
-    *Entity = State->Entities[--State->EntityCount];
     for(collision_shape *Shape = Entity->CollisionShapes;
         Shape;
         )
@@ -119,6 +118,7 @@ DestroyEntity(play_state *State, entity *Entity)
         
         Shape = Next;
     }
+    *Entity = State->Entities[--State->EntityCount];
 }
 
 inline b32

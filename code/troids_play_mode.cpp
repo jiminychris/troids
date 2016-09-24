@@ -46,6 +46,18 @@ CollisionTriangle(v2 PointA, v2 PointB, v2 PointC)
     return(Result);
 }
 
+// TODO(chris): Allow a special shape for triangle strips?
+#define CollisionTriangleStrip(Name, Strip)                             \
+    collision_shape Name[ArrayCount(Strip)-2];                          \
+    for(u32 i=0;i<ArrayCount(Name);++i)                                 \
+        Name[i]=(i&1)?CollisionTriangle(Strip[i],Strip[i+2],Strip[i+1]) : \
+            CollisionTriangle(Strip[i],Strip[i+1],Strip[i+2]);
+
+#define CombineShapes(Name, Shapes1, Shapes2)                           \
+    collision_shape Name[ArrayCount(Shapes1)+ArrayCount(Shapes2)];      \
+    for(u32 i=0;i<ArrayCount(Shapes1);++i)Name[i]=Shapes1[i];           \
+    for(u32 i=0;i<ArrayCount(Shapes2);++i)Name[ArrayCount(Shapes1)+i]=Shapes2[i];
+
 // TODO(chris): Allow a special shape for rectangles?
 #define CollisionRectangle(Rect) \
     CollisionTriangle((Rect).Min, V2((Rect).Max.x, (Rect).Min.y), (Rect).Max), \
@@ -157,6 +169,8 @@ CreateA(play_state *State, loaded_font *Font, v3 P, r32 Scale)
     char Character = 'A';
     loaded_bitmap *Glyph = Font->Glyphs + Character;
     v2 Dim = Scale*V2i(Glyph->Width, Glyph->Height);
+
+#if 0
     collision_shape Shapes[] =
     {
         CollisionTriangle(V2(0.0f*Dim.x, 0.0f*Dim.y),
@@ -174,6 +188,28 @@ CreateA(play_state *State, loaded_font *Font, v3 P, r32 Scale)
         CollisionRectangle(MinMax(V2(0.2f*Dim.x, 0.304f*Dim.y),
                                   V2(0.8f*Dim.x, 0.425f*Dim.y))),
     };
+#endif
+
+    v2 Strip1[] =
+    {
+        V2(0.0f*Dim.x, 0.0f*Dim.y),
+        V2(0.158f*Dim.x, 0.0f*Dim.y),
+        V2(0.425f*Dim.x, 1.0f*Dim.y),
+        V2(0.51f*Dim.x, 0.87f*Dim.y),
+        V2(0.575f*Dim.x, 1.0f*Dim.y),
+        V2(0.844f*Dim.x, 0.0f*Dim.y),
+        V2(1.0f*Dim.x, 0.0f*Dim.y),
+    };
+    v2 Strip2[] =
+    {
+        V2(0.33f*Dim.x, 0.425f*Dim.y),
+        V2(0.28f*Dim.x, 0.304f*Dim.y),
+        V2(0.682f*Dim.x, 0.425f*Dim.y),
+        V2(0.73f*Dim.x, 0.304f*Dim.y),
+    };
+    CollisionTriangleStrip(Shapes1, Strip1);
+    CollisionTriangleStrip(Shapes2, Strip2);
+    CombineShapes(Shapes, Shapes1, Shapes2);
     
     entity *Result = CreateEntity(State, ArrayCount(Shapes), Shapes);
     Result->ColliderType = ColliderType_Asteroid;
@@ -191,25 +227,23 @@ CreateM(play_state *State, loaded_font *Font, v3 P, r32 Scale)
     char Character = 'M';
     loaded_bitmap *Glyph = Font->Glyphs + Character;
     v2 Dim = Scale*V2i(Glyph->Width, Glyph->Height);
-    collision_shape Shapes[] =
+    v2 Strip[] =
     {
-        CollisionRectangle(MinMax(V2(0.0f*Dim.x, 0.0f*Dim.y),
-                                  V2(0.14f*Dim.x, 1.0f*Dim.y))),
-        CollisionRectangle(MinMax(V2(0.86f*Dim.x, 0.0f*Dim.y),
-                                  V2(1.0f*Dim.x, 1.0f*Dim.y))),
-        CollisionTriangle(V2(0.585f*Dim.x, 0.0f*Dim.y),
-                          V2(0.915f*Dim.x, 1.0f*Dim.y),
-                          V2(0.775f*Dim.x, 1.0f*Dim.y)),
-        CollisionTriangle(V2(0.585f*Dim.x, 0.0f*Dim.y),
-                          V2(0.775f*Dim.x, 1.0f*Dim.y),
-                          V2(0.45f*Dim.x, 0.0f*Dim.y)),
-        CollisionTriangle(V2(0.415f*Dim.x, 0.0f*Dim.y),
-                          V2(0.225f*Dim.x, 1.0f*Dim.y),
-                          V2(0.085f*Dim.x, 1.0f*Dim.y)),
-        CollisionTriangle(V2(0.415f*Dim.x, 0.0f*Dim.y),
-                          V2(0.55f*Dim.x, 0.0f*Dim.y),
-                          V2(0.225f*Dim.x, 1.0f*Dim.y)),
+        V2(0.0f*Dim.x, 0.0f*Dim.y),
+        V2(0.14f*Dim.x, 0.0f*Dim.y),
+        V2(0.0f*Dim.x, 1.0f*Dim.y),
+        V2(0.14f*Dim.x, 0.85f*Dim.y),
+        V2(0.225f*Dim.x, 1.0f*Dim.y),
+        V2(0.415f*Dim.x, 0.0f*Dim.y),
+        V2(0.5f*Dim.x, 0.15f*Dim.y),
+        V2(0.585f*Dim.x, 0.0f*Dim.y),
+        V2(0.775f*Dim.x, 1.0f*Dim.y),
+        V2(0.86f*Dim.x, 0.85f*Dim.y),
+        V2(1.0f*Dim.x, 1.0f*Dim.y),
+        V2(0.86f*Dim.x, 0.0f*Dim.y),
+        V2(1.0f*Dim.x, 0.0f*Dim.y),
     };
+    CollisionTriangleStrip(Shapes, Strip);
 
     entity *Result = CreateEntity(State, ArrayCount(Shapes), Shapes);
     Result->ColliderType = ColliderType_Asteroid;
@@ -231,11 +265,11 @@ CreateE(play_state *State, loaded_font *Font, v3 P, r32 Scale)
     {
         CollisionRectangle(MinMax(V2(0.0f*Dim.x, 0.0f*Dim.y),
                                   V2(0.18f*Dim.x, 1.0f*Dim.y))),
-        CollisionRectangle(MinMax(V2(0.0f*Dim.x, 0.0f*Dim.y),
+        CollisionRectangle(MinMax(V2(0.18f*Dim.x, 0.0f*Dim.y),
                                   V2(1.0f*Dim.x, 0.12f*Dim.y))),
-        CollisionRectangle(MinMax(V2(0.0f*Dim.x, 0.88f*Dim.y),
+        CollisionRectangle(MinMax(V2(0.18f*Dim.x, 0.88f*Dim.y),
                                   V2(0.965f*Dim.x, 1.0f*Dim.y))),
-        CollisionRectangle(MinMax(V2(0.0f*Dim.x, 0.465f*Dim.y),
+        CollisionRectangle(MinMax(V2(0.18f*Dim.x, 0.465f*Dim.y),
                                   V2(0.915f*Dim.x, 0.586f*Dim.y))),
     };
 
@@ -279,21 +313,17 @@ CreateV(play_state *State, loaded_font *Font, v3 P, r32 Scale)
     char Character = 'V';
     loaded_bitmap *Glyph = Font->Glyphs + Character;
     v2 Dim = Scale*V2i(Glyph->Width, Glyph->Height);
-    collision_shape Shapes[] =
+    v2 Strip[] =
     {
-        CollisionTriangle(V2(0.00f*Dim.x, 1.0f*Dim.y),
-                          V2(0.42f*Dim.x, 0.0f*Dim.y),
-                          V2(0.16f*Dim.x, 1.0f*Dim.y)),
-        CollisionTriangle(V2(0.16f*Dim.x, 1.0f*Dim.y),
-                          V2(0.42f*Dim.x, 0.0f*Dim.y),
-                          V2(0.552f*Dim.x, 0.0f*Dim.y)),
-        CollisionTriangle(V2(1.0f*Dim.x, 1.0f*Dim.y),
-                          V2(0.435f*Dim.x, 0.0f*Dim.y),
-                          V2(0.581f*Dim.x, 0.0f*Dim.y)),
-        CollisionTriangle(V2(1.0f*Dim.x, 1.0f*Dim.y),
-                          V2(0.84f*Dim.x, 1.0f*Dim.y),
-                          V2(0.45f*Dim.x, 0.0f*Dim.y)),
+        V2(1.0f*Dim.x, 1.0f*Dim.y),
+        V2(0.84f*Dim.x, 1.0f*Dim.y),
+        V2(0.58f*Dim.x, 0.0f*Dim.y),
+        V2(0.5f*Dim.x, 0.12f*Dim.y),
+        V2(0.42f*Dim.x, 0.0f*Dim.y),
+        V2(0.16f*Dim.x, 1.0f*Dim.y),
+        V2(0.0f*Dim.x, 1.0f*Dim.y),
     };
+    CollisionTriangleStrip(Shapes, Strip);
     
     entity *Result = CreateEntity(State, ArrayCount(Shapes), Shapes);
     Result->ColliderType = ColliderType_Asteroid;
@@ -311,6 +341,7 @@ CreateR(play_state *State, loaded_font *Font, v3 P, r32 Scale)
     char Character = 'R';
     loaded_bitmap *Glyph = Font->Glyphs + Character;
     v2 Dim = Scale*V2i(Glyph->Width, Glyph->Height);
+#if 0
     collision_shape Shapes[] =
     {
         CollisionRectangle(MinMax(V2(0.0f*Dim.x, 0.0f*Dim.y),
@@ -385,6 +416,49 @@ CreateR(play_state *State, loaded_font *Font, v3 P, r32 Scale)
                           V2(0.78f*Dim.x, 0.5f*Dim.y)
                           ),
     };
+#endif
+    collision_shape Shapes0[] =
+    {
+        CollisionRectangle(MinMax(V2(0.0f*Dim.x, 0.0f*Dim.y),
+                                  V2(0.155f*Dim.x, 1.0f*Dim.y)))
+    };
+    v2 Strip1[] =
+    {
+        V2(0.155f*Dim.x, 1.0f*Dim.y),
+        V2(0.155f*Dim.x, 0.88f*Dim.y),
+        V2(0.66f*Dim.x, 1.0f*Dim.y),
+        V2(0.55f*Dim.x, 0.88f*Dim.y),
+        V2(0.77f*Dim.x, 0.965f*Dim.y),
+        V2(0.68f*Dim.x, 0.85f*Dim.y),
+        V2(0.87f*Dim.x, 0.88f*Dim.y),
+        V2(0.75f*Dim.x, 0.78f*Dim.y),
+        V2(0.913f*Dim.x, 0.78f*Dim.y),
+        V2(0.76f*Dim.x, 0.7f*Dim.y),
+        V2(0.913f*Dim.x, 0.66f*Dim.y),
+        V2(0.7f*Dim.x, 0.6f*Dim.y),
+        V2(0.845f*Dim.x, 0.55f*Dim.y),
+        V2(0.54f*Dim.x, 0.56f*Dim.y),
+        V2(0.73f*Dim.x, 0.48f*Dim.y),
+        V2(0.38f*Dim.x, 0.44f*Dim.y),
+        V2(0.6f*Dim.x, 0.44f*Dim.y),
+        V2(0.49f*Dim.x, 0.41f*Dim.y),
+        V2(0.66f*Dim.x, 0.415f*Dim.y),
+        V2(0.53f*Dim.x, 0.38f*Dim.y),
+        V2(0.75f*Dim.x, 0.34f*Dim.y),
+        V2(0.82f*Dim.x, 0.0f*Dim.y),
+        V2(1.0f*Dim.x, 0.0f*Dim.y),
+    };
+    v2 Strip2[] =
+    {
+        V2(0.155f*Dim.x, 0.56f*Dim.y),
+        V2(0.155f*Dim.x, 0.44f*Dim.y),
+        V2(0.54f*Dim.x, 0.56f*Dim.y),
+        V2(0.38f*Dim.x, 0.44f*Dim.y),
+    };
+    CollisionTriangleStrip(Shapes1, Strip1);
+    CollisionTriangleStrip(Shapes2, Strip2);
+    CombineShapes(Combo, Shapes0, Shapes1);
+    CombineShapes(Shapes, Combo, Shapes2);
 
     entity *Result = CreateEntity(State, ArrayCount(Shapes), Shapes);
     Result->ColliderType = ColliderType_Asteroid;
@@ -1312,7 +1386,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
 #endif
             v3 P = V3(0.0f, -65.0f, 0.0f);
             r32 Scale = 0.6f;
-            State->DEBUGEntity = CreateO(State, &GameMemory->Font, P, Scale);
+//            State->DEBUGEntity = CreateR(State, &GameMemory->Font, P, Scale);
         }
 
         if(WentDown(ShipController->Start))
