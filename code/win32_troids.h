@@ -15,6 +15,7 @@
 #include <gl/gl.h>
 
 #include "troids_platform.h"
+#include "troids_math.h"
 #include "troids_intrinsics.h"
 #include "troids_debug.h"
 #include "troids_opengl.h"

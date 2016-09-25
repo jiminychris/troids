@@ -10,6 +10,8 @@
 #include <stdint.h>
 #include <float.h>
 
+#define GAMMA_CORRECT 1
+
 #define global_variable static
 #define local_persist static
 #define internal static

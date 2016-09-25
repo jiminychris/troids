@@ -71,6 +71,7 @@ Win32LoadFont(loaded_font *Font, HDC DeviceContext, char *FontName, DWORD FontHe
         b32 GetWidthsResult = GetCharABCWidthsFloat(FontDC, FirstChar, LastChar, ABCWidths);
         Assert(GetWidthsResult);
 
+        r32 Inv255 = 1.0f / 255.0f;
         for(char GlyphIndex = FirstChar;
             GlyphIndex <= LastChar;
             ++GlyphIndex)
@@ -130,9 +131,9 @@ Win32LoadFont(loaded_font *Font, HDC DeviceContext, char *FontName, DWORD FontHe
             // TODO(chris): Don't do this. This should allocate from a custom asset
             // virtual memory system.
             Glyph->Memory = VirtualAlloc(0,
-                                              sizeof(u32)*Glyph->Height*Glyph->Width,
-                                              MEM_COMMIT|MEM_RESERVE,
-                                              PAGE_READWRITE);
+                                         sizeof(u32)*Glyph->Height*Glyph->Width,
+                                         MEM_COMMIT|MEM_RESERVE,
+                                         PAGE_READWRITE);
 
             u8 *SourceRow = (u8 *)FontBuffer.Memory + FontBuffer.Pitch*MinY;
             u8 *DestRow = (u8 *)Glyph->Memory + Glyph->Pitch;
@@ -146,11 +147,26 @@ Win32LoadFont(loaded_font *Font, HDC DeviceContext, char *FontName, DWORD FontHe
                     X <= MaxX;
                     ++X)
                 {
-                    u32 Alpha = (*Source & 0xFF);
-                    *Dest++ = ((Alpha << 24) |
-                               (Alpha << 16) |
-                               (Alpha << 8)  |
-                               (Alpha << 0));
+                    u32 Gray = (*Source & 0xFF);
+                    v4 Color = V4i(255, 255, 255, Gray);
+#if GAMMA_CORRECT
+                    Color = sRGB255ToLinear1(Color);
+                    // NOTE(chris): Pre-multiply alpha
+                    Color.rgb *= Color.a;
+                    Color = Linear1TosRGB255(Color);
+#else
+                    Color.rgb *= Color.a*Inv255;
+#endif
+
+                    u32 R = (u32)(Color.r + 0.5f);
+                    u32 G = (u32)(Color.g + 0.5f);
+                    u32 B = (u32)(Color.b + 0.5f);
+                    u32 A = (u32)(Color.a + 0.5f);
+                    
+                    *Dest++ = ((A << 24) |
+                               (R << 16) |
+                               (G << 8)  |
+                               (B << 0));
                     *Source++ = 0;
                 }
                 SourceRow += FontBuffer.Pitch;

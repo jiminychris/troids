@@ -459,6 +459,13 @@ operator*(v4 A, r32 C)
     return(Result);
 }
 
+inline v4
+operator*=(v4 &A, r32 C)
+{
+    A = C*A;
+    return(A);
+}
+
 inline u32
 InvertColor(u32 PackedColor)
 {
@@ -694,6 +701,45 @@ RotateZ(v2 A, r32 Angle)
         SinRot, CosRot,
     };
     v2 Result = RotMat*A;
+    return(Result);
+}
+
+inline v4
+sRGB255ToLinear1(v4 Color)
+{
+    r32 Inv255 = 1.0f / 255.0f;
+
+    v4 Result;
+    Result.r = Square(Color.r*Inv255);
+    Result.g = Square(Color.g*Inv255);
+    Result.b = Square(Color.b*Inv255);
+    Result.a = Color.a*Inv255;
+    
+    return(Result);
+}
+
+inline v4
+sRGB1ToLinear1(v4 Color)
+{
+    v4 Result;
+    Result.r = Square(Color.r);
+    Result.g = Square(Color.g);
+    Result.b = Square(Color.b);
+    Result.a = Color.a;
+    
+    return(Result);
+}
+
+inline v4
+Linear1TosRGB255(v4 Color)
+{
+    v4 Result;
+    Result.r = SquareRoot(Color.r);
+    Result.g = SquareRoot(Color.g);
+    Result.b = SquareRoot(Color.b);
+    Result.a = Color.a;
+
+    Result *= 255.0f;
     return(Result);
 }
 

@@ -356,7 +356,13 @@ internal void
 RenderBitmap(loaded_bitmap *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAxis, v2 YAxis,
              v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f), s32 OffsetX = 0, s32 OffsetY = 0)
 {
-    Color.rgb *= Color.a;
+    // NOTE(chris): sRGB to linear and then pre-multiply alpha
+    v4 Tint = Color;
+#if GAMMA_CORRECT
+    Tint = sRGB1ToLinear1(Tint);
+#endif
+    Tint.rgb *= Tint.a;
+    
     s32 XMin = Clamp(OffsetX, Floor(Minimum(Minimum(Origin.x, Origin.x + XAxis.x),
                                       Minimum(Origin.x + YAxis.x, Origin.x + XAxis.x + YAxis.x))),
                      OffsetX + BackBuffer->Width);
@@ -385,6 +391,7 @@ RenderBitmap(loaded_bitmap *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAx
         Width = AdjustedXMax-AdjustedXMin;
     }
 
+    __m128 One255 = _mm_set_ps1(255.0f);
     __m128 Inv255 = _mm_set_ps1(1.0f / 255.0f);
     __m128 InvXAxisLengthSq = _mm_set_ps1(1.0f / LengthSq(XAxis));
     __m128 InvYAxisLengthSq = _mm_set_ps1(1.0f / LengthSq(YAxis));
@@ -404,10 +411,10 @@ RenderBitmap(loaded_bitmap *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAx
     __m128 RealOne = _mm_set_ps1(1.0f);
     __m128 Half = _mm_set_ps1(0.5f);
     __m128i ColorMask = _mm_set1_epi32(0xFF);
-    __m128 TintR = _mm_set_ps1(Color.r);
-    __m128 TintG = _mm_set_ps1(Color.g);
-    __m128 TintB = _mm_set_ps1(Color.b);
-    __m128 TintA = _mm_set_ps1(Color.a);
+    __m128 TintR = _mm_set_ps1(Tint.r);
+    __m128 TintG = _mm_set_ps1(Tint.g);
+    __m128 TintB = _mm_set_ps1(Tint.b);
+    __m128 TintA = _mm_set_ps1(Tint.a);
     __m128 Mask;
     u8 *PixelRow = (u8 *)BackBuffer->Memory + (BackBuffer->Pitch*YMin);
     IGNORED_TIMED_LOOP_FUNCTION(Width*Height);
@@ -474,24 +481,42 @@ RenderBitmap(loaded_bitmap *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAx
 
 
             __m128 TexelAR = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelA, 16), ColorMask));
-            __m128 TexelAG = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelA, 8), ColorMask));
-            __m128 TexelAB = _mm_cvtepi32_ps(_mm_and_si128(TexelA, ColorMask));
-            __m128 TexelAA = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelA, 24), ColorMask));
-
             __m128 TexelBR = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelB, 16), ColorMask));
-            __m128 TexelBG = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelB, 8), ColorMask));
-            __m128 TexelBB = _mm_cvtepi32_ps(_mm_and_si128(TexelB, ColorMask));
-            __m128 TexelBA = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelB, 24), ColorMask));
-
             __m128 TexelCR = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelC, 16), ColorMask));
-            __m128 TexelCG = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelC, 8), ColorMask));
-            __m128 TexelCB = _mm_cvtepi32_ps(_mm_and_si128(TexelC, ColorMask));
-            __m128 TexelCA = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelC, 24), ColorMask));
-
             __m128 TexelDR = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelD, 16), ColorMask));
+
+            __m128 TexelAG = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelA, 8), ColorMask));
+            __m128 TexelBG = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelB, 8), ColorMask));
+            __m128 TexelCG = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelC, 8), ColorMask));
             __m128 TexelDG = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelD, 8), ColorMask));
+
+            __m128 TexelAB = _mm_cvtepi32_ps(_mm_and_si128(TexelA, ColorMask));
+            __m128 TexelBB = _mm_cvtepi32_ps(_mm_and_si128(TexelB, ColorMask));
+            __m128 TexelCB = _mm_cvtepi32_ps(_mm_and_si128(TexelC, ColorMask));
             __m128 TexelDB = _mm_cvtepi32_ps(_mm_and_si128(TexelD, ColorMask));
+
+            __m128 TexelAA = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelA, 24), ColorMask));
+            __m128 TexelBA = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelB, 24), ColorMask));
+            __m128 TexelCA = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelC, 24), ColorMask));
             __m128 TexelDA = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelD, 24), ColorMask));
+
+#if GAMMA_CORRECT
+            // NOTE(chris): sRGB to linear
+            TexelAR = _mm_mul_ps(_mm_mul_ps(TexelAR, TexelAR), Inv255);
+            TexelBR = _mm_mul_ps(_mm_mul_ps(TexelBR, TexelBR), Inv255);
+            TexelCR = _mm_mul_ps(_mm_mul_ps(TexelCR, TexelCR), Inv255);
+            TexelDR = _mm_mul_ps(_mm_mul_ps(TexelDR, TexelDR), Inv255);
+
+            TexelAG = _mm_mul_ps(_mm_mul_ps(TexelAG, TexelAG), Inv255);
+            TexelBG = _mm_mul_ps(_mm_mul_ps(TexelBG, TexelBG), Inv255);
+            TexelCG = _mm_mul_ps(_mm_mul_ps(TexelCG, TexelCG), Inv255);
+            TexelDG = _mm_mul_ps(_mm_mul_ps(TexelDG, TexelDG), Inv255);
+
+            TexelAB = _mm_mul_ps(_mm_mul_ps(TexelAB, TexelAB), Inv255);
+            TexelBB = _mm_mul_ps(_mm_mul_ps(TexelBB, TexelBB), Inv255);
+            TexelCB = _mm_mul_ps(_mm_mul_ps(TexelCB, TexelCB), Inv255);
+            TexelDB = _mm_mul_ps(_mm_mul_ps(TexelDB, TexelDB), Inv255);
+#endif
 
             __m128 tU = _mm_sub_ps(tX, ttX);
             __m128 tV = _mm_sub_ps(tY, ttY);
@@ -499,48 +524,57 @@ RenderBitmap(loaded_bitmap *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAx
             __m128 tVInv = _mm_sub_ps(RealOne, tV);
 
             __m128 LerpR = _mm_and_ps(_mm_add_ps(_mm_mul_ps(_mm_add_ps(_mm_mul_ps(TexelAR, tUInv), _mm_mul_ps(TexelBR, tU)), tVInv),
-                                                    _mm_mul_ps(_mm_add_ps(_mm_mul_ps(TexelCR, tUInv), _mm_mul_ps(TexelDR, tU)), tV)), Mask);
+                                                 _mm_mul_ps(_mm_add_ps(_mm_mul_ps(TexelCR, tUInv), _mm_mul_ps(TexelDR, tU)), tV)), Mask);
             __m128 LerpG = _mm_and_ps(_mm_add_ps(_mm_mul_ps(_mm_add_ps(_mm_mul_ps(TexelAG, tUInv), _mm_mul_ps(TexelBG, tU)), tVInv),
-                                                    _mm_mul_ps(_mm_add_ps(_mm_mul_ps(TexelCG, tUInv), _mm_mul_ps(TexelDG, tU)), tV)), Mask);
+                                                 _mm_mul_ps(_mm_add_ps(_mm_mul_ps(TexelCG, tUInv), _mm_mul_ps(TexelDG, tU)), tV)), Mask);
             __m128 LerpB = _mm_and_ps(_mm_add_ps(_mm_mul_ps(_mm_add_ps(_mm_mul_ps(TexelAB, tUInv), _mm_mul_ps(TexelBB, tU)), tVInv),
-                                                    _mm_mul_ps(_mm_add_ps(_mm_mul_ps(TexelCB, tUInv), _mm_mul_ps(TexelDB, tU)), tV)), Mask);
+                                                 _mm_mul_ps(_mm_add_ps(_mm_mul_ps(TexelCB, tUInv), _mm_mul_ps(TexelDB, tU)), tV)), Mask);
             __m128 LerpA = _mm_and_ps(_mm_add_ps(_mm_mul_ps(_mm_add_ps(_mm_mul_ps(TexelAA, tUInv), _mm_mul_ps(TexelBA, tU)), tVInv),
-                                                    _mm_mul_ps(_mm_add_ps(_mm_mul_ps(TexelCA, tUInv), _mm_mul_ps(TexelDA, tU)), tV)), Mask);
-
-            __m128 DA = _mm_sub_ps(RealOne, _mm_mul_ps(Inv255, _mm_mul_ps(LerpA, TintA)));
+                                                 _mm_mul_ps(_mm_add_ps(_mm_mul_ps(TexelCA, tUInv), _mm_mul_ps(TexelDA, tU)), tV)), Mask);
 
             __m128i Pixels = _mm_loadu_si128((__m128i *)Pixel);
+
+            __m128 DR = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(Pixels, 16), ColorMask));
+            __m128 DG = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(Pixels, 8), ColorMask));
+            __m128 DB = _mm_cvtepi32_ps(_mm_and_si128(Pixels, ColorMask));
+
+#if GAMMA_CORRECT
+            // NOTE(chris): sRGB to linear
+            DR = _mm_mul_ps(_mm_mul_ps(DR, DR), Inv255);
+            DG = _mm_mul_ps(_mm_mul_ps(DG, DG), Inv255);
+            DB = _mm_mul_ps(_mm_mul_ps(DB, DB), Inv255);
+#endif
+            __m128 DA = _mm_sub_ps(RealOne, _mm_mul_ps(Inv255, _mm_mul_ps(LerpA, TintA)));
 #if DEBUG_BITMAPS
             __m128i IntMask = _mm_set_epi32(Mask.m128_u32[3], Mask.m128_u32[2],
                                             Mask.m128_u32[1], Mask.m128_u32[0]);
             Pixels = _mm_or_si128(_mm_andnot_si128(IntMask, Pixels), _mm_and_si128(Blue, IntMask));
 #endif
 
+            __m128 ResultR = _mm_add_ps(_mm_mul_ps(TintR, LerpR), _mm_mul_ps(DA, DR));
+            __m128 ResultG = _mm_add_ps(_mm_mul_ps(TintG, LerpG), _mm_mul_ps(DA, DG));
+            __m128 ResultB = _mm_add_ps(_mm_mul_ps(TintB, LerpB), _mm_mul_ps(DA, DB));
+
+#if GAMMA_CORRECT
+            // NOTE(chris): linear to sRGB
+            __m128 ResultR255 = _mm_mul_ps(One255, ResultR);
+            __m128 ResultG255 = _mm_mul_ps(One255, ResultG);
+            __m128 ResultB255 = _mm_mul_ps(One255, ResultB);
+
+            ResultR = _mm_mul_ps(ResultR255, _mm_rsqrt_ps(ResultR255));
+            ResultG = _mm_mul_ps(ResultG255, _mm_rsqrt_ps(ResultG255));
+            ResultB = _mm_mul_ps(ResultB255, _mm_rsqrt_ps(ResultB255));
+#endif
+
             __m128i Result = _mm_or_si128(
                 _mm_or_si128(
                     _mm_slli_epi32(
-                        _mm_cvtps_epi32(_mm_add_ps(
-                                            _mm_mul_ps(TintR, LerpR),
-                                            _mm_mul_ps(DA,
-                                                       _mm_cvtepi32_ps(
-                                                           _mm_and_si128(
-                                                               _mm_srli_epi32(Pixels, 16),
-                                                               ColorMask))))),
+                        _mm_cvtps_epi32(ResultR),
                         16),
                     _mm_slli_epi32(
-                        _mm_cvtps_epi32(
-                            _mm_add_ps(
-                                _mm_mul_ps(TintG, LerpG),
-                                _mm_mul_ps(DA,
-                                           _mm_cvtepi32_ps(
-                                               _mm_and_si128(
-                                                   _mm_srli_epi32(Pixels, 8),
-                                                   ColorMask))))),
+                        _mm_cvtps_epi32(ResultG),
                         8)),
-                    _mm_cvtps_epi32(
-                        _mm_add_ps(
-                            _mm_mul_ps(TintB, LerpB),
-                            _mm_mul_ps(DA, _mm_cvtepi32_ps(_mm_and_si128(Pixels, ColorMask))))));
+                _mm_cvtps_epi32(ResultB));
 
             _mm_storeu_si128((__m128i *)Pixel, Result);
 

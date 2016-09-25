@@ -55,20 +55,23 @@ LoadBitmap(char *FileName)
             X < Result.Width;
             ++X)
         {
-            u32 A = ((*Pixel & BMPHeader->AlphaMask) >> AlphaShift) & 0xFF;
-            if(A)
-            {
-                int Z = 0;
-            }
+            v4 Color = V4i((*Pixel >> RedShift) & 0xFF,
+                           (*Pixel >> GreenShift) & 0xFF,
+                           (*Pixel >> BlueShift) & 0xFF,
+                           (*Pixel >> AlphaShift) & 0xFF);
 
-            r32 Alpha = A*Inv255;
-            r32 Red = Alpha*(((*Pixel & BMPHeader->RedMask) >> RedShift) & 0xFF);
-            r32 Green = Alpha*(((*Pixel & BMPHeader->GreenMask) >> GreenShift) & 0xFF);
-            r32 Blue = Alpha*(((*Pixel & BMPHeader->BlueMask) >> BlueShift) & 0xFF);
-
-            u32 R = (u32)(Red + 0.5f);
-            u32 G = (u32)(Green + 0.5f);
-            u32 B = (u32)(Blue + 0.5f);
+#if GAMMA_CORRECT
+            Color = sRGB255ToLinear1(Color);
+            // NOTE(chris): Pre-multiply alpha
+            Color.rgb *= Color.a;
+            Color = Linear1TosRGB255(Color);
+#else
+            Color.rgb *= Color.a*Inv255;
+#endif
+            u32 R = (u32)(Color.r + 0.5f);
+            u32 G = (u32)(Color.g + 0.5f);
+            u32 B = (u32)(Color.b + 0.5f);
+            u32 A = (u32)(Color.a + 0.5f);
 
             *Pixel++ = ((A << 24) |
                         (R << 16) |

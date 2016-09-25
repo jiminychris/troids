@@ -27,6 +27,10 @@ TitleScreenMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackB
     r32 TitleAlpha = State->FadeIn / FadeInDuration;
     b32 FlickerOn = (State->Flicker >= FlickerPeriod);
     State->FadeIn += Input->dtForFrame;
+    if(State->FadeIn >= 0.5f*FadeInDuration)
+    {
+        int A = 0;
+    }
     if(State->FadeIn >= FadeInDuration)
     {
         State->FadeIn = FadeInDuration;

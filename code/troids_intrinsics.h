@@ -53,5 +53,7 @@ GetCurrentThreadID(void)
 
 #define rdtsc() (u64)__rdtsc()
 
+
+
 #define TROIDS_INTRINSICS_H
 #endif
