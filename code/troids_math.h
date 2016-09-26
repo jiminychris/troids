@@ -82,6 +82,13 @@ Square(r32 A)
     return(Result);
 }
 
+inline r32
+Cube(r32 A)
+{
+    r32 Result = A*A*A;
+    return(Result);
+}
+
 inline s32
 RoundS32(r32 A)
 {

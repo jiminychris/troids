@@ -356,11 +356,10 @@ internal void
 RenderBitmap(loaded_bitmap *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAxis, v2 YAxis,
              v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f), s32 OffsetX = 0, s32 OffsetY = 0)
 {
-    // NOTE(chris): sRGB to linear and then pre-multiply alpha
+    // TODO(chris): This should probably be called ColorModulation?
+    // NOTE(chris): This color is just a linear multiply, so it's not sRGB
+    // NOTE(chris): pre-multiply alpha
     v4 Tint = Color;
-#if GAMMA_CORRECT
-    Tint = sRGB1ToLinear1(Tint);
-#endif
     Tint.rgb *= Tint.a;
     
     s32 XMin = Clamp(OffsetX, Floor(Minimum(Minimum(Origin.x, Origin.x + XAxis.x),

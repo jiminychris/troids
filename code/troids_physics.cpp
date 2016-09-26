@@ -7,7 +7,7 @@
    ======================================================================== */
 
 inline b32
-ProcessIntersection(r32 Intersection, r32 *tMove, r32 tMax, v2 dP)
+ProcessIntersection(r32 Intersection, r32 *tMove, v2 dP)
 {
     b32 Result = false;
     if(HasIntersection(Intersection))
@@ -19,7 +19,7 @@ ProcessIntersection(r32 Intersection, r32 *tMove, r32 tMax, v2 dP)
             Intersection = 0.0f;
         }
 #endif
-        if(0.0f <= Intersection && Intersection < tMax)
+        if(0.0f <= Intersection && Intersection < *tMove)
         {
             *tMove = Intersection;
             Result = true;
@@ -29,7 +29,7 @@ ProcessIntersection(r32 Intersection, r32 *tMove, r32 tMax, v2 dP)
 }
 
 inline b32
-ProcessIntersection(circle_ray_intersection_result Intersection, r32 *tMove, r32 tMax, v2 dP)
+ProcessIntersection(circle_ray_intersection_result Intersection, r32 *tMove, v2 dP)
 {
     b32 Result = false;
     if(HasIntersection(Intersection))
@@ -42,7 +42,7 @@ ProcessIntersection(circle_ray_intersection_result Intersection, r32 *tMove, r32
             t = 0.0f;
         }
 #endif
-        if(0.0f <= t && t < tMax)
+        if(0.0f <= t && t < *tMove)
         {
             *tMove = t;
             Result = true;
@@ -53,7 +53,7 @@ ProcessIntersection(circle_ray_intersection_result Intersection, r32 *tMove, r32
 
 inline b32
 ProcessIntersection(arc_triangle_edge_intersection_result Intersection, r32 Radius,
-                    r32 *tSpin, r32 tMax, r32 dSpin)
+                    r32 *tSpin, r32 dSpin)
 {
     b32 Result = false;
     r32 t;
@@ -67,7 +67,7 @@ ProcessIntersection(arc_triangle_edge_intersection_result Intersection, r32 Radi
             t = 0.0f;
         }
 #endif
-        if(0.0f <= t && t < tMax)
+        if(0.0f <= t && t < *tSpin)
         {
             *tSpin = t;
             Result = true;
@@ -83,7 +83,7 @@ ProcessIntersection(arc_triangle_edge_intersection_result Intersection, r32 Radi
             t = 0.0f;
         }
 #endif
-        if(0.0f <= t && t < tMax)
+        if(0.0f <= t && t < *tSpin)
         {
             *tSpin = t;
             Result = true;
@@ -94,7 +94,7 @@ ProcessIntersection(arc_triangle_edge_intersection_result Intersection, r32 Radi
 
 inline b32
 ProcessIntersection(arc_circle_intersection_result Intersection, r32 Radius,
-                    r32 *tSpin, r32 tMax, r32 dSpin)
+                    r32 *tSpin, r32 dSpin)
 {
     b32 Result = false;
     if(HasIntersection(Intersection))
@@ -107,7 +107,7 @@ ProcessIntersection(arc_circle_intersection_result Intersection, r32 Radius,
             t = 0.0f;
         }
 #endif
-        if(0.0f <= t && t < tMax)
+        if(0.0f <= t && t < *tSpin)
         {
             *tSpin = t;
             Result = true;
@@ -406,8 +406,8 @@ ResolveCollision(entity *Entity, entity *OtherEntity)
 
         case EntityPair_AsteroidShip:
         {
-            Entity->Destroyed = OtherEntity->Destroyed = true;
-            Result = true;
+//            Entity->Destroyed = OtherEntity->Destroyed = true;
+//            Result = true;
         } break;
 
         default:

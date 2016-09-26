@@ -7,8 +7,8 @@
    $Notice: $
    ======================================================================== */
 
-#define COLLISION_DEBUG_LINEAR 0
-#define COLLISION_DEBUG_ANGULAR 0
+#define COLLISION_DEBUG_LINEAR 1
+#define COLLISION_DEBUG_ANGULAR 1
 #define COLLISION_DEBUG COLLISION_DEBUG_LINEAR|COLLISION_DEBUG_ANGULAR
 #define COLLISION_ITERATIONS 3
 
@@ -55,9 +55,6 @@ struct collision_shape
         collision_shape *Next;
         collision_shape *NextFree;
     };
-#if TROIDS_INTERNAL
-        b32 Collided;
-#endif
 };
 
 struct physics_state

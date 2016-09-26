@@ -21,24 +21,24 @@ TitleScreenMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackB
 
     RenderBuffer->Projection = Projection_None;
     v2 Center = 0.5f*V2i(RenderBuffer->Width, RenderBuffer->Height);
-    r32 FadeInDuration = 2.0f;
+    r32 FadeInDuration = 3.0f;
     r32 FlickerPeriod = 0.5f;
 
-    r32 TitleAlpha = State->FadeIn / FadeInDuration;
-    b32 FlickerOn = (State->Flicker >= FlickerPeriod);
-    State->FadeIn += Input->dtForFrame;
-    if(State->FadeIn >= 0.5f*FadeInDuration)
+    r32 tTitle = (State->FadeInTicks*Input->dtForFrame) / FadeInDuration;
+    r32 TitleAlpha = Cube(tTitle);
+    r32 tFlicker = (State->FlickerTicks*Input->dtForFrame) / (2*FlickerPeriod);
+    b32 FlickerOn = (tFlicker >= 0.5f);
+    if(tTitle >= 1.0f)
     {
-        int A = 0;
-    }
-    if(State->FadeIn >= FadeInDuration)
-    {
-        State->FadeIn = FadeInDuration;
-        State->Flicker += Input->dtForFrame;
-        if(State->Flicker >= 2.0f*FlickerPeriod)
+        ++State->FlickerTicks;
+        if(tFlicker >= 1.0f)
         {
-            State->Flicker = 0.0f;
+            State->FlickerTicks = 0;
         }
+    }
+    else
+    {
+        ++State->FadeInTicks;
     }
 
     text_layout Layout = {};

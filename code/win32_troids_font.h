@@ -148,14 +148,14 @@ Win32LoadFont(loaded_font *Font, HDC DeviceContext, char *FontName, DWORD FontHe
                     ++X)
                 {
                     u32 Gray = (*Source & 0xFF);
-                    v4 Color = V4i(255, 255, 255, Gray);
-#if GAMMA_CORRECT
-                    Color = sRGB255ToLinear1(Color);
                     // NOTE(chris): Pre-multiply alpha
-                    Color.rgb *= Color.a;
-                    Color = Linear1TosRGB255(Color);
-#else
-                    Color.rgb *= Color.a*Inv255;
+                    v4 Color = V4i(Gray, Gray, Gray, Gray);
+#if GAMMA_CORRECT
+                    // NOTE(chris): If I assume that Gray is an alpha value, colors look wrong.
+                    // So I'm going to assume that it's an sRGB color.
+                    v4 LinearColor = sRGB255ToLinear1(Color);
+                    LinearColor.a = LinearColor.r;
+                    Color = Linear1TosRGB255(LinearColor);
 #endif
 
                     u32 R = (u32)(Color.r + 0.5f);

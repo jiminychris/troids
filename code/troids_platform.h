@@ -163,6 +163,16 @@ Minimum(s32 A, s32 B)
     return(A);
 }
 
+inline u32
+Maximum(u32 A, u32 B)
+{
+    if(B > A)
+    {
+        A = B;
+    }
+    return(A);
+}
+
 inline s32
 Maximum(s32 A, s32 B)
 {

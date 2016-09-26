@@ -39,7 +39,14 @@ struct entity
     m33 RotationMatrix;
     char Character;
 #if TROIDS_INTERNAL
-    b32 BoundingCircleCollided;
+    u32 UsedLinearIterations;
+    u32 UsedAngularIterations;
+    v3 CollisionStepP[COLLISION_ITERATIONS+1];
+    r32 CollisionStepYaw[COLLISION_ITERATIONS+1];
+    b32 LinearBoundingCircleCollided[COLLISION_ITERATIONS+1];
+    u32 LinearCollidingShapeMask[COLLISION_ITERATIONS+1];
+    b32 AngularBoundingCircleCollided[COLLISION_ITERATIONS+1];
+    u32 AngularCollidingShapeMask[COLLISION_ITERATIONS+1];
 #endif
 };
 
