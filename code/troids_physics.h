@@ -128,7 +128,7 @@ struct circle_ray_intersection_result
     r32 t2;
 };
 
-struct arc_triangle_edge_intersection_result
+struct arc_polygon_edge_intersection_result
 {
     r32 t1;
     r32 t2;

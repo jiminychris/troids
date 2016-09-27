@@ -7,18 +7,11 @@
    ======================================================================== */
 
 inline b32
-ProcessIntersection(r32 Intersection, r32 *tMove, v2 dP)
+ProcessIntersection(r32 Intersection, r32 *tMove)
 {
     b32 Result = false;
     if(HasIntersection(Intersection))
     {
-#if COLLISION_NORMALIZED_EPSILON_TEST
-        r32 NormalizedEpsilonTest = LengthSq(Intersection*dP);
-        if(-COLLISION_EPSILON < NormalizedEpsilonTest && NormalizedEpsilonTest < COLLISION_EPSILON)
-        {
-            Intersection = 0.0f;
-        }
-#endif
         if(0.0f <= Intersection && Intersection < *tMove)
         {
             *tMove = Intersection;
@@ -29,19 +22,12 @@ ProcessIntersection(r32 Intersection, r32 *tMove, v2 dP)
 }
 
 inline b32
-ProcessIntersection(circle_ray_intersection_result Intersection, r32 *tMove, v2 dP)
+ProcessIntersection(circle_ray_intersection_result Intersection, r32 *tMove)
 {
     b32 Result = false;
     if(HasIntersection(Intersection))
     {
         r32 t = Minimum(Intersection.t1, Intersection.t2);
-#if COLLISION_NORMALIZED_EPSILON_TEST
-        r32 NormalizedEpsilonTest = LengthSq(t*dP);
-        if(-COLLISION_EPSILON < NormalizedEpsilonTest && NormalizedEpsilonTest < COLLISION_EPSILON)
-        {
-            t = 0.0f;
-        }
-#endif
         if(0.0f <= t && t < *tMove)
         {
             *tMove = t;
@@ -52,21 +38,13 @@ ProcessIntersection(circle_ray_intersection_result Intersection, r32 *tMove, v2 
 }
 
 inline b32
-ProcessIntersection(arc_triangle_edge_intersection_result Intersection, r32 Radius,
-                    r32 *tSpin, r32 dSpin)
+ProcessIntersection(arc_polygon_edge_intersection_result Intersection, r32 *tSpin)
 {
     b32 Result = false;
     r32 t;
     if(HasIntersection(Intersection.t1))
     {
         t = Intersection.t1;
-#if COLLISION_NORMALIZED_EPSILON_TEST
-        r32 NormalizedEpsilonTest = ArcLengthSq(Radius, t*dSpin);
-        if(-COLLISION_EPSILON < NormalizedEpsilonTest && NormalizedEpsilonTest < COLLISION_EPSILON)
-        {
-            t = 0.0f;
-        }
-#endif
         if(0.0f <= t && t < *tSpin)
         {
             *tSpin = t;
@@ -76,13 +54,6 @@ ProcessIntersection(arc_triangle_edge_intersection_result Intersection, r32 Radi
     if(HasIntersection(Intersection.t2))
     {
         t = Intersection.t2;
-#if COLLISION_NORMALIZED_EPSILON_TEST
-        r32 NormalizedEpsilonTest = ArcLengthSq(Radius, t*dSpin);
-        if(-COLLISION_EPSILON < NormalizedEpsilonTest && NormalizedEpsilonTest < COLLISION_EPSILON)
-        {
-            t = 0.0f;
-        }
-#endif
         if(0.0f <= t && t < *tSpin)
         {
             *tSpin = t;
@@ -93,20 +64,12 @@ ProcessIntersection(arc_triangle_edge_intersection_result Intersection, r32 Radi
 }
 
 inline b32
-ProcessIntersection(arc_circle_intersection_result Intersection, r32 Radius,
-                    r32 *tSpin, r32 dSpin)
+ProcessIntersection(arc_circle_intersection_result Intersection, r32 *tSpin)
 {
     b32 Result = false;
     if(HasIntersection(Intersection))
     {
         r32 t = Minimum(Intersection.t1, Intersection.t2);
-#if COLLISION_NORMALIZED_EPSILON_TEST
-        r32 NormalizedEpsilonTest = ArcLengthSq(Radius, t*dSpin);
-        if(-COLLISION_EPSILON < NormalizedEpsilonTest && NormalizedEpsilonTest < COLLISION_EPSILON)
-        {
-            t = 0.0f;
-        }
-#endif
         if(0.0f <= t && t < *tSpin)
         {
             *tSpin = t;
@@ -151,13 +114,32 @@ BoundingCirclesIntersect(entity *Entity, entity *OtherEntity, v3 NewP)
     return(Result);
 }
 
+inline circle_ray_intersection_result
+RawCircleRayIntersection(v2 P, r32 RadiusSq, v2 A, v2 B)
+{
+    circle_ray_intersection_result Result = {NAN, NAN};
+    v2 RelativeA = A - P;
+    v2 RelativeB = B - P;
+    v2 dRay = B - A;
+
+    r32 RayLengthSq = LengthSq(dRay);
+    r32 D = RelativeA.x*RelativeB.y - RelativeB.x*RelativeA.y;
+
+    r32 Discriminant = RadiusSq*RayLengthSq - Square(D);
+    if(Discriminant >= 0)
+    {
+        r32 Root = SquareRoot(Discriminant);
+        Result.t1 = (-(RelativeA.x*dRay.x + RelativeA.y*dRay.y) - Root) / RayLengthSq;
+        Result.t2 = (-(RelativeA.x*dRay.x + RelativeA.y*dRay.y) + Root) / RayLengthSq;
+    }
+    return(Result);
+}
+
 // NOTE(chris): Returns the proportional time of intersection between A and B.
 inline circle_ray_intersection_result
 CircleRayIntersection(v2 P, r32 Radius, v2 A, v2 B)
 {
     circle_ray_intersection_result Result = {NAN, NAN};
-    v2 RelativeA = A - P;
-    v2 RelativeB = B - P;
     v2 dRay = B - A;
     v2 RayToCenter = P-A;
     if(Inner(RayToCenter, dRay) > 0.0f)
@@ -169,25 +151,16 @@ CircleRayIntersection(v2 P, r32 Radius, v2 A, v2 B)
         }
         else
         {
-            r32 RayLengthSq = LengthSq(dRay);
-            r32 D = RelativeA.x*RelativeB.y - RelativeB.x*RelativeA.y;
-
-            r32 Discriminant = RadiusSq*RayLengthSq - Square(D);
-            if(Discriminant >= 0)
-            {
-                r32 Root = SquareRoot(Discriminant);
-                Result.t1 = (-(RelativeA.x*dRay.x + RelativeA.y*dRay.y) - Root) / RayLengthSq;
-                Result.t2 = (-(RelativeA.x*dRay.x + RelativeA.y*dRay.y) + Root) / RayLengthSq;
-            }
+            Result = RawCircleRayIntersection(P, RadiusSq, A, B);
         }
     }
     return(Result);
 }
 
-// NOTE(chris): Assuming all triangles are counter-clockwise. i.e. EdgeA, EdgeB, InteriorPoint are
+// NOTE(chris): Assuming all polygons are counter-clockwise. i.e. EdgeA, EdgeB, InteriorPoint are
 // all clockwise.
 inline r32
-TriangleEdgeRayIntersection(v2 EdgeA, v2 EdgeB, v2 RayA, v2 RayB, v2 InteriorPoint)
+PolygonEdgeRayIntersection(v2 EdgeA, v2 EdgeB, v2 RayA, v2 RayB, v2 InteriorPoint)
 {
     r32 Result = NAN;
     v2 EdgeNormal = Perp(EdgeA-EdgeB);
@@ -196,9 +169,9 @@ TriangleEdgeRayIntersection(v2 EdgeA, v2 EdgeB, v2 RayA, v2 RayB, v2 InteriorPoi
     v2 dSegment = EdgeB - EdgeA;
     if(Inner(EdgeNormal, dRay) < 0.0f)
     {
-        if(Inner(-EdgeNormal, RayA-EdgeB) > 0.0f &&
-           Inner(Perp(InteriorPoint-EdgeB), RayA-EdgeB) > 0.0f &&
-           Inner(Perp(EdgeA-InteriorPoint), RayA-InteriorPoint) > 0.0f)
+        if(Inner(-EdgeNormal, RayA-EdgeB) >= 0.0f &&
+           Inner(Perp(InteriorPoint-EdgeB), RayA-EdgeB) >= 0.0f &&
+           Inner(Perp(EdgeA-InteriorPoint), RayA-InteriorPoint) >= 0.0f)
         {
             Result = 0.0f;
         }
@@ -247,39 +220,49 @@ ArcLengthSq(r32 Radius, r32 dTheta)
     return(Result);
 }
 
-// NOTE(chris): Assuming all triangles are counter-clockwise. i.e. EdgeA, EdgeB, InteriorPoint are
+// NOTE(chris): Assuming all polygons are counter-clockwise. i.e. EdgeA, EdgeB, InteriorPoint are
 // all clockwise.
-inline arc_triangle_edge_intersection_result
-ArcTriangleEdgeIntersection(v2 ArcCenter, r32 Radius, v2 StartP, r32 dTheta,
-                            v2 EdgeA, v2 EdgeB, v2 InteriorPoint)
+inline arc_polygon_edge_intersection_result
+ArcPolygonEdgeIntersection(v2 ArcCenter, r32 Radius, v2 StartP, r32 dTheta,
+                           v2 EdgeA, v2 EdgeB, v2 InteriorPoint)
 {
-    arc_triangle_edge_intersection_result Result = {NAN, NAN};
+    arc_polygon_edge_intersection_result Result = {NAN, NAN};
     v2 EdgeNormal = Perp(EdgeA-EdgeB);
     
-    v2 RotationDirection = Sign(dTheta)*Perp(StartP-ArcCenter);
+    v2 StartPToArcCenter = ArcCenter-StartP;
+    v2 RotationDirection = -Sign(dTheta)*Perp(StartPToArcCenter);
     v2 dSegment = EdgeB - EdgeA;
-    // TODO(chris): Do two passes, where the first one cannot sweep more than pi radians.
+    // TODO(chris): Do four(!) passes, where the first three cannot sweep more than pi/2 radians.
     // Not super important unless I plan on having things spinning that fast.
-    Assert(Square(dTheta) < Square(Pi));
-    if(Inner(EdgeNormal, RotationDirection) < 0.0f)
+    Assert(Square(dTheta) < Square(0.5f*Pi));
+
+    // TODO(chris): IMPORTANT FIX THIS!!!
+    r32 DirectionTestA = Inner(EdgeNormal, StartPToArcCenter);
+    r32 DirectionTestB = Inner(EdgeNormal, RotationDirection);
+    if((DirectionTestA < 0.0f) && (DirectionTestB < 0.0f))
     {
-        if(Inner(-EdgeNormal, StartP-EdgeB) > 0.0f &&
-           Inner(Perp(InteriorPoint-EdgeB), StartP-EdgeB) > 0.0f &&
-           Inner(Perp(EdgeA-InteriorPoint), StartP-InteriorPoint) > 0.0f)
+        // TODO(chris): This lets through things that are already touching
+        r32 EdgeTestA = Inner(-EdgeNormal, StartP-EdgeB);
+        r32 EdgeTestB = Inner(Perp(InteriorPoint-EdgeB), StartP-EdgeB);
+        r32 EdgeTestC = Inner(Perp(EdgeA-InteriorPoint), StartP-InteriorPoint);
+        if(EdgeTestA >= 0.0f &&
+           EdgeTestB >= 0.0f &&
+           EdgeTestC >= 0.0f)
         {
             Result.t1 = Result.t2 = 0.0f;
         }
         else
         {
-            circle_ray_intersection_result RayIntersection = CircleRayIntersection(ArcCenter, Radius,
-                                                                                   EdgeA, EdgeB);
+            r32 RadiusSq = Square(Radius);
+            circle_ray_intersection_result RayIntersection =
+                RawCircleRayIntersection(ArcCenter, RadiusSq, EdgeA, EdgeB);
 
             if(HasIntersection(RayIntersection))
             {
                 v2 RelativeA = EdgeA - ArcCenter;
                 v2 RelativeB = EdgeB - ArcCenter;
                 v2 dAB = EdgeB-EdgeA;
-                r32 InverseRadiusSq = 1.0f / (Radius*Radius);
+                r32 InverseRadiusSq = 1.0f / RadiusSq;
                 v2 RelativeStartP = StartP - ArcCenter;
                 v2 StartPerp = Perp(RelativeStartP);
                 r32 InverseAbsdTheta = 1.0f / AbsoluteValue(dTheta);

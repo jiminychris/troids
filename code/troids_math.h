@@ -40,6 +40,13 @@ InverseTan(r32 Y, r32 X)
     return(Result);
 }
 
+inline r32
+InverseTan(v2 A)
+{
+    r32 Result = atan2f(A.y, A.x);
+    return(Result);
+}
+
 inline s32
 Ceiling(r32 A)
 {
