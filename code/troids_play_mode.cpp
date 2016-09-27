@@ -84,7 +84,7 @@ CreateShip(play_state *State, v3 P, r32 Yaw)
 {
     v2 Dim = V2(10.0f, 10.0f);
     v2 HalfDim = Dim*0.5f;
-#if 0
+#if 1
     collision_shape Shapes[] =
     {
         CollisionTriangle(0.97f*V2(HalfDim.x, 0),
@@ -97,9 +97,7 @@ CreateShip(play_state *State, v3 P, r32 Yaw)
 #else
     collision_shape Shapes[] =
     {
-        CollisionTriangle(4.0f*V2(HalfDim.x, 0),
-                          4.0f*V2(-HalfDim.x, HalfDim.y),
-                          4.0f*V2(-HalfDim.x, -HalfDim.y)),
+        CollisionCircle(1.0f, V2(10.0f, 0.0f)),
     };
 #endif
 
@@ -133,7 +131,7 @@ CreateFloatingHead(play_state *State)
 inline entity *
 CreateAsteroid(play_state *State, v3 P, r32 Radius, v3 dP)
 {
-#if 0
+#if 1
     collision_shape Shapes[] =
     {
         CollisionCircle(Radius),
@@ -729,9 +727,13 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
                     ShipController->LowFrequencyMotor = Thrust;
                 }
 
+#if COLLISION_FINE_DEBUG
                 r32 ddYaw = -100.0f*LeftStickX;
+#else
+                r32 ddYaw = -1.0f*LeftStickX;
+#endif
                 r32 dYaw = ddYaw*Input->dtForFrame;
-                r32 MaxdYawPerFrame = 0.24f*Tau;
+                r32 MaxdYawPerFrame = 0.49f*Tau;
                 r32 MaxdYawPerSecond = MaxdYawPerFrame/Input->dtForFrame;
                 Entity->dYaw = Clamp(-MaxdYawPerSecond, Entity->dYaw + dYaw, MaxdYawPerSecond);
     
@@ -749,7 +751,11 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
                     }
                 }
 
+#if COLLISION_FINE_DEBUG
                 Acceleration += 5000.0f*Facing*Thrust;
+#else
+                Acceleration += 50.0f*Facing*Thrust;
+#endif
                 Entity->dP += Acceleration*Input->dtForFrame;
 
                 if(Entity->Timer > 0.0f)
@@ -874,7 +880,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
         ++EntityIndex)
     {
         entity *Entity = State->Entities + EntityIndex;
-#if COLLISION_DEBUG
+#if COLLISION_FINE_DEBUG
         v3 InitP = Entity->P;
         v3 InitdP = Entity->dP;
         r32 InitYaw = Entity->Yaw;
@@ -1634,7 +1640,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
                 tMax -= tMove;
             }
         }
-#if 1
+#if COLLISION_FINE_DEBUG
         Entity->P = InitP;
         Entity->dP = InitdP;
         Entity->Yaw = InitYaw;
@@ -1834,12 +1840,13 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
                 case EntityType_Ship:
                 {
                     --State->Lives;
-                    if(State->Lives)
+                    if(State->Lives > 0)
                     {
                         CreateShip(State, State->ShipStartingP, State->ShipStartingYaw);
                     }
                     else
                     {
+                        CreateShip(State, V3i(10, 10, 0), State->ShipStartingYaw);
                         GameOver(State, RenderBuffer, &GameMemory->Font);
                     }
                 } break;

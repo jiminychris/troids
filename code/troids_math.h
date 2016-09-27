@@ -314,6 +314,16 @@ V3(r32 X, r32 Y, r32 Z)
 }
 
 inline v3
+V3i(s32 X, s32 Y, s32 Z)
+{
+    v3 Result;
+    Result.x = (r32)X;
+    Result.y = (r32)Y;
+    Result.z = (r32)Z;
+    return(Result);
+}
+
+inline v3
 V3(v2 XY, r32 Z)
 {
     v3 Result;

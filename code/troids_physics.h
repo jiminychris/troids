@@ -7,8 +7,9 @@
    $Notice: $
    ======================================================================== */
 
-#define COLLISION_DEBUG_LINEAR 1
-#define COLLISION_DEBUG_ANGULAR 1
+#define COLLISION_FINE_DEBUG 0
+#define COLLISION_DEBUG_LINEAR 0
+#define COLLISION_DEBUG_ANGULAR 0
 #define COLLISION_DEBUG COLLISION_DEBUG_LINEAR|COLLISION_DEBUG_ANGULAR
 #define COLLISION_ITERATIONS 3
 
