@@ -12,6 +12,7 @@
 #include "troids_math.h"
 #include "troids_render.h"
 #include "troids_debug.h"
+#include "troids_random.h"
 #include "troids_physics.h"
 #include "troids_play_mode.h"
 #include "troids_title_screen_mode.h"

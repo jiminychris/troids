@@ -35,6 +35,8 @@ struct entity
 
     b32 Destroyed;
     r32 BoundingRadius;
+    // NOTE(chris): This is a linked list so this must be maintained.
+    u32 CollisionShapeCount;
     collision_shape *CollisionShapes;
     
     m33 RotationMatrix;
@@ -63,6 +65,7 @@ struct play_state
     physics_state PhysicsState;
 
     s32 Lives;
+    seed AsteroidSeed;
 
     u32 EntityCount;
     entity Entities[256];
@@ -96,6 +99,7 @@ CreateEntity(play_state *State, u32 ShapeCount = 0, collision_shape *Shapes = 0)
                 *Shape = *(Shapes + ShapeIndex);
                 Shape->Next = Result->CollisionShapes;
                 Result->CollisionShapes = Shape;
+                Result->CollisionShapeCount = ShapeCount;
             }
         }
         else

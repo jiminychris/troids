@@ -53,6 +53,13 @@ CollisionTriangle(v2 PointA, v2 PointB, v2 PointC)
         Name[i]=(i&1)?CollisionTriangle(Strip[i],Strip[i+2],Strip[i+1]) : \
             CollisionTriangle(Strip[i],Strip[i+1],Strip[i+2]);
 
+// TODO(chris): Allow a special shape for triangle fans?
+#define CollisionTriangleFan(Name, Fan)                             \
+    collision_shape Name[ArrayCount(Fan)-1];                        \
+    Name[0]=CollisionTriangle(Fan[0],Fan[ArrayCount(Name)],Fan[1]); \
+    for(u32 i=1;i<ArrayCount(Name);++i)                             \
+        Name[i]=CollisionTriangle(Fan[0],Fan[i],Fan[i+1]);          \
+
 #define CombineShapes(Name, Shapes1, Shapes2)                           \
     collision_shape Name[ArrayCount(Shapes1)+ArrayCount(Shapes2)];      \
     for(u32 i=0;i<ArrayCount(Shapes1);++i)Name[i]=Shapes1[i];           \
@@ -126,34 +133,78 @@ CreateFloatingHead(play_state *State)
 }
 
 inline entity *
-CreateAsteroid(play_state *State, v3 P, r32 Radius, v3 dP)
+CreateAsteroid(play_state *State)
 {
-#if 1
+    seed *Seed = &State->AsteroidSeed;
+    r32 Radius = RandomBetween(Seed, 5.0f, 15.0f);
+#if 0
     collision_shape Shapes[] =
     {
         CollisionCircle(Radius),
     };
 #else
-    collision_shape Shapes[] =
+    v2 Fan[] =
     {
-//        CollisionTriangle(V2(-Radius, -Radius),
-//                          V2(Radius, Radius),
-//                          V2(-Radius, Radius)),
-        CollisionTriangle(V2(-Radius, 0.0f),
-                          V2(Radius, -Radius),
-                          V2(Radius, Radius)),
+        V2(0.0f, 0.0f),
+        V2(0.5f*Radius, Radius),
+        V2(-0.5f*Radius, Radius),
+        V2(-Radius, 0.5f*Radius),
+        V2(-Radius, -0.5f*Radius),
+        V2(-0.5f*Radius, -Radius),
+        V2(0.5f*Radius, -Radius),
+        V2(Radius, -0.5f*Radius),
+        V2(Radius, 0.5f*Radius),
     };
+    for(u32 PointIndex = 0;
+        PointIndex < ArrayCount(Fan);
+        ++PointIndex)
+    {
+        Fan[PointIndex] *= RandomBetween(Seed, 0.5f, 1.5f);
+    }
+    CollisionTriangleFan(Shapes, Fan);
 #endif
 
     entity *Result = CreateEntity(State, ArrayCount(Shapes), Shapes);
     Result->ColliderType = ColliderType_Asteroid;
     Result->Type = EntityType_Asteroid;
-    Result->P = P;
-    Result->dP = dP;
+    Result->P = V3(RandomBetween(Seed, -100.0f, 100.0f), RandomBetween(Seed, -100.0f, 100.0f), 0.0f);
+    Result->dP = V3(RandomBetween(Seed, -10.0f, 10.0f), RandomBetween(Seed, -10.0f, 10.0f), 0.0f);
+    Result->Yaw = RandomBetween(Seed, -Tau, Tau);
+    Result->dYaw = RandomBetween(Seed, -1.0f, 1.0f);
     Result->Dim = 2.0f*V2(Radius, Radius);
     Result->Mass = 5.0f*Pi*Square(Radius);
     
     return(Result);
+}
+
+inline void
+SplitAsteroid(play_state *State, entity *Asteroid)
+{
+    u32 HalfShapeCount = Asteroid->CollisionShapeCount/2;
+    if(HalfShapeCount)
+    {
+        Asteroid->Destroyed = false;
+        Asteroid->Mass *= 0.5f;
+    
+        collision_shape *EndShape = Asteroid->CollisionShapes;
+        for(u32 ShapeIndex = 1;
+            ShapeIndex < HalfShapeCount;
+            ++ShapeIndex)
+        {
+            EndShape = EndShape->Next;
+        }
+        entity *Split = CreateEntity(State);
+        *Split = *Asteroid;
+        Split->CollisionShapes = EndShape->Next;
+        Split->CollisionShapeCount = Asteroid->CollisionShapeCount - HalfShapeCount;
+    
+        EndShape->Next = 0;
+        Asteroid->CollisionShapeCount = HalfShapeCount;
+
+        Split->dP += V3(RandomBetween(&State->AsteroidSeed, -1.0f, 1.0f),
+                        RandomBetween(&State->AsteroidSeed, -1.0f, 1.0f), 0.0f);
+        Asteroid->dYaw *= -1.0f;
+    }
 }
 
 inline entity *
@@ -419,14 +470,14 @@ ResetGame(play_state *State, render_buffer *RenderBuffer, loaded_font *Font)
     }
     //entity *FloatingHead = CreateFloatingHead(State);
 
-    entity *SmallAsteroid = CreateAsteroid(State, V3(50.0f, 0.0f, 0.0f), 5.0f, V3(2.0f, 3.0f, 0));
+    entity *SmallAsteroid = CreateAsteroid(State);
 #if 0
     SmallAsteroid->P.x = SmallAsteroid->CollisionShapes[0].Radius +
         Ship->CollisionShapes[0].A.x;
 #endif
-    entity *SmallAsteroid3 = CreateAsteroid(State, State->ShipStartingP + V3(0, 40.0f, 0), 5.0f, V3(-2.0f, 3.0f, 0));
-    entity *SmallAsteroid2 = CreateAsteroid(State, State->ShipStartingP + V3(0, 20.0f, 0), 5.0f, V3(2.0f, -1.0f, 0));
-    entity *LargeAsteroid = CreateAsteroid(State, SmallAsteroid->P + V3(30.0f, 30.0f, 0.0f), 10.0f, V3(-0.5f, -1.3f, 0));
+    entity *SmallAsteroid3 = CreateAsteroid(State);
+    entity *SmallAsteroid2 = CreateAsteroid(State);
+    entity *LargeAsteroid = CreateAsteroid(State);
 }
 
 internal void
@@ -441,6 +492,8 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
     if(!State->IsInitialized)
     {
         State->IsInitialized = true;
+
+        State->AsteroidSeed = Seed(14356);
 
         InitializePhysicsState(&State->PhysicsState, &GameState->Arena);
 
@@ -472,6 +525,14 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
     {
         u32 NextIndex = EntityIndex + 1;
         entity *Entity = State->Entities + EntityIndex;
+        while(Entity->Yaw >= Tau)
+        {
+            Entity->Yaw -= Tau;
+        }
+        while(Entity->Yaw <= -Tau)
+        {
+            Entity->Yaw += Tau;
+        }
         v3 Facing = V3(Cos(Entity->Yaw), Sin(Entity->Yaw), 0.0f);
         switch(Entity->Type)
         {
@@ -1610,42 +1671,36 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
                     --State->Lives;
                     if(State->Lives > 0)
                     {
-                        CreateShip(State, State->ShipStartingP, State->ShipStartingYaw);
+                        Entity->P = State->ShipStartingP;
+                        Entity->dP = {};
+                        Entity->Yaw = State->ShipStartingYaw;
+                        Entity->dYaw = 0.0f;
+                        Entity->Timer = 0;
+                        Entity->Destroyed = false;
                     }
                     else
                     {
-                        CreateShip(State, V3i(10, 10, 0), State->ShipStartingYaw);
                         GameOver(State, RenderBuffer, &GameMemory->Font);
                     }
                 } break;
 
                 case EntityType_Asteroid:
                 {
-#if 0
-                    // NOTE(chris): Halving volume results in dividing radius by cuberoot(2)
-                    Entity->Dim *= 0.79370052598f;
-                    entity *NewAsteroid = CreateAsteroid(State, Entity->P, Entity->Dim.x);
-#endif
-                    r32 NewRadius = 0.25f*Entity->Dim.x;
-                    if(NewRadius >= 2.0f)
-                    {
-                        entity *Piece1 = CreateAsteroid(State, Entity->P-V3(NewRadius, 0, 0),
-                                                        NewRadius, Entity->dP);
-                        entity *Piece2 = CreateAsteroid(State, Entity->P+V3(NewRadius, 0, 0),
-                                                        NewRadius, Entity->dP);
-                    }
-#if 0
-                    r32 Angle = Tau/12.0f;
-                    Entity->dP = RotateZ(Entity->dP, -Angle);
-                    NewAsteroid->dP = RotateZ(NewAsteroid->dP, Angle);
-#endif
+                    SplitAsteroid(State, Entity);
                 } break;
 
                 default:
                 {
                 } break;
             }
-            DestroyEntity(State, Entity);
+            if(Entity->Destroyed)
+            {
+                DestroyEntity(State, Entity);
+            }
+            else
+            {
+                ++EntityIndex;
+            }
         }
         else
         {
