@@ -23,6 +23,7 @@ struct entity
 {
     entity_type Type;
     collider_type ColliderType;
+    r32 Mass;
     v3 P;
     v3 dP;
     r32 Yaw;
@@ -41,6 +42,8 @@ struct entity
 #if TROIDS_INTERNAL
     u32 UsedLinearIterations;
     u32 UsedAngularIterations;
+    v3 InitdP;
+    r32 InitdYaw;
     v3 CollisionStepP[COLLISION_ITERATIONS+1];
     r32 CollisionStepYaw[COLLISION_ITERATIONS+1];
     b32 LinearBoundingCircleCollided[COLLISION_ITERATIONS+1];

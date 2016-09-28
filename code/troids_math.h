@@ -219,8 +219,9 @@ inline v2
 operator/(v2 A, r32 C)
 {
     v2 Result;
-    Result.x = A.x/C;
-    Result.y = A.y/C;
+    r32 InvC = 1.0f/C;
+    Result.x = A.x*InvC;
+    Result.y = A.y*InvC;
     return(Result);
 }
 
@@ -276,7 +277,7 @@ LengthSq(v2 A)
 }
 
 inline v2
-Proj(v2 A, v2 B)
+Project(v2 A, v2 B)
 {
     v2 Result = A;
     r32 LengthBSq = LengthSq(B);
@@ -384,6 +385,17 @@ operator*(v3 A, r32 C)
 }
 
 inline v3
+operator/(v3 A, r32 C)
+{
+    v3 Result;
+    r32 InvC = 1.0f/C;
+    Result.x = A.x*InvC;
+    Result.y = A.y*InvC;
+    Result.z = A.z*InvC;
+    return(Result);
+}
+
+inline v3
 operator+=(v3 &A, v3 B)
 {
     A = A + B;
@@ -415,6 +427,18 @@ inline r32
 Length(v3 A)
 {
     r32 Result = SquareRoot(A.x*A.x + A.y*A.y + A.z*A.z);
+    return(Result);
+}
+
+inline v3
+Project(v3 A, v3 B)
+{
+    v3 Result = A;
+    r32 LengthBSq = LengthSq(B);
+    if(LengthBSq > 0.0f)
+    {
+        Result = (B*Inner(A, B))/LengthBSq;
+    }
     return(Result);
 }
 

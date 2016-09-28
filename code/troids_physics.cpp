@@ -37,10 +37,9 @@ ProcessIntersection(circle_ray_intersection_result Intersection, r32 *tMove)
     return(Result);
 }
 
-inline b32
-ProcessIntersection(arc_polygon_edge_intersection_result Intersection, r32 *tSpin)
+inline void
+ProcessIntersection(arc_polygon_edge_intersection_result Intersection, r32 *tSpin, collision *Collision)
 {
-    b32 Result = false;
     r32 t;
     if(HasIntersection(Intersection.t1))
     {
@@ -48,7 +47,8 @@ ProcessIntersection(arc_polygon_edge_intersection_result Intersection, r32 *tSpi
         if(0.0f <= t && t < *tSpin)
         {
             *tSpin = t;
-            Result = true;
+            Collision->Type = CollisionType_Angular;
+            Collision->PointOfCollision = Intersection.P1;
         }
     }
     if(HasIntersection(Intersection.t2))
@@ -57,26 +57,31 @@ ProcessIntersection(arc_polygon_edge_intersection_result Intersection, r32 *tSpi
         if(0.0f <= t && t < *tSpin)
         {
             *tSpin = t;
-            Result = true;
+            Collision->Type = CollisionType_Angular;
+            Collision->PointOfCollision = Intersection.P2;
         }
     }
-    return(Result);
 }
 
-inline b32
-ProcessIntersection(arc_circle_intersection_result Intersection, r32 *tSpin)
+inline void
+ProcessIntersection(arc_circle_intersection_result Intersection, r32 *tSpin, collision *Collision)
 {
-    b32 Result = false;
     if(HasIntersection(Intersection))
     {
-        r32 t = Minimum(Intersection.t1, Intersection.t2);
+        r32 t = Intersection.t1;
+        v2 PointOfCollision = Intersection.P1;
+        if(Intersection.t2 < Intersection.t1)
+        {
+            t = Intersection.t2;
+            PointOfCollision = Intersection.P2;
+        }
         if(0.0f <= t && t < *tSpin)
         {
             *tSpin = t;
-            Result = true;
+            Collision->Type = CollisionType_Angular;
+            Collision->PointOfCollision = PointOfCollision;
         }
     }
-    return(Result);
 }
 
 inline b32
@@ -187,10 +192,10 @@ PolygonEdgeRayIntersection(v2 EdgeA, v2 EdgeB, v2 RayA, v2 RayB, v2 InteriorPoin
                 r32 x = RayA.x + dRay.x*t;
                 r32 y = RayA.y + dRay.y*t;
         
-                r32 XMin = Minimum(EdgeA.x, EdgeB.x);
-                r32 XMax = Maximum(EdgeA.x, EdgeB.x);
-                r32 YMin = Minimum(EdgeA.y, EdgeB.y);
-                r32 YMax = Maximum(EdgeA.y, EdgeB.y);
+                r32 XMin = Minimum(EdgeA.x, EdgeB.x) - COLLISION_EPSILON;
+                r32 XMax = Maximum(EdgeA.x, EdgeB.x) + COLLISION_EPSILON;
+                r32 YMin = Minimum(EdgeA.y, EdgeB.y) - COLLISION_EPSILON;
+                r32 YMax = Maximum(EdgeA.y, EdgeB.y) + COLLISION_EPSILON;
                 if(XMin <= x && x <= XMax && YMin <= y && y <= YMax)
                 {
                     Result = t;
@@ -235,7 +240,9 @@ ArcPolygonEdgeIntersection(v2 ArcCenter, r32 Radius, v2 StartP, r32 dTheta,
     r32 EdgeTestA = Inner(-EdgeNormal, StartP-EdgeB);
     r32 EdgeTestB = Inner(Perp(InteriorPoint-EdgeB), StartP-EdgeB);
     r32 EdgeTestC = Inner(Perp(EdgeA-InteriorPoint), StartP-InteriorPoint);
-    b32 Inside = (EdgeTestA >= 0.0f && EdgeTestB >= 0.0f && EdgeTestC >= 0.0f);
+    b32 Inside = (EdgeTestA >= -COLLISION_EPSILON &&
+                  EdgeTestB >= -COLLISION_EPSILON &&
+                  EdgeTestC >= -COLLISION_EPSILON);
     v2 RotationDirection = Sign(dTheta)*Perp(StartP-ArcCenter);
 
     // TODO(chris): Do two passes, where the first one cannot sweep more than pi radians.
@@ -259,31 +266,34 @@ ArcPolygonEdgeIntersection(v2 ArcCenter, r32 Radius, v2 StartP, r32 dTheta,
             r32 InverseAbsdTheta = 1.0f / AbsoluteValue(dTheta);
             if(0 <= RayIntersection.t1 && RayIntersection.t1 <= 1)
             {
-                v2 EndP = RelativeA + dAB*RayIntersection.t1;
-                r32 ThetaIntersect = InverseCos(Inner(RelativeStartP, EndP)*InverseRadiusSq);
-                r32 Direction = Inner(StartPerp, EndP);
+                v2 RelativeEndP = RelativeA + dAB*RayIntersection.t1;
+                r32 ThetaIntersect = InverseCos(Inner(RelativeStartP, RelativeEndP)*InverseRadiusSq);
+                r32 Direction = Inner(StartPerp, RelativeEndP);
                 if(Direction*dTheta < 0)
                 {
                     ThetaIntersect = Tau-ThetaIntersect;
                 }
                 Result.t1 = ThetaIntersect*InverseAbsdTheta;
+                Result.P1 = ArcCenter + RelativeEndP;
             }
             if(0 <= RayIntersection.t2 && RayIntersection.t2 <= 1)
             {
-                v2 EndP = RelativeA + dAB*RayIntersection.t2;
-                r32 ThetaIntersect = InverseCos(Inner(RelativeStartP, EndP)*InverseRadiusSq);
-                r32 Direction = Inner(StartPerp, EndP);
+                v2 RelativeEndP = RelativeA + dAB*RayIntersection.t2;
+                r32 ThetaIntersect = InverseCos(Inner(RelativeStartP, RelativeEndP)*InverseRadiusSq);
+                r32 Direction = Inner(StartPerp, RelativeEndP);
                 if(Direction*dTheta < 0)
                 {
                     ThetaIntersect = Tau-ThetaIntersect;
                 }
                 Result.t2 = ThetaIntersect*InverseAbsdTheta;
+                Result.P2 = ArcCenter + RelativeEndP;
             }
         }
     }
     else if(Inner(RotationDirection, EdgeNormal) <= 0.0f)
     {
         Result.t1 = Result.t2 = 0.0f;
+        Result.P1 = Result.P2 = StartP;
     }
 
     return(Result);
@@ -339,32 +349,35 @@ ArcCircleIntersection(v2 ArcCenter, r32 ArcRadius, v2 StartP, r32 dTheta,
             v2 StartPerp = Perp(RelativeStartP);
 
             {
-                v2 EndP = CircleIntersection.P1 - ArcCenter;
-                r32 Dot = Inner(RelativeStartP, EndP);
+                v2 RelativeEndP = CircleIntersection.P1 - ArcCenter;
+                r32 Dot = Inner(RelativeStartP, RelativeEndP);
                 r32 ThetaIntersect = InverseCos(Dot*InverseRadiusSq);
-                r32 Direction = Inner(StartPerp, EndP);
+                r32 Direction = Inner(StartPerp, RelativeEndP);
                 if(Direction*dTheta < 0)
                 {
                     ThetaIntersect = Tau-ThetaIntersect;
                 }
                 Result.t1 = ThetaIntersect*InverseAbsdTheta;
+                Result.P1 = CircleIntersection.P1;
             }
             {
-                v2 EndP = CircleIntersection.P2 - ArcCenter;
-                r32 Dot = Inner(RelativeStartP, EndP);
+                v2 RelativeEndP = CircleIntersection.P2 - ArcCenter;
+                r32 Dot = Inner(RelativeStartP, RelativeEndP);
                 r32 ThetaIntersect = InverseCos(Dot*InverseRadiusSq);
-                r32 Direction = Inner(StartPerp, EndP);
+                r32 Direction = Inner(StartPerp, RelativeEndP);
                 if(Direction*dTheta < 0)
                 {
                     ThetaIntersect = Tau-ThetaIntersect;
                 }
                 Result.t2 = ThetaIntersect*InverseAbsdTheta;
+                Result.P2 = CircleIntersection.P2;
             }
         }
     }
     else if(Inner(RotationDirection, CircleCenterToStartP) <= 0.0f)
     {
         Result.t1 = Result.t2 = 0.0f;
+        Result.P1 = Result.P2 = StartP;
     }
     return(Result);
 }
@@ -401,35 +414,18 @@ ResolveLinearCollision(collision *Collision, entity *Entity, entity *OtherEntity
 {
     if(!ResolveCollision(Entity, OtherEntity))
     {
+        r32 Efficiency = 0.1f;
+        v3 DeflectionVector = {};
         switch(Collision->Type)
         {
             case CollisionType_Circle:
             {
-                r32 DeflectionMagnitudeSq = LengthSq(Collision->Deflection);
-                if(DeflectionMagnitudeSq > 0.0f)
-                {
-                    v2 Adjustment = (-Collision->Deflection *
-                                     (Inner(Entity->dP.xy, Collision->Deflection) /
-                                      DeflectionMagnitudeSq));
-                    Assert(!IsNaN(Adjustment.x));
-                    Assert(!IsNaN(Adjustment.y));
-                    Entity->dP += 1.01f*V3(Adjustment, 0);
-                }
+                DeflectionVector = V3(Collision->Deflection, 0.0f);
             } break;
 
             case CollisionType_Line:
             {
-                v2 DeflectionVector = Perp(Collision->A - Collision->B);
-                r32 DeflectionMagnitudeSq = LengthSq(DeflectionVector);
-                if(DeflectionMagnitudeSq > 0.0f)
-                {
-                    v2 Adjustment = (-DeflectionVector *
-                                     (Inner(Entity->dP.xy, DeflectionVector) /
-                                      DeflectionMagnitudeSq));
-                    Assert(!IsNaN(Adjustment.x));
-                    Assert(!IsNaN(Adjustment.y));
-                    Entity->dP += 1.01f*V3(Adjustment, 0);
-                }
+                DeflectionVector = V3(Perp(Collision->A - Collision->B), 0.0f);
             } break;
 
             case CollisionType_None:
@@ -438,14 +434,69 @@ ResolveLinearCollision(collision *Collision, entity *Entity, entity *OtherEntity
 
             InvalidDefaultCase;
         }
+
+#if COLLISION_PHYSICAL
+        // TODO(chris): Take into account point of collision and spin around center of mass
+        r32 Mass = Entity->Mass;
+        v3 dP = Project(Entity->dP, DeflectionVector);
+        r32 OtherMass = OtherEntity->Mass;
+        v3 OtherdP = Project(OtherEntity->dP, DeflectionVector);
+        r32 InvMassSum = Efficiency/(Mass + OtherMass);
+        r32 MassDifference = Mass - OtherMass;
+
+        v3 NewdP = (dP*MassDifference + 2*OtherMass*OtherdP)*InvMassSum;
+        v3 OtherNewdP = (-OtherdP*MassDifference + 2*Mass*dP)*InvMassSum;
+
+        Entity->dP += NewdP - dP;
+        OtherEntity->dP += OtherNewdP - OtherdP;
+#else
+        r32 DeflectionMagnitudeSq = LengthSq(DeflectionVector);
+        if(DeflectionMagnitudeSq > 0.0f)
+        {
+            v2 Adjustment = (-DeflectionVector.xy *
+                             (Inner(Entity->dP.xy, DeflectionVector.xy) /
+                              DeflectionMagnitudeSq));
+            Assert(!IsNaN(Adjustment.x));
+            Assert(!IsNaN(Adjustment.y));
+            Entity->dP += 1.1f*V3(Adjustment, 0);
+        }
+#endif
     }
 }
 
 internal void
-ResolveAngularCollision(entity *Entity, entity *OtherEntity)
+ResolveAngularCollision(collision *Collision, entity *Entity, entity *OtherEntity)
 {
     if(!ResolveCollision(Entity, OtherEntity))
     {
-        Entity->dYaw = -0.1f*Entity->dYaw;
+        r32 Efficiency = 0.4f;
+        switch(Collision->Type)
+        {
+            case CollisionType_Angular:
+            {
+#if COLLISION_PHYSICAL
+                v3 PointOfCollision = V3(Collision->PointOfCollision, 0.0f);
+                v3 DeflectionVector = OtherEntity->P - PointOfCollision;
+                v3 PerpRadius = V3(Perp((PointOfCollision-Entity->P).xy), 0.0f);
+                v3 AngularVelocity = Entity->dYaw*PerpRadius;
+                // TODO(chris): Take into account point of collision and spin around center of mass
+                r32 Mass = Entity->Mass;
+                r32 OtherMass = OtherEntity->Mass;
+                v3 dP = Project(AngularVelocity, DeflectionVector);
+                v3 OtherdP = Project(OtherEntity->dP, DeflectionVector);
+                r32 InvMassSum = Efficiency/(Mass + OtherMass);
+                r32 MassDifference = Mass - OtherMass;
+
+                v3 NewdP = (dP*MassDifference + 2*OtherMass*OtherdP)*InvMassSum;
+                v3 OtherNewdP = (-OtherdP*MassDifference + 2*Mass*dP)*InvMassSum;
+
+                v3 NewAngularVelocity = AngularVelocity + NewdP - dP;
+                Entity->dYaw = Length(NewAngularVelocity)/Length(PerpRadius);
+                OtherEntity->dP += OtherNewdP - Project(OtherEntity->dP, DeflectionVector);
+#else
+                Entity->dYaw = -0.0001f*Entity->dYaw;
+#endif
+            } break;
+        }
     }
 }

@@ -7,11 +7,13 @@
    $Notice: $
    ======================================================================== */
 
+#define COLLISION_PHYSICAL 0
 #define COLLISION_FINE_DEBUG 0
 #define COLLISION_DEBUG_LINEAR 0
 #define COLLISION_DEBUG_ANGULAR 0
 #define COLLISION_DEBUG COLLISION_DEBUG_LINEAR|COLLISION_DEBUG_ANGULAR
 #define COLLISION_ITERATIONS 3
+#define COLLISION_EPSILON 0.0001f
 
 enum collider_type
 {
@@ -96,6 +98,7 @@ enum collision_type
     CollisionType_None,
     CollisionType_Circle,
     CollisionType_Line,
+    CollisionType_Angular,
 };
 
 struct collision
@@ -116,6 +119,10 @@ struct collision
         {
             v2 Deflection;
         };
+        struct
+        {
+            v2 PointOfCollision;
+        };
     };
 };
 
@@ -133,6 +140,8 @@ struct arc_polygon_edge_intersection_result
 {
     r32 t1;
     r32 t2;
+    v2 P1;
+    v2 P2;
 };
 
 struct circle_circle_intersection_result
@@ -145,6 +154,8 @@ struct arc_circle_intersection_result
 {
     r32 t1;
     r32 t2;
+    v2 P1;
+    v2 P2;
 };
 
 inline b32
