@@ -60,6 +60,7 @@ struct play_state
     b32 IsInitialized;
     
     v3 ShipStartingP;
+    v3 CameraStartingP;
     r32 ShipStartingYaw;
 
     physics_state PhysicsState;

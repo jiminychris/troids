@@ -169,7 +169,7 @@ CreateAsteroid(play_state *State)
     Result->Type = EntityType_Asteroid;
     Result->P = V3(RandomBetween(Seed, -100.0f, 100.0f), RandomBetween(Seed, -100.0f, 100.0f), 0.0f);
     Result->dP = V3(RandomBetween(Seed, -10.0f, 10.0f), RandomBetween(Seed, -10.0f, 10.0f), 0.0f);
-    Result->dP = {};
+//    Result->dP = {};
     Result->Yaw = RandomBetween(Seed, -Tau, Tau);
 //    Result->Yaw = 0.0f;
     Result->dYaw = RandomBetween(Seed, -1.0f, 1.0f);
@@ -510,7 +510,6 @@ GameOver(play_state *State, render_buffer *RenderBuffer, loaded_font *Font)
 internal void
 ResetGame(play_state *State, render_buffer *RenderBuffer, loaded_font *Font)
 {
-    RenderBuffer->CameraP = V3(State->ShipStartingP.xy, 100.0f);
     RenderBuffer->CameraRot = 0.0f;
 
     // NOTE(chris): Null entity
@@ -520,11 +519,13 @@ ResetGame(play_state *State, render_buffer *RenderBuffer, loaded_font *Font)
 
     State->Lives = 3;
 
-    State->ShipStartingP = V3(0, 0, 0);
+    State->ShipStartingP = V3(-128.0f, 74.0f, 0.0f);
+    State->CameraStartingP = V3(0, 0, 0);
     State->ShipStartingYaw = 0.0f;
     if(State->Lives)
     {
-        entity *Ship = CreateShip(State, State->ShipStartingP, State->ShipStartingYaw);
+        entity *Ship = CreateShip(State, State->ShipStartingP,
+                                  State->ShipStartingYaw);
     }
     else
     {
@@ -574,6 +575,19 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
     temporary_memory RenderMemory = BeginTemporaryMemory(&RenderBuffer->Arena);
     PushClear(RenderBuffer, V3(0.0f, 0.0f, 0.0f));
     v2 ScreenCenter = 0.5f*V2i(RenderBuffer->Width, RenderBuffer->Height); 
+
+    RenderBuffer->CameraP = V3(State->CameraStartingP.xy, 100.0f);
+#if DEBUG_CAMERA
+    RenderBuffer->ClipCameraP = V3(State->CameraStartingP.xy, 100.0f);
+    RenderBuffer->CameraP = V3(State->CameraStartingP.xy, 200.0f);
+    v3 UnprojectedMin = Unproject(RenderBuffer, V2(0.0f, 0.0f), 0.0f, RenderBuffer->ClipCameraP);
+    v3 UnprojectedMax = Unproject(RenderBuffer, V2i(RenderBuffer->Width, RenderBuffer->Height), 0.0f,
+                                  RenderBuffer->ClipCameraP);
+    PushBorder(RenderBuffer,
+               UnprojectedMin,
+               (UnprojectedMax-UnprojectedMin).xy,
+               V4(1, 0, 0, 1));
+#endif
 
     game_controller *Keyboard = &Input->Keyboard;
     game_controller *ShipController = Input->GamePads + 0;
@@ -1799,8 +1813,18 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
             {
 //                State->CameraP.xy += 0.2f*(Entity->P.xy - State->CameraP.xy);
 //                State->CameraRot += 0.05f*((Entity->Yaw - 0.25f*Tau) - State->CameraRot);
-                PushBitmap(RenderBuffer, &GameState->ShipBitmap, Entity->P,
-                           XAxis, YAxis, Entity->Dim);
+//                PushBitmap(RenderBuffer, &GameState->ShipBitmap, Entity->P,
+//                           XAxis, YAxis, Entity->Dim);
+                for(collision_shape *Shape = Entity->CollisionShapes;
+                    Shape;
+                    Shape = Shape->Next)
+                {
+                    PushTriangle(RenderBuffer,
+                                 Entity->P + V3(RotateZ(Shape->A, Entity->Yaw), 0.0f),
+                                 Entity->P + V3(RotateZ(Shape->B, Entity->Yaw), 0.0f),
+                                 Entity->P + V3(RotateZ(Shape->C, Entity->Yaw), 0.0f),
+                                 V4(1, 1, 1, 1));
+                }
             } break;
 
             case EntityType_Asteroid:

@@ -274,10 +274,10 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
 #if 1
         State->ShipBitmap = LoadBitmap("ship_opaque.bmp");
-        State->AsteroidBitmap = LoadBitmap("asteroid_opaque.bmp");
+//        State->AsteroidBitmap = LoadBitmap("asteroid_opaque.bmp");
 #else
         State->ShipBitmap = LoadBitmap("ship_opaque.bmp");
-        State->AsteroidBitmap = LoadBitmap("asteroid_opaque.bmp");
+//        State->AsteroidBitmap = LoadBitmap("asteroid_opaque.bmp");
 #endif
         State->BulletBitmap = LoadBitmap("bullet.bmp");
     }
@@ -293,7 +293,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         TranState->RenderBuffer.Width = BackBuffer->Width;
         TranState->RenderBuffer.Height = BackBuffer->Height;
         TranState->RenderBuffer.MetersToPixels = State->MetersToPixels;
-        TranState->RenderBuffer.DefaultProjection = Projection_Orthographic;
+        TranState->RenderBuffer.DefaultProjection = Projection_Perspective;
         TranState->RenderBuffer.Projection = TranState->RenderBuffer.DefaultProjection;
         
         State->HeadMesh = LoadObj("head.obj", &TranState->Arena);

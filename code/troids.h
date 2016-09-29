@@ -7,6 +7,8 @@
    $Notice: $
    ======================================================================== */
 
+#define DEBUG_CAMERA 1
+
 #include "troids_platform.h"
 #include "troids_intrinsics.h"
 #include "troids_math.h"
@@ -42,7 +44,6 @@ struct game_state
     };
 
     loaded_bitmap ShipBitmap;
-    loaded_bitmap AsteroidBitmap;
     loaded_bitmap BulletBitmap;
     loaded_obj HeadMesh;
 

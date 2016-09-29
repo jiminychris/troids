@@ -10,7 +10,7 @@
 enum projection
 {
     Projection_None,
-    Projection_Orthographic,
+    Projection_Perspective,
 };
 
 struct render_buffer
@@ -19,6 +19,9 @@ struct render_buffer
     u32 Height;
     r32 MetersToPixels;
     v3 CameraP;
+#if TROIDS_INTERNAL
+    v3 ClipCameraP;
+#endif
     r32 CameraRot;
     projection Projection;
     projection DefaultProjection;
@@ -26,14 +29,19 @@ struct render_buffer
 };
 
 inline v2
-Project(render_buffer *RenderBuffer, v3 WorldP)
+Project(render_buffer *RenderBuffer, v3 WorldP, v3 CameraP = {NAN})
 {
     v2 Result = {};
+    if(IsNaN(CameraP.x))
+    {
+        CameraP = RenderBuffer->CameraP;
+    }
+    
     switch(RenderBuffer->Projection)
     {
-        case Projection_Orthographic:
+        case Projection_Perspective:
         {
-            v3 NewP = WorldP - RenderBuffer->CameraP;
+            v3 NewP = WorldP - CameraP;
             r32 ScaleFactor = 1.0f / -(5.0f*NewP.z);
             r32 CosRot = Cos(RenderBuffer->CameraRot);
             r32 SinRot = Sin(RenderBuffer->CameraRot);
@@ -62,14 +70,18 @@ Project(render_buffer *RenderBuffer, v3 WorldP)
 }
 
 inline v3
-Unproject(render_buffer *RenderBuffer, v2 ScreenP, r32 Z)
+Unproject(render_buffer *RenderBuffer, v2 ScreenP, r32 Z, v3 CameraP = {NAN})
 {
+    if(IsNaN(CameraP.x))
+    {
+        CameraP = RenderBuffer->CameraP;
+    }
     v3 Result = {};
     switch(RenderBuffer->Projection)
     {
-        case Projection_Orthographic:
+        case Projection_Perspective:
         {
-            r32 DistanceFromCamera = Z - RenderBuffer->CameraP.z;
+            r32 DistanceFromCamera = Z - CameraP.z;
             r32 ScaleFactor = -(5.0f*DistanceFromCamera);
             r32 PixelsToMeters = 1.0f / RenderBuffer->MetersToPixels;
             v3 WorldP = V3((ScreenP - 0.5f*V2i(RenderBuffer->Width,
@@ -88,7 +100,7 @@ Unproject(render_buffer *RenderBuffer, v2 ScreenP, r32 Z)
                 WorldP = RotMat*WorldP;
             }
 
-            Result = WorldP + RenderBuffer->CameraP;
+            Result = WorldP + CameraP;
         } break;
 
         case Projection_None:
@@ -98,6 +110,140 @@ Unproject(render_buffer *RenderBuffer, v2 ScreenP, r32 Z)
 
         InvalidDefaultCase;
     }
+    return(Result);
+}
+
+struct project_triangle_result
+{
+    b32 Clipped;
+    v2 A;
+    v2 B;
+    v2 C;
+};
+
+inline project_triangle_result
+ProjectTriangle(render_buffer *RenderBuffer, v3 A, v3 B, v3 C)
+{
+    project_triangle_result Result;
+    Result.Clipped = true;
+#if DEBUG_CAMERA
+    Result.A = Project(RenderBuffer, A, RenderBuffer->ClipCameraP);
+    Result.B = Project(RenderBuffer, B, RenderBuffer->ClipCameraP);
+    Result.C = Project(RenderBuffer, C, RenderBuffer->ClipCameraP);
+#else
+    Result.A = Project(RenderBuffer, A);
+    Result.B = Project(RenderBuffer, B);
+    Result.C = Project(RenderBuffer, C);
+#endif
+
+    rectangle2 ClipRect = MinMax(V2i(0, 0), V2i(RenderBuffer->Width, RenderBuffer->Height));
+
+    if(Inside(ClipRect, Result.A) || Inside(ClipRect, Result.B) || Inside(ClipRect, Result.C))
+    {
+        Result.Clipped = false;
+    }
+    else
+    {
+        v2 AB = Result.B-Result.A;
+        v2 BC = Result.C-Result.B;
+        v2 CA = Result.A-Result.C;
+        v2 Horiz = V2i(RenderBuffer->Width, 0);
+        v2 Vert = V2i(0, RenderBuffer->Height);
+        v2 Origin = V2i(0, 0);
+
+        r32 ABCrossHoriz = Cross(AB, Horiz);
+        r32 BCCrossHoriz = Cross(BC, Horiz);
+        r32 CACrossHoriz = Cross(CA, Horiz);
+        r32 ABCrossVert = Cross(AB, Vert);
+        r32 BCCrossVert = Cross(BC, Vert);
+        r32 CACrossVert = Cross(CA, Vert);
+
+        if(ABCrossHoriz != 0.0f)
+        {
+            r32 Inv = 1.0f / ABCrossHoriz;
+            r32 U1 = Cross(Origin-Result.A, AB)*Inv;
+            r32 T1 = Cross(Origin-Result.A, Horiz)*Inv;
+            r32 U2 = Cross(Vert-Result.A, AB)*Inv;
+            r32 T2 = Cross(Vert-Result.A, Horiz)*Inv;
+            if((0.0f <= U1 && U1 <= 1.0f && 0.0f <= T1 && T1 <= 1.0f) ||
+               (0.0f <= U2 && U2 <= 1.0f && 0.0f <= T2 && T2 <= 1.0f))
+            {
+                Result.Clipped = false;
+            }
+        }
+        if(BCCrossHoriz != 0.0f)
+        {
+            r32 Inv = 1.0f / BCCrossHoriz;
+            r32 U1 = Cross(Origin-Result.B, BC)*Inv;
+            r32 T1 = Cross(Origin-Result.B, Horiz)*Inv;
+            r32 U2 = Cross(Vert-Result.B, BC)*Inv;
+            r32 T2 = Cross(Vert-Result.B, Horiz)*Inv;
+            if((0.0f <= U1 && U1 <= 1.0f && 0.0f <= T1 && T1 <= 1.0f) ||
+               (0.0f <= U2 && U2 <= 1.0f && 0.0f <= T2 && T2 <= 1.0f))
+            {
+                Result.Clipped = false;
+            }
+        }
+        if(CACrossHoriz != 0.0f)
+        {
+            r32 Inv = 1.0f / CACrossHoriz;
+            r32 U1 = Cross(Origin-Result.C, CA)*Inv;
+            r32 T1 = Cross(Origin-Result.C, Horiz)*Inv;
+            r32 U2 = Cross(Vert-Result.C, CA)*Inv;
+            r32 T2 = Cross(Vert-Result.C, Horiz)*Inv;
+            if((0.0f <= U1 && U1 <= 1.0f && 0.0f <= T1 && T1 <= 1.0f) ||
+               (0.0f <= U2 && U2 <= 1.0f && 0.0f <= T2 && T2 <= 1.0f))
+            {
+                Result.Clipped = false;
+            }
+        }
+        if(ABCrossVert != 0.0f)
+        {
+            r32 Inv = 1.0f / ABCrossVert;
+            r32 U1 = Cross(Origin-Result.A, AB)*Inv;
+            r32 T1 = Cross(Origin-Result.A, Vert)*Inv;
+            r32 U2 = Cross(Horiz-Result.A, AB)*Inv;
+            r32 T2 = Cross(Horiz-Result.A, Vert)*Inv;
+            if((0.0f <= U1 && U1 <= 1.0f && 0.0f <= T1 && T1 <= 1.0f) ||
+               (0.0f <= U2 && U2 <= 1.0f && 0.0f <= T2 && T2 <= 1.0f))
+            {
+                Result.Clipped = false;
+            }
+        }
+        if(BCCrossVert != 0.0f)
+        {
+            r32 Inv = 1.0f / BCCrossVert;
+            r32 U1 = Cross(Origin-Result.B, BC)*Inv;
+            r32 T1 = Cross(Origin-Result.B, Vert)*Inv;
+            r32 U2 = Cross(Horiz-Result.B, BC)*Inv;
+            r32 T2 = Cross(Horiz-Result.B, Vert)*Inv;
+            if((0.0f <= U1 && U1 <= 1.0f && 0.0f <= T1 && T1 <= 1.0f) ||
+               (0.0f <= U2 && U2 <= 1.0f && 0.0f <= T2 && T2 <= 1.0f))
+            {
+                Result.Clipped = false;
+            }
+        }
+        if(CACrossVert != 0.0f)
+        {
+            r32 Inv = 1.0f / CACrossVert;
+            r32 U1 = Cross(Origin-Result.C, CA)*Inv;
+            r32 T1 = Cross(Origin-Result.C, Vert)*Inv;
+            r32 U2 = Cross(Horiz-Result.C, CA)*Inv;
+            r32 T2 = Cross(Horiz-Result.C, Vert)*Inv;
+            if((0.0f <= U1 && U1 <= 1.0f && 0.0f <= T1 && T1 <= 1.0f) ||
+               (0.0f <= U2 && U2 <= 1.0f && 0.0f <= T2 && T2 <= 1.0f))
+            {
+                Result.Clipped = false;
+            }
+        }
+    }
+
+#if DEBUG_CAMERA
+    Result.A = Project(RenderBuffer, A);
+    Result.B = Project(RenderBuffer, B);
+    Result.C = Project(RenderBuffer, C);
+#endif
+
     return(Result);
 }
 
@@ -188,7 +334,9 @@ PushRectangle(render_buffer *RenderBuffer, v3 P, v2 Dim, v4 Color)
 {
     PushRenderHeader(Data, &RenderBuffer->Arena, aligned_rectangle);
 
-    rectangle2 Rect = MinDim(P.xy, Dim);
+    v2 Min = Project(RenderBuffer, P);
+    v2 Max = Project(RenderBuffer, P + V3(Dim, 0));
+    rectangle2 Rect = MinMax(Min, Max);
     Data->Rect = Rect;
     Data->Color = Color;
     Data->SortKey = P.z;
@@ -196,16 +344,37 @@ PushRectangle(render_buffer *RenderBuffer, v3 P, v2 Dim, v4 Color)
 }
 
 inline void
+PushBorder(render_buffer *RenderBuffer, v3 P, v2 Dim, v4 Color)
+{
+    v3 TopLeft = P;
+    TopLeft.y += Dim.y;
+    v3 BottomRight = P;
+    BottomRight.x += Dim.x;
+    PushRectangle(RenderBuffer, P, V2(Dim.x, 1), Color);
+    PushRectangle(RenderBuffer, TopLeft, V2(Dim.x, 1), Color);
+    PushRectangle(RenderBuffer, P, V2(1, Dim.y), Color);
+    PushRectangle(RenderBuffer, BottomRight, V2(1, Dim.y), Color);
+}
+
+inline void
 PushTriangle(render_buffer *RenderBuffer, v3 A, v3 B, v3 C, v4 Color)
 {
-    PushRenderHeader(Data, &RenderBuffer->Arena, triangle);
+    project_triangle_result Projection = ProjectTriangle(RenderBuffer, A, B, C);
+    if(!Projection.Clipped)
+    {
+        PushRenderHeader(Data, &RenderBuffer->Arena, triangle);
 
-    Data->A = Project(RenderBuffer, A);
-    Data->B = Project(RenderBuffer, B);
-    Data->C = Project(RenderBuffer, C);
-    Data->Color = Color;
-    // TODO(chris): How to handle sorting with 3D triangles?
-    Data->SortKey = A.z;
+        Data->A = Projection.A;
+        Data->B = Projection.B;
+        Data->C = Projection.C;
+        Data->Color = Color;
+        // TODO(chris): How to handle sorting with 3D triangles?
+        Data->SortKey = A.z;
+    }
+    else
+    {
+        int A = 0;
+    }
 }
 
 inline void

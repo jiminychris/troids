@@ -253,6 +253,13 @@ Inner(v2 A, v2 B)
     return(Result);
 }
 
+inline r32
+Cross(v2 A, v2 B)
+{
+    r32 Result = A.x*B.y - A.y*B.x;
+    return(Result);
+}
+
 inline v2
 Perp(v2 A)
 {

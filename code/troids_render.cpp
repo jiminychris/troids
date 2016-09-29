@@ -1403,7 +1403,7 @@ SplitWorkIntoVerticalStrips(render_buffer *RenderBuffer, binary_node *Node, void
     case RenderCommand_##type:                                          \
     {                                                                   \
         PackedBufferAdvance(Data, render_##type##_data, Cursor);        \
-        Insert(&RenderBuffer->Arena, &SortTree, SortKey, Index);  \
+        Insert(&RenderBuffer->Arena, &SortTree, SortKey, Index);        \
     } break;
 
 
