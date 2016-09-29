@@ -374,8 +374,8 @@ PushSize(memory_arena *Arena, memory_size Size, u32 Flags = 0)
     return(Result);
 }
 
-#define PushStruct(Arena, type, ...) (type *)PushSize(Arena, sizeof(type), __VA_ARGS__)
-#define PushArray(Arena, Count, type, ...) (type *)PushSize(Arena, Count*sizeof(type), __VA_ARGS__)
+#define PushStruct(Arena, type, ...) ((type *)PushSize(Arena, sizeof(type), __VA_ARGS__))
+#define PushArray(Arena, Count, type, ...) ((type *)PushSize(Arena, Count*sizeof(type), __VA_ARGS__))
 
 inline memory_arena
 SubArena(memory_arena *Arena, memory_size Size)

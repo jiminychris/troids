@@ -280,7 +280,7 @@ DrawProfiler(debug_frame *Frame, render_buffer *RenderBuffer, text_layout *Layou
         TextLength = sizeof(Pause)-1;
     }
     r32 ButtonY = Layout->P.y;
-    rectangle2 ButtonRect = DrawButton(RenderBuffer, Layout, TextLength, ButtonText,
+    rectangle2 ButtonRect = DEBUGDrawButton(RenderBuffer, Layout, TextLength, ButtonText,
                                        V4(0, 0.5f, 1, 1), 2.0f);
     
     if(Inside(ButtonRect, Input->MousePosition) && WentDown(Input->LeftMouse))
@@ -291,7 +291,7 @@ DrawProfiler(debug_frame *Frame, render_buffer *RenderBuffer, text_layout *Layou
     Layout->P.y = ButtonY;
     Layout->P.x = ButtonRect.Max.x + 5.0f;
     char Top[] = "Top";
-    ButtonRect = DrawButton(RenderBuffer, Layout, sizeof(Top)-1, Top,
+    ButtonRect = DEBUGDrawButton(RenderBuffer, Layout, sizeof(Top)-1, Top,
                             V4(0, 0.5f, 1, 1), 2.0f);
     if(Inside(ButtonRect, Input->MousePosition) && WentDown(Input->LeftMouse))
     {
@@ -426,7 +426,7 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
             r32 XInit = Layout->P.x;
             TextLength = _snprintf_s(Text, sizeof(Text), "%.*s: ", NameLength, Name);
             DrawText(RenderBuffer, Layout, TextLength, Text, DrawTextFlags_NoLineAdvance);
-            DrawFillBar(RenderBuffer, Layout, Used, Max);
+            DEBUGDrawFillBar(RenderBuffer, Layout, Used, Max);
             Layout->P.x = XInit;
         } break;
 
@@ -451,7 +451,7 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
             r32 XInit = Layout->P.x;
             TextLength = _snprintf_s(Text, sizeof(Text), "%.*s: ", NameLength, Name);
             DrawText(RenderBuffer, Layout, TextLength, Text, DrawTextFlags_NoLineAdvance);
-            DrawFillBar(RenderBuffer, Layout, Arena->Used, Arena->Size);
+            DEBUGDrawFillBar(RenderBuffer, Layout, Arena->Used, Arena->Size);
             Layout->P.x = XInit;
         } break;
 

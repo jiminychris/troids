@@ -14,7 +14,7 @@ TitleScreenMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackB
     transient_state *TranState = (transient_state *)GameMemory->TemporaryMemory;
     render_buffer *RenderBuffer = &TranState->RenderBuffer;
     temporary_memory RenderMemory = BeginTemporaryMemory(&RenderBuffer->Arena);
-    PushClear(RenderBuffer, V4(0.0f, 0.0f, 0.0f, 1.0f));
+    PushClear(RenderBuffer, V3(0.0f, 0.0f, 0.0f));
 
     game_controller *Keyboard = &Input->Keyboard;
     game_controller *ShipController = Input->GamePads + 0;

@@ -169,8 +169,11 @@ CreateAsteroid(play_state *State)
     Result->Type = EntityType_Asteroid;
     Result->P = V3(RandomBetween(Seed, -100.0f, 100.0f), RandomBetween(Seed, -100.0f, 100.0f), 0.0f);
     Result->dP = V3(RandomBetween(Seed, -10.0f, 10.0f), RandomBetween(Seed, -10.0f, 10.0f), 0.0f);
+    Result->dP = {};
     Result->Yaw = RandomBetween(Seed, -Tau, Tau);
+//    Result->Yaw = 0.0f;
     Result->dYaw = RandomBetween(Seed, -1.0f, 1.0f);
+    Result->dYaw = 0.0f;
     Result->Dim = 2.0f*V2(Radius, Radius);
     Result->Mass = 5.0f*Pi*Square(Radius);
     
@@ -178,17 +181,61 @@ CreateAsteroid(play_state *State)
 }
 
 inline void
+RecenterShapes(entity *Entity)
+{
+    r32 Count = 0;
+    v2 Sum = {};
+    for(collision_shape *Shape = Entity->CollisionShapes;
+        Shape;
+        Shape = Shape->Next)
+    {
+        switch(Shape->Type)
+        {
+            case CollisionShapeType_Triangle:
+            {
+                Sum += Shape->A + Shape->B + Shape->C;
+                Count += 3;
+            } break;
+
+            InvalidDefaultCase;
+        }
+    }
+    v2 NewCenterOffset = Sum / Count;
+    for(collision_shape *Shape = Entity->CollisionShapes;
+        Shape;
+        Shape = Shape->Next)
+    {
+        switch(Shape->Type)
+        {
+            case CollisionShapeType_Triangle:
+            {
+                Shape->A -= NewCenterOffset;
+                Shape->B -= NewCenterOffset;
+                Shape->C -= NewCenterOffset;
+            } break;
+
+            case CollisionShapeType_Circle:
+            {
+                Shape->Center -= NewCenterOffset;
+            } break;
+        }
+    }
+    Entity->P.xy += RotateZ(NewCenterOffset, Entity->Yaw);
+}
+
+inline void
 SplitAsteroid(play_state *State, entity *Asteroid)
 {
-    u32 HalfShapeCount = Asteroid->CollisionShapeCount/2;
-    if(HalfShapeCount)
+    if(Asteroid->CollisionShapeCount > 1)
     {
+        u32 FirstSplitShapeIndex = RandomBetween(&State->AsteroidSeed,
+                                                 1, Asteroid->CollisionShapeCount-1);
         Asteroid->Destroyed = false;
         Asteroid->Mass *= 0.5f;
     
         collision_shape *EndShape = Asteroid->CollisionShapes;
         for(u32 ShapeIndex = 1;
-            ShapeIndex < HalfShapeCount;
+            ShapeIndex < FirstSplitShapeIndex;
             ++ShapeIndex)
         {
             EndShape = EndShape->Next;
@@ -196,14 +243,29 @@ SplitAsteroid(play_state *State, entity *Asteroid)
         entity *Split = CreateEntity(State);
         *Split = *Asteroid;
         Split->CollisionShapes = EndShape->Next;
-        Split->CollisionShapeCount = Asteroid->CollisionShapeCount - HalfShapeCount;
+        Split->CollisionShapeCount = Asteroid->CollisionShapeCount - FirstSplitShapeIndex;
     
         EndShape->Next = 0;
-        Asteroid->CollisionShapeCount = HalfShapeCount;
+        Asteroid->CollisionShapeCount = FirstSplitShapeIndex;
 
-        Split->dP += V3(RandomBetween(&State->AsteroidSeed, -1.0f, 1.0f),
-                        RandomBetween(&State->AsteroidSeed, -1.0f, 1.0f), 0.0f);
-        Asteroid->dYaw *= -1.0f;
+        RecenterShapes(Asteroid);
+        RecenterShapes(Split);
+
+        v3 AsteroidToSplit = Split->P - Asteroid->P;
+#if 1
+        if(Inner(Asteroid->dP, AsteroidToSplit) > 0.0f)
+        {
+            Asteroid->dP -= 2.0f*Project(Asteroid->dP, AsteroidToSplit);
+        }
+        if(Inner(Split->dP, -AsteroidToSplit) > 0.0f)
+        {
+            Split->dP -= 2.0f*Project(Split->dP, -AsteroidToSplit);
+        }
+#endif
+
+        r32 InvAsteroidToSplitLength = 1.0f / Length(AsteroidToSplit);
+        Asteroid->P -= 0.01f*AsteroidToSplit*InvAsteroidToSplitLength;
+        Split->P += 0.01f*AsteroidToSplit*InvAsteroidToSplitLength;
     }
 }
 
@@ -510,7 +572,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
     }
     
     temporary_memory RenderMemory = BeginTemporaryMemory(&RenderBuffer->Arena);
-    PushClear(RenderBuffer, V4(0.0f, 0.0f, 0.0f, 1.0f));
+    PushClear(RenderBuffer, V3(0.0f, 0.0f, 0.0f));
     v2 ScreenCenter = 0.5f*V2i(RenderBuffer->Width, RenderBuffer->Height); 
 
     game_controller *Keyboard = &Input->Keyboard;
@@ -1517,7 +1579,8 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
                 v3 P = Entity->CollisionStepP[CollisionIndex];
                 r32 Yaw = Entity->CollisionStepYaw[CollisionIndex];
                 v4 BoundingColor = BoundingCircleCollided ? V4(1, 0, 0, 1) : V4(1, 0, 1, 1);
-                PushCircle(RenderBuffer, P + BoundingCircleOffset, Entity->BoundingRadius, BoundingColor);
+                DEBUGPushCircle(RenderBuffer, P + BoundingCircleOffset,
+                                Entity->BoundingRadius, BoundingColor);
                 
                 v4 ShapeColors[] =
                     {
@@ -1545,8 +1608,8 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
                         {
                             v3 Center = V3(Shape->Center, 0);
                             v3 RotatedCenter = RotateZ(Center, Yaw);
-                            PushCircle(RenderBuffer, P + RotatedCenter  + ShapeOffset,
-                                       Shape->Radius, ShapeColor);
+                            DEBUGPushCircle(RenderBuffer, P + RotatedCenter  + ShapeOffset,
+                                            Shape->Radius, ShapeColor);
                         } break;
 
                         case CollisionShapeType_Triangle:
@@ -1557,11 +1620,11 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
                             A = RotateZ(A, Yaw);
                             B = RotateZ(B, Yaw);
                             C = RotateZ(C, Yaw);
-                            PushTriangle(RenderBuffer,
-                                         P + A + ShapeOffset,
-                                         P + B + ShapeOffset,
-                                         P + C + ShapeOffset,
-                                         ShapeColor);
+                            DEBUGPushTriangle(RenderBuffer,
+                                              P + A + ShapeOffset,
+                                              P + B + ShapeOffset,
+                                              P + C + ShapeOffset,
+                                              ShapeColor);
                         } break;
                     }
                     ShapeColorIndex = (ShapeColorIndex + 1) & (ArrayCount(ShapeColors)-1);
@@ -1581,8 +1644,8 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
                     v2 YAxis = Perp(XAxis);
 
                     v2 BoundingDim = V2(2.0f*Entity->BoundingRadius, dPLength);
-                    PushRotatedRectangle(RenderBuffer, 0.5f*(OldP + P) + BoundingExtrusionOffset,
-                                         XAxis, YAxis, BoundingDim, BoundingExtrusionColor);
+                    DEBUGPushRectangle(RenderBuffer, 0.5f*(OldP + P) + BoundingExtrusionOffset,
+                                              XAxis, YAxis, BoundingDim, BoundingExtrusionColor);
 
                     u32 ShapeColorIndex = 0;
                     u32 CollisionShapeMask = 1;
@@ -1609,11 +1672,11 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
                                 v3 RotatedOldCenter = RotateZ(Center, OldYaw);
                                 v2 ShapeDim = V2(2.0f*Shape->Radius, dPLength);
 #if COLLISION_DEBUG_LINEAR
-                                PushRotatedRectangle(RenderBuffer,
-                                                     RotatedOldCenter + 0.5f*(OldP + P) + ShapeExtrusionOffset,
-                                                     XAxis, YAxis, ShapeDim, LinearShapeExtrusionColor);
-                                PushCircle(RenderBuffer, P + RotatedOldCenter + ShapeOffset,
-                                           Shape->Radius, LinearShapeColor);
+                                DEBUGPushRectangle(RenderBuffer,
+                                                   RotatedOldCenter + 0.5f*(OldP + P) + ShapeExtrusionOffset,
+                                                   XAxis, YAxis, ShapeDim, LinearShapeExtrusionColor);
+                                DEBUGPushCircle(RenderBuffer, P + RotatedOldCenter + ShapeOffset,
+                                                Shape->Radius, LinearShapeColor);
 #endif
                             } break;
 
@@ -1627,11 +1690,11 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
                                 B = RotateZ(B, OldYaw);
                                 C = RotateZ(C, OldYaw);
 #if COLLISION_DEBUG_LINEAR
-                                PushTriangle(RenderBuffer,
-                                             P + A + ShapeOffset,
-                                             P + B + ShapeOffset,
-                                             P + C + ShapeOffset,
-                                             LinearShapeColor);
+                                DEBUGPushTriangle(RenderBuffer,
+                                                  P + A + ShapeOffset,
+                                                  P + B + ShapeOffset,
+                                                  P + C + ShapeOffset,
+                                                  LinearShapeColor);
 #endif
                             } break;
                         }
@@ -1742,8 +1805,16 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
 
             case EntityType_Asteroid:
             {
-                PushBitmap(RenderBuffer, &GameState->AsteroidBitmap, Entity->P,
-                           XAxis, YAxis, Entity->Dim);
+                for(collision_shape *Shape = Entity->CollisionShapes;
+                    Shape;
+                    Shape = Shape->Next)
+                {
+                    PushTriangle(RenderBuffer,
+                                 Entity->P + V3(RotateZ(Shape->A, Entity->Yaw), 0.0f),
+                                 Entity->P + V3(RotateZ(Shape->B, Entity->Yaw), 0.0f),
+                                 Entity->P + V3(RotateZ(Shape->C, Entity->Yaw), 0.0f),
+                                 V4(1, 1, 1, 1));
+                }
             } break;
 
             case EntityType_Bullet:

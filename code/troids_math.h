@@ -403,6 +403,13 @@ operator+=(v3 &A, v3 B)
 }
 
 inline v3
+operator-=(v3 &A, v3 B)
+{
+    A = A - B;
+    return(A);
+}
+
+inline v3
 operator*=(v3 &A, r32 C)
 {
     A = C*A;

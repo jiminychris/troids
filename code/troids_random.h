@@ -45,5 +45,14 @@ RandomBetween(seed *Seed, r32 Min, r32 Max)
     return(Result);
 }
 
+inline s32
+RandomBetween(seed *Seed, s32 Min, s32 Max)
+{
+    Assert(Min <= Max);
+    u32 Mod = 1 + Max-Min;
+    s32 Result = Min + RandomU64(Seed)%Mod;
+    return(Result);
+}
+
 #define TROIDS_RANDOM_H
 #endif
