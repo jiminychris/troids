@@ -289,17 +289,19 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                         GameMemory->TemporaryMemorySize - sizeof(transient_state),
                         (u8 *)GameMemory->TemporaryMemory + sizeof(transient_state));
 
-        TranState->RenderBuffer.Arena = SubArena(&TranState->Arena, Megabytes(1));
+        TranState->RenderBuffer.Arena = SubArena(&TranState->Arena, Megabytes(256));
         TranState->RenderBuffer.Width = BackBuffer->Width;
         TranState->RenderBuffer.Height = BackBuffer->Height;
         TranState->RenderBuffer.MetersToPixels = State->MetersToPixels;
         TranState->RenderBuffer.DefaultProjection = Projection_Perspective;
         TranState->RenderBuffer.Projection = TranState->RenderBuffer.DefaultProjection;
+        TranState->RenderBuffer.CameraP = V3(0.0f, 0.0f, 200.0f);
         
         State->HeadMesh = LoadObj("head.obj", &TranState->Arena);
 
         TranState->IsInitialized = true;
     }
+    TranState->RenderBuffer.NearZ = 0.1f;
 
     DEBUG_SUMMARY();
     {DEBUG_GROUP("Global");

@@ -413,6 +413,7 @@ LOG_DEBUG_TYPE(memory_arena)
 
 
 #else
+#define LOG_CONTROLLER(...)
 #define TIMED_LOOP(...)
 #define TIMED_BLOCK(...)
 #define TIMED_FUNCTION(...)

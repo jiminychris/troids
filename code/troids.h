@@ -7,7 +7,7 @@
    $Notice: $
    ======================================================================== */
 
-#define DEBUG_CAMERA 1
+#define DEBUG_CAMERA 0
 
 #include "troids_platform.h"
 #include "troids_intrinsics.h"

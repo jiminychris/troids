@@ -18,20 +18,22 @@ struct render_buffer
     u32 Width;
     u32 Height;
     r32 MetersToPixels;
+    r32 NearZ;
     v3 CameraP;
-#if TROIDS_INTERNAL
-    v3 ClipCameraP;
-#endif
     r32 CameraRot;
     projection Projection;
     projection DefaultProjection;
     memory_arena Arena;
+#if TROIDS_INTERNAL
+    v3 ClipCameraP;
+    rectangle2 ClipRect;
+#endif
 };
 
-inline v2
+inline v3
 Project(render_buffer *RenderBuffer, v3 WorldP, v3 CameraP = {NAN})
 {
-    v2 Result = {};
+    v3 Result = {};
     if(IsNaN(CameraP.x))
     {
         CameraP = RenderBuffer->CameraP;
@@ -41,8 +43,13 @@ Project(render_buffer *RenderBuffer, v3 WorldP, v3 CameraP = {NAN})
     {
         case Projection_Perspective:
         {
-            v3 NewP = WorldP - CameraP;
-            r32 ScaleFactor = 1.0f / -(5.0f*NewP.z);
+            r32 AspectRatio = (r32)RenderBuffer->Width / (r32)RenderBuffer->Height;
+            r32 Z = WorldP.z - CameraP.z;
+            Assert(Z < 0.0f);
+            Result.x = (1-WorldP.x/Z)*0.5f*RenderBuffer->Width;
+            Result.y = (1-AspectRatio*WorldP.y/Z)*0.5f*RenderBuffer->Height;
+            Result.z = WorldP.z;
+#if 0
             r32 CosRot = Cos(RenderBuffer->CameraRot);
             r32 SinRot = Sin(RenderBuffer->CameraRot);
             {
@@ -56,12 +63,13 @@ Project(render_buffer *RenderBuffer, v3 WorldP, v3 CameraP = {NAN})
             }
 
             Result = (ScaleFactor*RenderBuffer->MetersToPixels*NewP.xy +
-                                  0.5f*V2i(RenderBuffer->Width, RenderBuffer->Height));
+                      0.5f*V2i(RenderBuffer->Width, RenderBuffer->Height));
+#endif
         } break;
 
         case Projection_None:
         {
-            Result = WorldP.xy;
+            Result = WorldP;
         } break;
 
         InvalidDefaultCase;
@@ -70,7 +78,7 @@ Project(render_buffer *RenderBuffer, v3 WorldP, v3 CameraP = {NAN})
 }
 
 inline v3
-Unproject(render_buffer *RenderBuffer, v2 ScreenP, r32 Z, v3 CameraP = {NAN})
+Unproject(render_buffer *RenderBuffer, v3 ScreenP, v3 CameraP = {NAN})
 {
     if(IsNaN(CameraP.x))
     {
@@ -81,6 +89,12 @@ Unproject(render_buffer *RenderBuffer, v2 ScreenP, r32 Z, v3 CameraP = {NAN})
     {
         case Projection_Perspective:
         {
+            r32 InvAspectRatio = (r32)RenderBuffer->Height / (r32)RenderBuffer->Width;
+            r32 Z = ScreenP.z - CameraP.z;
+            Result.z = ScreenP.z;
+            Result.x = (1.0f - ScreenP.x*2.0f/(r32)RenderBuffer->Width)*Z;
+            Result.y = (1.0f - ScreenP.y*2.0f/(r32)RenderBuffer->Height)*InvAspectRatio*Z;
+#if 0
             r32 DistanceFromCamera = Z - CameraP.z;
             r32 ScaleFactor = -(5.0f*DistanceFromCamera);
             r32 PixelsToMeters = 1.0f / RenderBuffer->MetersToPixels;
@@ -99,13 +113,14 @@ Unproject(render_buffer *RenderBuffer, v2 ScreenP, r32 Z, v3 CameraP = {NAN})
                     };
                 WorldP = RotMat*WorldP;
             }
-
             Result = WorldP + CameraP;
+#endif
+
         } break;
 
         case Projection_None:
         {
-            Result = V3(ScreenP, 0.0f);
+            Result = ScreenP;
         } break;
 
         InvalidDefaultCase;
@@ -120,132 +135,6 @@ struct project_triangle_result
     v2 B;
     v2 C;
 };
-
-inline project_triangle_result
-ProjectTriangle(render_buffer *RenderBuffer, v3 A, v3 B, v3 C)
-{
-    project_triangle_result Result;
-    Result.Clipped = true;
-#if DEBUG_CAMERA
-    Result.A = Project(RenderBuffer, A, RenderBuffer->ClipCameraP);
-    Result.B = Project(RenderBuffer, B, RenderBuffer->ClipCameraP);
-    Result.C = Project(RenderBuffer, C, RenderBuffer->ClipCameraP);
-#else
-    Result.A = Project(RenderBuffer, A);
-    Result.B = Project(RenderBuffer, B);
-    Result.C = Project(RenderBuffer, C);
-#endif
-
-    rectangle2 ClipRect = MinMax(V2i(0, 0), V2i(RenderBuffer->Width, RenderBuffer->Height));
-
-    if(Inside(ClipRect, Result.A) || Inside(ClipRect, Result.B) || Inside(ClipRect, Result.C))
-    {
-        Result.Clipped = false;
-    }
-    else
-    {
-        v2 AB = Result.B-Result.A;
-        v2 BC = Result.C-Result.B;
-        v2 CA = Result.A-Result.C;
-        v2 Horiz = V2i(RenderBuffer->Width, 0);
-        v2 Vert = V2i(0, RenderBuffer->Height);
-        v2 Origin = V2i(0, 0);
-
-        r32 ABCrossHoriz = Cross(AB, Horiz);
-        r32 BCCrossHoriz = Cross(BC, Horiz);
-        r32 CACrossHoriz = Cross(CA, Horiz);
-        r32 ABCrossVert = Cross(AB, Vert);
-        r32 BCCrossVert = Cross(BC, Vert);
-        r32 CACrossVert = Cross(CA, Vert);
-
-        if(ABCrossHoriz != 0.0f)
-        {
-            r32 Inv = 1.0f / ABCrossHoriz;
-            r32 U1 = Cross(Origin-Result.A, AB)*Inv;
-            r32 T1 = Cross(Origin-Result.A, Horiz)*Inv;
-            r32 U2 = Cross(Vert-Result.A, AB)*Inv;
-            r32 T2 = Cross(Vert-Result.A, Horiz)*Inv;
-            if((0.0f <= U1 && U1 <= 1.0f && 0.0f <= T1 && T1 <= 1.0f) ||
-               (0.0f <= U2 && U2 <= 1.0f && 0.0f <= T2 && T2 <= 1.0f))
-            {
-                Result.Clipped = false;
-            }
-        }
-        if(BCCrossHoriz != 0.0f)
-        {
-            r32 Inv = 1.0f / BCCrossHoriz;
-            r32 U1 = Cross(Origin-Result.B, BC)*Inv;
-            r32 T1 = Cross(Origin-Result.B, Horiz)*Inv;
-            r32 U2 = Cross(Vert-Result.B, BC)*Inv;
-            r32 T2 = Cross(Vert-Result.B, Horiz)*Inv;
-            if((0.0f <= U1 && U1 <= 1.0f && 0.0f <= T1 && T1 <= 1.0f) ||
-               (0.0f <= U2 && U2 <= 1.0f && 0.0f <= T2 && T2 <= 1.0f))
-            {
-                Result.Clipped = false;
-            }
-        }
-        if(CACrossHoriz != 0.0f)
-        {
-            r32 Inv = 1.0f / CACrossHoriz;
-            r32 U1 = Cross(Origin-Result.C, CA)*Inv;
-            r32 T1 = Cross(Origin-Result.C, Horiz)*Inv;
-            r32 U2 = Cross(Vert-Result.C, CA)*Inv;
-            r32 T2 = Cross(Vert-Result.C, Horiz)*Inv;
-            if((0.0f <= U1 && U1 <= 1.0f && 0.0f <= T1 && T1 <= 1.0f) ||
-               (0.0f <= U2 && U2 <= 1.0f && 0.0f <= T2 && T2 <= 1.0f))
-            {
-                Result.Clipped = false;
-            }
-        }
-        if(ABCrossVert != 0.0f)
-        {
-            r32 Inv = 1.0f / ABCrossVert;
-            r32 U1 = Cross(Origin-Result.A, AB)*Inv;
-            r32 T1 = Cross(Origin-Result.A, Vert)*Inv;
-            r32 U2 = Cross(Horiz-Result.A, AB)*Inv;
-            r32 T2 = Cross(Horiz-Result.A, Vert)*Inv;
-            if((0.0f <= U1 && U1 <= 1.0f && 0.0f <= T1 && T1 <= 1.0f) ||
-               (0.0f <= U2 && U2 <= 1.0f && 0.0f <= T2 && T2 <= 1.0f))
-            {
-                Result.Clipped = false;
-            }
-        }
-        if(BCCrossVert != 0.0f)
-        {
-            r32 Inv = 1.0f / BCCrossVert;
-            r32 U1 = Cross(Origin-Result.B, BC)*Inv;
-            r32 T1 = Cross(Origin-Result.B, Vert)*Inv;
-            r32 U2 = Cross(Horiz-Result.B, BC)*Inv;
-            r32 T2 = Cross(Horiz-Result.B, Vert)*Inv;
-            if((0.0f <= U1 && U1 <= 1.0f && 0.0f <= T1 && T1 <= 1.0f) ||
-               (0.0f <= U2 && U2 <= 1.0f && 0.0f <= T2 && T2 <= 1.0f))
-            {
-                Result.Clipped = false;
-            }
-        }
-        if(CACrossVert != 0.0f)
-        {
-            r32 Inv = 1.0f / CACrossVert;
-            r32 U1 = Cross(Origin-Result.C, CA)*Inv;
-            r32 T1 = Cross(Origin-Result.C, Vert)*Inv;
-            r32 U2 = Cross(Horiz-Result.C, CA)*Inv;
-            r32 T2 = Cross(Horiz-Result.C, Vert)*Inv;
-            if((0.0f <= U1 && U1 <= 1.0f && 0.0f <= T1 && T1 <= 1.0f) ||
-               (0.0f <= U2 && U2 <= 1.0f && 0.0f <= T2 && T2 <= 1.0f))
-            {
-                Result.Clipped = false;
-            }
-        }
-    }
-
-#if DEBUG_CAMERA
-    Result.A = Project(RenderBuffer, A);
-    Result.B = Project(RenderBuffer, B);
-    Result.C = Project(RenderBuffer, C);
-#endif
-
-    return(Result);
-}
 
 enum render_command
 {
@@ -314,9 +203,9 @@ PushBitmap(render_buffer *RenderBuffer, loaded_bitmap *Bitmap, v3 P, v2 XAxis, v
         v2 Align = Bitmap->Align;
         v3 Origin = P - V3(Hadamard(Align, XAxis + YAxis), 0);
                 
-        XAxis = Project(RenderBuffer, Origin + V3(XAxis, 0));
-        YAxis = Project(RenderBuffer, Origin + V3(YAxis, 0));
-        v2 ScreenOrigin = Project(RenderBuffer, Origin);
+        XAxis = Project(RenderBuffer, Origin + V3(XAxis, 0)).xy;
+        YAxis = Project(RenderBuffer, Origin + V3(YAxis, 0)).xy;
+        v2 ScreenOrigin = Project(RenderBuffer, Origin).xy;
         XAxis -= ScreenOrigin;
         YAxis -= ScreenOrigin;
         
@@ -334,8 +223,8 @@ PushRectangle(render_buffer *RenderBuffer, v3 P, v2 Dim, v4 Color)
 {
     PushRenderHeader(Data, &RenderBuffer->Arena, aligned_rectangle);
 
-    v2 Min = Project(RenderBuffer, P);
-    v2 Max = Project(RenderBuffer, P + V3(Dim, 0));
+    v2 Min = Project(RenderBuffer, P).xy;
+    v2 Max = Project(RenderBuffer, P + V3(Dim, 0)).xy;
     rectangle2 Rect = MinMax(Min, Max);
     Data->Rect = Rect;
     Data->Color = Color;
@@ -356,24 +245,212 @@ PushBorder(render_buffer *RenderBuffer, v3 P, v2 Dim, v4 Color)
     PushRectangle(RenderBuffer, BottomRight, V2(1, Dim.y), Color);
 }
 
+// NOTE(chris): A polygon clipped against a plane can result in at most one extra vertex
+// So a triangle clipped against 6 planes can give 3+6=9 total vertices
+#define MAX_CLIP_VERTICES 16
+struct clipped_polygon
+{
+    s32 VertexCount;
+    r32 X[MAX_CLIP_VERTICES];
+    r32 Y[MAX_CLIP_VERTICES];
+    r32 Z[MAX_CLIP_VERTICES];
+};
+
+enum clip_dimension
+{
+    ClipDimension_X,
+    ClipDimension_Y,
+    ClipDimension_Z,
+};
+
+enum clip_direction
+{
+    ClipDirection_LessThan,
+    ClipDirection_GreaterThan,
+};
+
+internal void
+Clip(clipped_polygon *Polygon, r32 Plane, clip_dimension Dimension, clip_direction Direction)
+{
+    if(Polygon->VertexCount > 0)
+    {
+        r32 Multiplier = 1.0f;
+        if(Direction == ClipDirection_GreaterThan)
+        {
+            Multiplier = -1.0f;
+        }
+        r32 *Scalars;
+        switch(Dimension)
+        {
+            case ClipDimension_X:
+            {
+                Scalars = Polygon->X;
+            } break;
+        
+            case ClipDimension_Y:
+            {
+                Scalars = Polygon->Y;
+            } break;
+        
+            default:
+            {
+                Scalars = Polygon->Z;
+            } break;
+        }
+        Polygon->X[Polygon->VertexCount] = Polygon->X[0];
+        Polygon->Y[Polygon->VertexCount] = Polygon->Y[0];
+        Polygon->Z[Polygon->VertexCount] = Polygon->Z[0];
+    
+        s32 Out = MAX_CLIP_VERTICES;
+        s32 In = MAX_CLIP_VERTICES;
+        b32 AllPointsInside = true;
+        for(s32 VertexIndex = 0;
+            VertexIndex < Polygon->VertexCount;
+            ++VertexIndex)
+        {
+            r32 A = Multiplier*Scalars[VertexIndex];
+            r32 B = Multiplier*Scalars[VertexIndex+1];
+            r32 P = Multiplier*Plane;
+            if(A < P && B >= P)
+            {
+                Out = VertexIndex;
+            }
+            else if(A >= P && B < P)
+            {
+                In = VertexIndex;
+            }
+            AllPointsInside &= (A <= P);
+        }
+        if(!AllPointsInside)
+        {
+            if(Out == MAX_CLIP_VERTICES)
+            {
+                // NOTE(chris): Nothing crossed in or out, so all vertices lie outside
+                Polygon->VertexCount = 0;
+            }
+            else
+            {
+                r32 A = Scalars[Out];
+                r32 B = Scalars[Out+1];
+                r32 tOut = (Plane - A)/(B-A);
+                r32 InvtOut = 1.0f - tOut;
+                r32 NewOutX = InvtOut*Polygon->X[Out] + tOut*Polygon->X[Out+1];
+                r32 NewOutY = InvtOut*Polygon->Y[Out] + tOut*Polygon->Y[Out+1];
+                r32 NewOutZ = InvtOut*Polygon->Z[Out] + tOut*Polygon->Z[Out+1];
+
+                r32 C = Scalars[In];
+                r32 D = Scalars[In+1];
+                r32 tIn = (Plane - C)/(D-C);
+                r32 InvtIn = 1.0f - tIn;
+                r32 NewInX = InvtIn*Polygon->X[In] + tIn*Polygon->X[In+1];
+                r32 NewInY = InvtIn*Polygon->Y[In] + tIn*Polygon->Y[In+1];
+                r32 NewInZ = InvtIn*Polygon->Z[In] + tIn*Polygon->Z[In+1];
+
+                // TODO(chris): Make sure this actually copies everything.
+                clipped_polygon Buffer = *Polygon;
+                if(Out < In)
+                {
+                    Polygon->VertexCount = Out + 1;
+                    Polygon->X[Polygon->VertexCount] = NewOutX;
+                    Polygon->Y[Polygon->VertexCount] = NewOutY;
+                    Polygon->Z[Polygon->VertexCount++] = NewOutZ;
+                    Polygon->X[Polygon->VertexCount] = NewInX;
+                    Polygon->Y[Polygon->VertexCount] = NewInY;
+                    Polygon->Z[Polygon->VertexCount++] = NewInZ;
+                    for(s32 CopyIndex = In + 1;
+                        CopyIndex < Buffer.VertexCount;
+                        ++CopyIndex)
+                    {
+                        Polygon->X[Polygon->VertexCount] = Buffer.X[CopyIndex];
+                        Polygon->Y[Polygon->VertexCount] = Buffer.Y[CopyIndex];
+                        Polygon->Z[Polygon->VertexCount++] = Buffer.Z[CopyIndex];
+                    }
+                }
+                else
+                {
+                    Polygon->VertexCount = 0;
+                    Polygon->X[Polygon->VertexCount] = NewInX;
+                    Polygon->Y[Polygon->VertexCount] = NewInY;
+                    Polygon->Z[Polygon->VertexCount++] = NewInZ;
+                    for(s32 CopyIndex = In + 1;
+                        CopyIndex <= Out;
+                        ++CopyIndex)
+                    {
+                        Polygon->X[Polygon->VertexCount] = Buffer.X[CopyIndex];
+                        Polygon->Y[Polygon->VertexCount] = Buffer.Y[CopyIndex];
+                        Polygon->Z[Polygon->VertexCount++] = Buffer.Z[CopyIndex];
+                    }
+                    Polygon->X[Polygon->VertexCount] = NewOutX;
+                    Polygon->Y[Polygon->VertexCount] = NewOutY;
+                    Polygon->Z[Polygon->VertexCount++] = NewOutZ;
+                }
+            }
+        }
+    }
+}
+
+inline void
+ProjectPolygon(render_buffer *RenderBuffer, clipped_polygon *Polygon, v3 CameraP = {NAN})
+{
+    for(s32 VertexIndex = 0;
+        VertexIndex < Polygon->VertexCount;
+        ++VertexIndex)
+    {
+        v3 InVertex = V3(Polygon->X[VertexIndex], Polygon->Y[VertexIndex], Polygon->Z[VertexIndex]);
+        v3 OutVertex = Project(RenderBuffer, InVertex, CameraP);
+        Polygon->X[VertexIndex] = OutVertex.x;
+        Polygon->Y[VertexIndex] = OutVertex.y;
+        Polygon->Z[VertexIndex] = OutVertex.z;
+    }
+}
+
 inline void
 PushTriangle(render_buffer *RenderBuffer, v3 A, v3 B, v3 C, v4 Color)
 {
-    project_triangle_result Projection = ProjectTriangle(RenderBuffer, A, B, C);
-    if(!Projection.Clipped)
+#if DEBUG_CAMERA
+    v3 ClipCameraP = RenderBuffer->ClipCameraP;
+    r32 MinX = RenderBuffer->ClipRect.Min.x;
+    r32 MaxX = RenderBuffer->ClipRect.Max.x;
+    r32 MinY = RenderBuffer->ClipRect.Min.y;
+    r32 MaxY = RenderBuffer->ClipRect.Max.y;
+#else
+    v3 ClipCameraP = RenderBuffer->CameraP;
+    r32 MinX = 0.0f;
+    r32 MaxX = (r32)RenderBuffer->Width;
+    r32 MinY = 0.0f;
+    r32 MaxY = (r32)RenderBuffer->Height;
+#endif
+    clipped_polygon Polygon;
+    Polygon.VertexCount = 3;
+    Polygon.X[0] = A.x;
+    Polygon.Y[0] = A.y;
+    Polygon.Z[0] = A.z;
+    Polygon.X[1] = B.x;
+    Polygon.Y[1] = B.y;
+    Polygon.Z[1] = B.z;
+    Polygon.X[2] = C.x;
+    Polygon.Y[2] = C.y;
+    Polygon.Z[2] = C.z;
+    Clip(&Polygon, ClipCameraP.z-RenderBuffer->NearZ, ClipDimension_Z, ClipDirection_LessThan);
+    ProjectPolygon(RenderBuffer, &Polygon);
+    Clip(&Polygon, MaxX, ClipDimension_X, ClipDirection_LessThan);
+    Clip(&Polygon, MaxY, ClipDimension_Y, ClipDirection_LessThan);
+    Clip(&Polygon, MinX, ClipDimension_X, ClipDirection_GreaterThan);
+    Clip(&Polygon, MinY, ClipDimension_Y, ClipDirection_GreaterThan);
+
+    v3 ProjectedA = V3(Polygon.X[0], Polygon.Y[0], Polygon.Z[0]);
+    for(s32 TriangleIndex = 0;
+        TriangleIndex < Polygon.VertexCount-2;
+        ++TriangleIndex)
     {
         PushRenderHeader(Data, &RenderBuffer->Arena, triangle);
 
-        Data->A = Projection.A;
-        Data->B = Projection.B;
-        Data->C = Projection.C;
+        Data->A = ProjectedA.xy;
+        Data->B = V2(Polygon.X[TriangleIndex+1], Polygon.Y[TriangleIndex+1]);
+        Data->C = V2(Polygon.X[TriangleIndex+2], Polygon.Y[TriangleIndex+2]);
         Data->Color = Color;
         // TODO(chris): How to handle sorting with 3D triangles?
-        Data->SortKey = A.z;
-    }
-    else
-    {
-        int A = 0;
+        Data->SortKey = 0.333333f*(ProjectedA.z + Polygon.Z[TriangleIndex+1] + Polygon.Z[TriangleIndex+2]);
     }
 }
 
@@ -431,9 +508,9 @@ DEBUGPushRectangle(render_buffer *RenderBuffer, v3 P, v2 XAxis, v2 YAxis, v2 Dim
     YAxis*=Dim.y;
     v3 Origin = P - V3(Hadamard(Align, XAxis + YAxis), 0);
                 
-    XAxis = Project(RenderBuffer, Origin + V3(XAxis, 0));
-    YAxis = Project(RenderBuffer, Origin + V3(YAxis, 0));
-    v2 ScreenOrigin = Project(RenderBuffer, Origin);
+    XAxis = Project(RenderBuffer, Origin + V3(XAxis, 0)).xy;
+    YAxis = Project(RenderBuffer, Origin + V3(YAxis, 0)).xy;
+    v2 ScreenOrigin = Project(RenderBuffer, Origin).xy;
     XAxis -= ScreenOrigin;
     YAxis -= ScreenOrigin;
     
@@ -449,12 +526,12 @@ DEBUGPushTriangle(render_buffer *RenderBuffer, v3 A, v3 B, v3 C, v4 Color)
 {
     PushRenderHeader(Data, &RenderBuffer->Arena, DEBUGtriangle);
 
-    Data->A = Project(RenderBuffer, A);
-    Data->B = Project(RenderBuffer, B);
-    Data->C = Project(RenderBuffer, C);
+    Data->A = Project(RenderBuffer, A).xy;
+    Data->B = Project(RenderBuffer, B).xy;
+    Data->C = Project(RenderBuffer, C).xy;
     Data->Color = Color;
     // TODO(chris): How to handle sorting with 3D triangles?
-    Data->SortKey = A.z;
+    Data->SortKey = 0.333333f*(A.z + B.z + C.z);
 }
 
 inline void
@@ -462,8 +539,8 @@ DEBUGPushCircle(render_buffer *RenderBuffer, v3 P, r32 Radius, v4 Color)
 {
     PushRenderHeader(Data, &RenderBuffer->Arena, DEBUGcircle);
 
-    Data->P = Project(RenderBuffer, P);
-    Data->Radius = Length(Project(RenderBuffer, P + V3(Radius, 0, 0)) - Data->P);
+    Data->P = Project(RenderBuffer, P).xy;
+    Data->Radius = Length(Project(RenderBuffer, P + V3(Radius, 0, 0)).xy - Data->P);
     Data->Color = Color;
     Data->SortKey = P.z;
 }
@@ -474,8 +551,8 @@ DEBUGPushLine(render_buffer *RenderBuffer, v3 A, v3 B, v4 Color)
 {
     PushRenderHeader(Data, &RenderBuffer->Arena, DEBUGline);
 
-    Data->A = Project(RenderBuffer, A);
-    Data->B = Project(RenderBuffer, B);
+    Data->A = Project(RenderBuffer, A).xy;
+    Data->B = Project(RenderBuffer, B).xy;
     Data->Color = Color;
     Data->SortKey = 0.5f*(A.z + B.z);
 }

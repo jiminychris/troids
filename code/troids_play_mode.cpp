@@ -226,10 +226,10 @@ RecenterShapes(entity *Entity)
 inline void
 SplitAsteroid(play_state *State, entity *Asteroid)
 {
-    if(Asteroid->CollisionShapeCount > 1)
+    if(Asteroid->CollisionShapeCount > 3)
     {
         u32 FirstSplitShapeIndex = RandomBetween(&State->AsteroidSeed,
-                                                 1, Asteroid->CollisionShapeCount-1);
+                                                 2, Asteroid->CollisionShapeCount-2);
         Asteroid->Destroyed = false;
         Asteroid->Mass *= 0.5f;
     
@@ -484,10 +484,10 @@ GameOver(play_state *State, render_buffer *RenderBuffer, loaded_font *Font)
                                                     DrawTextFlags_Measure);
     Layout.P = ScreenCenter + GetTightCenteredOffset(GameOverMeasurement);
 
-    v3 P = Unproject(RenderBuffer, Layout.P, 0.0f);
+    v3 P = Unproject(RenderBuffer, V3(Layout.P, 0.0f));
 
     r32 GameOverWidth = GameOverMeasurement.MaxX - GameOverMeasurement.MinX;
-    v3 EndP = Unproject(RenderBuffer, Layout.P + V2(GameOverWidth, 0), 0.0f);
+    v3 EndP = Unproject(RenderBuffer, V3(Layout.P + V2(GameOverWidth, 0), 0.0f));
     r32 Scale = (EndP-P).x / GameOverWidth;
 
     CreateG(State, Font, P, Scale);
@@ -519,7 +519,11 @@ ResetGame(play_state *State, render_buffer *RenderBuffer, loaded_font *Font)
 
     State->Lives = 3;
 
+#if 0
     State->ShipStartingP = V3(-128.0f, 74.0f, 0.0f);
+#else
+    State->ShipStartingP = V3(0.0f, 0.0f, 0.0f);
+#endif
     State->CameraStartingP = V3(0, 0, 0);
     State->ShipStartingYaw = 0.0f;
     if(State->Lives)
@@ -551,6 +555,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
     play_state *State = &GameState->PlayState;
 
     render_buffer *RenderBuffer = &TranState->RenderBuffer;
+    RenderBuffer->Projection = RenderBuffer->DefaultProjection;
     
     if(!State->IsInitialized)
     {
@@ -576,13 +581,14 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
     PushClear(RenderBuffer, V3(0.0f, 0.0f, 0.0f));
     v2 ScreenCenter = 0.5f*V2i(RenderBuffer->Width, RenderBuffer->Height); 
 
-    RenderBuffer->CameraP = V3(State->CameraStartingP.xy, 100.0f);
 #if DEBUG_CAMERA
-    RenderBuffer->ClipCameraP = V3(State->CameraStartingP.xy, 100.0f);
-    RenderBuffer->CameraP = V3(State->CameraStartingP.xy, 200.0f);
-    v3 UnprojectedMin = Unproject(RenderBuffer, V2(0.0f, 0.0f), 0.0f, RenderBuffer->ClipCameraP);
-    v3 UnprojectedMax = Unproject(RenderBuffer, V2i(RenderBuffer->Width, RenderBuffer->Height), 0.0f,
+    RenderBuffer->ClipCameraP = V3(State->CameraStartingP.xy, 200.0f);
+    RenderBuffer->CameraP = V3(State->CameraStartingP.xy, 300.0f);
+    v3 UnprojectedMin = Unproject(RenderBuffer, V3(0.0f, 0.0f, 0.0f), RenderBuffer->ClipCameraP);
+    v3 UnprojectedMax = Unproject(RenderBuffer, V3i(RenderBuffer->Width, RenderBuffer->Height, 0),
                                   RenderBuffer->ClipCameraP);
+    RenderBuffer->ClipRect = MinMax(Project(RenderBuffer, UnprojectedMin).xy,
+        Project(RenderBuffer, UnprojectedMax).xy);
     PushBorder(RenderBuffer,
                UnprojectedMin,
                (UnprojectedMax-UnprojectedMin).xy,
@@ -1898,9 +1904,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
         {
             PushBitmap(RenderBuffer, &GameState->ShipBitmap, P, XAxis, YAxis, Dim);
             P.x -= 1.2f*Dim.x;
-        }
-        
-        RenderBuffer->Projection = RenderBuffer->DefaultProjection;
+        }        
     }
 
     {
