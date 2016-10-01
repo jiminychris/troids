@@ -163,7 +163,7 @@ DrawThread(render_buffer *RenderBuffer, text_layout *Layout, debug_thread *Threa
     u32 TextLength;
     char Text[256];
     for(profiler_element *Element = Thread->CurrentElement->Child;
-        Element != Thread->CurrentElement;
+        Element && Element != Thread->CurrentElement;
         )
     {
         if(!FinishedChildren && Element->Child && (Depth < MaxDepth))

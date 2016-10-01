@@ -173,7 +173,7 @@ CreateAsteroid(play_state *State)
     Result->Yaw = RandomBetween(Seed, -Tau, Tau);
 //    Result->Yaw = 0.0f;
     Result->dYaw = RandomBetween(Seed, -1.0f, 1.0f);
-    Result->dYaw = 0.0f;
+//    Result->dYaw = 0.0f;
     Result->Dim = 2.0f*V2(Radius, Radius);
     Result->Mass = 5.0f*Pi*Square(Radius);
     
@@ -1909,7 +1909,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
 
     {
         TIMED_BLOCK("Render Game");
-        RenderBufferToBackBuffer(RenderBuffer, BackBuffer);
+        RenderBufferToBackBuffer(RenderBuffer, BackBuffer, RenderFlags_UsePipeline);
     }
     EndTemporaryMemory(RenderMemory);
 }

@@ -13,6 +13,20 @@ enum projection
     Projection_Perspective,
 };
 
+enum render_flags
+{
+    RenderFlags_Identity = 0,
+    RenderFlags_UsePipeline = 1<<0,
+};
+
+struct renderer_state
+{
+    b32 Used;
+    loaded_bitmap *BackBuffer;
+    void *SampleBuffer;
+    void *CoverageBuffer;
+};
+
 struct render_buffer
 {
     u32 Width;
@@ -613,9 +627,6 @@ GetTightCenteredOffset(text_measurement TextMeasurement)
     v2 Result = AlignP - Center;
     return(Result);
 }
-
-internal void
-RenderBufferToBackBuffer(render_buffer *RenderBuffer, loaded_bitmap *BackBuffer);
 
 #define TROIDS_RENDER_H
 #endif

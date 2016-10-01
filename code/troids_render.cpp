@@ -145,7 +145,7 @@ DEBUGDrawFillBar(render_buffer *RenderBuffer, text_layout *Layout, u64 Used, u64
 }
 #endif
 
-#if 0
+#if 1
 #pragma optimize("gts", on)
 #endif
 // TODO(chris): Further optimization
@@ -524,10 +524,10 @@ RenderAlignedInvertedRectangle(loaded_bitmap *BackBuffer, rectangle2 Rect,
 
 // TODO(chris): Further optimization
 internal void
-RenderTriangle(loaded_bitmap *BackBuffer, void *SampleBuffer, void *CoverageBuffer,
+RenderTriangle(renderer_state *RendererState, 
                v2 A, v2 B, v2 C, v4 Color, s32 OffsetX = 0, s32 OffsetY = 0)
 {
-    // TODO(chris): IMPORTANT "top-left" rule
+    loaded_bitmap *BackBuffer = RendererState->BackBuffer;
     s32 XMin = Clamp(OffsetX, RoundS32(Minimum(Minimum(A.x, B.x), C.x)),
                      OffsetX + BackBuffer->Width);
     s32 YMin = Clamp(OffsetY, RoundS32(Minimum(Minimum(A.y, B.y), C.y)),
@@ -538,18 +538,8 @@ RenderTriangle(loaded_bitmap *BackBuffer, void *SampleBuffer, void *CoverageBuff
     s32 YMax = Clamp(OffsetY, RoundS32(Maximum(Maximum(A.y, B.y), C.y)),
                      OffsetY + BackBuffer->Height);
 
-    s32 AdjustedXMin = XMin;
-    s32 AdjustedXMax = XMax;
-    s32 Width = XMax-XMin;
-    s32 Height = YMax-YMin;
-    s32 Adjustment = 4-Width%4;
-    if(Adjustment < 4)
-    {
-        AdjustedXMin = Maximum(OffsetX, XMin-Adjustment);
-        Adjustment -= XMin-AdjustedXMin;
-        AdjustedXMax = Minimum(OffsetX + BackBuffer->Width, XMax+Adjustment);
-        Width = AdjustedXMax-AdjustedXMin;
-    }
+    s32 AdjustedXMin = (XMin/4)*4;
+    s32 AdjustedXMax = ((XMax+3)/4)*4;
 
 #if GAMMA_CORRECT
     // NOTE(chris): sRGB to linear
@@ -588,8 +578,21 @@ RenderTriangle(loaded_bitmap *BackBuffer, void *SampleBuffer, void *CoverageBuff
     u32 SamplePitch = BackBuffer->Width*sizeof(u32)*SAMPLE_COUNT;
     u32 SampleAdvance = 4*SAMPLE_COUNT;
     u32 CoveragePitch = BackBuffer->Width*sizeof(u32);
-    u8 *SampleRow = (u8 *)SampleBuffer + (SamplePitch*(YMin-OffsetY));
-    u8 *CoverageRow = (u8 *)CoverageBuffer + (CoveragePitch*(YMin-OffsetY));
+    u8 *SampleRow = (u8 *)RendererState->SampleBuffer + (SamplePitch*(YMin-OffsetY));
+    u8 *CoverageRow = (u8 *)RendererState->CoverageBuffer + (CoveragePitch*(YMin-OffsetY));
+    __m128 SampleY0 = _mm_set_ps1((r32)YMin + 0.25f);
+    __m128 SampleY1 = _mm_set_ps1((r32)YMin + 0.75f);
+    __m128 SampleY0RelA = _mm_sub_ps(SampleY0, AY);
+    __m128 SampleY0RelB = _mm_sub_ps(SampleY0, BY);
+    __m128 SampleY0RelC = _mm_sub_ps(SampleY0, CY);
+    __m128 SampleY1RelA = _mm_sub_ps(SampleY1, AY);
+    __m128 SampleY1RelB = _mm_sub_ps(SampleY1, BY);
+    __m128 SampleY1RelC = _mm_sub_ps(SampleY1, CY);
+    __m128 SampleX0 = _mm_set_ps((r32)AdjustedXMin + 3.25f, (r32)AdjustedXMin + 2.25f,
+                                 (r32)AdjustedXMin + 1.25f, (r32)AdjustedXMin + 0.25f);
+    __m128 SampleX1 = _mm_set_ps((r32)AdjustedXMin + 3.75f, (r32)AdjustedXMin + 2.75f,
+                                 (r32)AdjustedXMin + 1.75f, (r32)AdjustedXMin + 0.75f);
+    __m128i Used = _mm_set1_epi32(0);
     IGNORED_TIMED_LOOP_FUNCTION(Width*Height);
     for(s32 Y = YMin;
         Y < YMax;
@@ -597,12 +600,6 @@ RenderTriangle(loaded_bitmap *BackBuffer, void *SampleBuffer, void *CoverageBuff
     {
         u32 *Sample = (u32 *)SampleRow + (SAMPLE_COUNT*(AdjustedXMin-OffsetX));
         b32 *Coverage = (b32 *)CoverageRow + AdjustedXMin-OffsetX;
-        __m128 SampleY0 = _mm_set_ps1((r32)Y - 0.25f);
-        __m128 SampleY1 = _mm_set_ps1((r32)Y + 0.25f);
-        __m128 SampleX0 = _mm_set_ps((r32)AdjustedXMin + 2.75f, (r32)AdjustedXMin + 1.75f,
-                                     (r32)AdjustedXMin + 0.75f, (r32)AdjustedXMin - 0.25f);
-        __m128 SampleX1 = _mm_set_ps((r32)AdjustedXMin + 3.25f, (r32)AdjustedXMin + 2.25f,
-                                     (r32)AdjustedXMin + 1.25f, (r32)AdjustedXMin + 0.25f);
 
         __m128 SampleX0RelA = _mm_sub_ps(SampleX0, AX);
         __m128 SampleX0RelB = _mm_sub_ps(SampleX0, BX);
@@ -610,17 +607,11 @@ RenderTriangle(loaded_bitmap *BackBuffer, void *SampleBuffer, void *CoverageBuff
         __m128 SampleX1RelA = _mm_sub_ps(SampleX1, AX);
         __m128 SampleX1RelB = _mm_sub_ps(SampleX1, BX);
         __m128 SampleX1RelC = _mm_sub_ps(SampleX1, CX);
-        
-        __m128 SampleY0RelA = _mm_sub_ps(SampleY0, AY);
-        __m128 SampleY0RelB = _mm_sub_ps(SampleY0, BY);
-        __m128 SampleY0RelC = _mm_sub_ps(SampleY0, CY);
-        __m128 SampleY1RelA = _mm_sub_ps(SampleY1, AY);
-        __m128 SampleY1RelB = _mm_sub_ps(SampleY1, BY);
-        __m128 SampleY1RelC = _mm_sub_ps(SampleY1, CY);
         for(s32 X = AdjustedXMin;
             X < AdjustedXMax;
             X += 4)
         {
+            // TODO(chris): IMPORTANT "top-left" rule
             __m128 Sample00Mask = _mm_and_ps(
                 _mm_and_ps(_mm_cmpge_ps(_mm_add_ps(_mm_mul_ps(SampleX0RelA, PerpABX),
                                                    _mm_mul_ps(SampleY0RelA, PerpABY)),
@@ -669,6 +660,8 @@ RenderTriangle(loaded_bitmap *BackBuffer, void *SampleBuffer, void *CoverageBuff
             _mm_storeu_si128((__m128i *)Coverage,
                              _mm_or_si128(_mm_loadu_si128((__m128i *)Coverage), Cover));
 
+            Used = _mm_or_si128(Used, Cover);
+
             __m128i Sample00 = _mm_loadu_si128((__m128i *)Sample);
             __m128i Sample10 = _mm_loadu_si128((__m128i *)(Sample + 4));
             __m128i Sample01 = _mm_loadu_si128((__m128i *)(Sample + 8));
@@ -689,7 +682,24 @@ RenderTriangle(loaded_bitmap *BackBuffer, void *SampleBuffer, void *CoverageBuff
             __m128 Sample11R = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(Sample11, 16), ColorMask));
             __m128 Sample11G = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(Sample11, 8), ColorMask));
             __m128 Sample11B = _mm_cvtepi32_ps(_mm_and_si128(Sample11, ColorMask));
-            
+
+#if GAMMA_CORRECT
+            // NOTE(chris): sRGB to linear
+            Sample00R = _mm_mul_ps(_mm_mul_ps(Sample00R, Sample00R), Inv255);
+            Sample10R = _mm_mul_ps(_mm_mul_ps(Sample10R, Sample10R), Inv255);
+            Sample01R = _mm_mul_ps(_mm_mul_ps(Sample01R, Sample01R), Inv255);
+            Sample11R = _mm_mul_ps(_mm_mul_ps(Sample11R, Sample11R), Inv255);
+
+            Sample00G = _mm_mul_ps(_mm_mul_ps(Sample00G, Sample00G), Inv255);
+            Sample10G = _mm_mul_ps(_mm_mul_ps(Sample10G, Sample10G), Inv255);
+            Sample01G = _mm_mul_ps(_mm_mul_ps(Sample01G, Sample01G), Inv255);
+            Sample11G = _mm_mul_ps(_mm_mul_ps(Sample11G, Sample11G), Inv255);
+
+            Sample00B = _mm_mul_ps(_mm_mul_ps(Sample00B, Sample00B), Inv255);
+            Sample10B = _mm_mul_ps(_mm_mul_ps(Sample10B, Sample10B), Inv255);
+            Sample01B = _mm_mul_ps(_mm_mul_ps(Sample01B, Sample01B), Inv255);
+            Sample11B = _mm_mul_ps(_mm_mul_ps(Sample11B, Sample11B), Inv255);
+#endif            
             __m128 Result00R = _mm_add_ps(SR, _mm_mul_ps(Sample00R, DA));
             __m128 Result00G = _mm_add_ps(SG, _mm_mul_ps(Sample00G, DA));
             __m128 Result00B = _mm_add_ps(SB, _mm_mul_ps(Sample00B, DA));
@@ -722,11 +732,11 @@ RenderTriangle(loaded_bitmap *BackBuffer, void *SampleBuffer, void *CoverageBuff
 
             _mm_storeu_si128((__m128i *)Sample, _mm_or_si128(_mm_and_si128(_mm_castps_si128(Sample00Mask), Result00),
                                                              _mm_andnot_si128(_mm_castps_si128(Sample00Mask), Sample00)));
-            _mm_storeu_si128((__m128i *)Sample+4, _mm_or_si128(_mm_and_si128(_mm_castps_si128(Sample10Mask), Result10),
+            _mm_storeu_si128((__m128i *)(Sample+4), _mm_or_si128(_mm_and_si128(_mm_castps_si128(Sample10Mask), Result10),
                                                                _mm_andnot_si128(_mm_castps_si128(Sample10Mask), Sample10)));
-            _mm_storeu_si128((__m128i *)Sample+8, _mm_or_si128(_mm_and_si128(_mm_castps_si128(Sample01Mask), Result01),
+            _mm_storeu_si128((__m128i *)(Sample+8), _mm_or_si128(_mm_and_si128(_mm_castps_si128(Sample01Mask), Result01),
                                                                _mm_andnot_si128(_mm_castps_si128(Sample01Mask), Sample01)));
-            _mm_storeu_si128((__m128i *)Sample+12, _mm_or_si128(_mm_and_si128(_mm_castps_si128(Sample11Mask), Result11),
+            _mm_storeu_si128((__m128i *)(Sample+12), _mm_or_si128(_mm_and_si128(_mm_castps_si128(Sample11Mask), Result11),
                                                                 _mm_andnot_si128(_mm_castps_si128(Sample11Mask), Sample11)));
 
             Coverage += 4;
@@ -737,45 +747,51 @@ RenderTriangle(loaded_bitmap *BackBuffer, void *SampleBuffer, void *CoverageBuff
             SampleX1RelA = _mm_add_ps(SampleX1RelA, Four);
             SampleX1RelB = _mm_add_ps(SampleX1RelB, Four);
             SampleX1RelC = _mm_add_ps(SampleX1RelC, Four);
-            SampleY0RelA = _mm_add_ps(SampleY0RelA, Four);
-            SampleY0RelB = _mm_add_ps(SampleY0RelB, Four);
-            SampleY0RelC = _mm_add_ps(SampleY0RelC, Four);
-            SampleY1RelA = _mm_add_ps(SampleY1RelA, Four);
-            SampleY1RelB = _mm_add_ps(SampleY1RelB, Four);
-            SampleY1RelC = _mm_add_ps(SampleY1RelC, Four);
         }
+        SampleY0RelA = _mm_add_ps(SampleY0RelA, RealOne);
+        SampleY0RelB = _mm_add_ps(SampleY0RelB, RealOne);
+        SampleY0RelC = _mm_add_ps(SampleY0RelC, RealOne);
+        SampleY1RelA = _mm_add_ps(SampleY1RelA, RealOne);
+        SampleY1RelB = _mm_add_ps(SampleY1RelB, RealOne);
+        SampleY1RelC = _mm_add_ps(SampleY1RelC, RealOne);
         SampleRow += SamplePitch;
         CoverageRow += CoveragePitch;
     }
+    b32 UsedArray[4];
+    _mm_storeu_si128((__m128i *)UsedArray, Used);
+    RendererState->Used |= UsedArray[0] || UsedArray[1] || UsedArray[2] || UsedArray[3];
 }
 
 internal void
-ClearBuffers(loaded_bitmap *BackBuffer, void *SampleBuffer, void *CoverageBuffer)
+ClearBuffers(renderer_state *RendererState)
 {
+    loaded_bitmap *BackBuffer = RendererState->BackBuffer;
     TIMED_FUNCTION();
+    Assert((BackBuffer->Width&3) == 0);
     u32 SamplePitch = BackBuffer->Width*sizeof(u32)*SAMPLE_COUNT;
     u32 CoveragePitch = BackBuffer->Width*sizeof(u32);
-    u8 *SampleRow = (u8 *)SampleBuffer;
-    u8 *CoverageRow = (u8 *)CoverageBuffer;
+    u32 SampleAdvance = 4*SAMPLE_COUNT;
+    u8 *SampleRow = (u8 *)RendererState->SampleBuffer;
+    u8 *CoverageRow = (u8 *)RendererState->CoverageBuffer;
     __m128i Zero = _mm_set1_epi32(0);
     for(s32 Y = 0;
         Y < BackBuffer->Height;
         ++Y)
     {
-        u32 *SampleBlock = (u32 *)SampleRow;
+        u32 *Sample = (u32 *)SampleRow;
         b32 *Coverage = (b32 *)CoverageRow;
         for(s32 X = 0;
             X < BackBuffer->Width;
-            ++X)
+            X += 4)
         {
-            *Coverage++ = 0;
-            _mm_storeu_si128((__m128i *)(SampleBlock), Zero);
-#if SAMPLE16
-            _mm_storeu_si128((__m128i *)(SampleBlock + 4), Zero);
-            _mm_storeu_si128((__m128i *)(SampleBlock + 8), Zero);
-            _mm_storeu_si128((__m128i *)(SampleBlock + 12), Zero);
-#endif
-            SampleBlock += SAMPLE_COUNT;
+            _mm_storeu_si128((__m128i *)Coverage, Zero);
+            _mm_storeu_si128((__m128i *)(Sample), Zero);
+            _mm_storeu_si128((__m128i *)(Sample + 4), Zero);
+            _mm_storeu_si128((__m128i *)(Sample + 8), Zero);
+            _mm_storeu_si128((__m128i *)(Sample + 12), Zero);
+            
+            Sample += SampleAdvance;
+            Coverage += 4;
         }
         SampleRow += SamplePitch;
         CoverageRow += CoveragePitch;
@@ -792,7 +808,7 @@ RenderSamples(loaded_bitmap *BackBuffer, void *SampleBuffer, void *CoverageBuffe
     u32 CoveragePitch = BackBuffer->Width*sizeof(u32);
     u8 *SampleRow = (u8 *)SampleBuffer;
     u8 *CoverageRow = (u8 *)CoverageBuffer;
-    r32 Sixteenth = 0.0625;
+    __m128 Four = _mm_set_ps1(4.0f);
     __m128 Quarter = _mm_set_ps1(0.25f);
     __m128 One255 = _mm_set_ps1(255.0f);
     __m128i ColorMask = _mm_set1_epi32(0x000000FF);
@@ -803,19 +819,12 @@ RenderSamples(loaded_bitmap *BackBuffer, void *SampleBuffer, void *CoverageBuffe
     s32 XMax = OffsetX + BackBuffer->Width;
     s32 YMax = OffsetY + BackBuffer->Height;
 
-    s32 AdjustedXMin = XMin;
-    s32 AdjustedXMax = XMax;
-    s32 Width = XMax-XMin;
-    s32 Height = YMax-YMin;
-    s32 Adjustment = 4-Width%4;
-    if(Adjustment < 4)
-    {
-        AdjustedXMin = Maximum(OffsetX, XMin-Adjustment);
-        Adjustment -= XMin-AdjustedXMin;
-        AdjustedXMax = Minimum(OffsetX + BackBuffer->Width, XMax+Adjustment);
-        Width = AdjustedXMax-AdjustedXMin;
-    }
+    s32 AdjustedXMin = (XMin/4)*4;
+    s32 AdjustedXMax = ((XMax+3)/4)*4;
 
+    __m128 XMin4 = _mm_set_ps1((r32)XMin);
+    __m128 XMax4 = _mm_set_ps1((r32)XMax);
+    
     for(s32 Y = YMin;
         Y < YMax;
         ++Y)
@@ -823,10 +832,14 @@ RenderSamples(loaded_bitmap *BackBuffer, void *SampleBuffer, void *CoverageBuffe
         u32 *Pixel = (u32 *)PixelRow + AdjustedXMin;
         u32 *Sample = (u32 *)SampleRow + (SAMPLE_COUNT*(AdjustedXMin-OffsetX));
         b32 *Coverage = (b32 *)CoverageRow + AdjustedXMin-OffsetX;
+        __m128 X4 = _mm_set_ps((r32)AdjustedXMin + 3, (r32)AdjustedXMin + 2,
+                               (r32)AdjustedXMin + 1, (r32)AdjustedXMin);
         for(s32 X = AdjustedXMin;
             X < AdjustedXMax;
             X += 4)
         {
+            __m128i XMask = _mm_castps_si128(_mm_and_ps(_mm_cmple_ps(XMin4, X4),
+                                                        _mm_cmplt_ps(X4, XMax4)));
             __m128i Sample00 = _mm_loadu_si128((__m128i *)Sample);
             __m128i Sample10 = _mm_loadu_si128((__m128i *)(Sample + 4));
             __m128i Sample01 = _mm_loadu_si128((__m128i *)(Sample + 8));
@@ -876,21 +889,15 @@ RenderSamples(loaded_bitmap *BackBuffer, void *SampleBuffer, void *CoverageBuffe
                 _mm_cvtps_epi32(B));
 
             __m128i Pixels = _mm_loadu_si128((__m128i *)Pixel);
-            __m128i Mask = _mm_loadu_si128((__m128i *)Coverage);
-#if 1
-            if(Mask.m128i_u32[0] && Mask.m128i_u32[0] != 0x00FFFFFF)
-            {
-                int A = 0;
-            }
-            _mm_storeu_si128((__m128i *)Pixel, _mm_or_si128(_mm_and_si128(Mask, ColorMask),
+            __m128i Mask = _mm_and_si128(_mm_loadu_si128((__m128i *)Coverage), XMask);
+
+            _mm_storeu_si128((__m128i *)Pixel, _mm_or_si128(_mm_and_si128(Mask, Result),
                                                             _mm_andnot_si128(Mask, Pixels)));
-#else
-            _mm_storeu_si128((__m128i *)Pixel, _mm_and_si128(Mask, ColorMask));
-#endif
             
             Pixel += 4;
             Sample += SampleAdvance;
             Coverage += 4;
+            X4 = _mm_add_ps(X4, Four);
         }
         PixelRow += BackBuffer->Pitch;
         SampleRow += SamplePitch;
@@ -1297,12 +1304,12 @@ Insert(memory_arena *Arena, binary_node **NodePtr, r32 SortKey, u32 Index)
 }
 
 internal void
-RenderTree(render_buffer *RenderBuffer, void *SampleBuffer, void *CoverageBuffer,
-           binary_node *Node, loaded_bitmap *BackBuffer, s32 OffsetX, s32 OffsetY)
+RenderTree(render_buffer *RenderBuffer, renderer_state *RendererState,
+           binary_node *Node, s32 OffsetX, s32 OffsetY)
 {
     if(Node->Prev)
     {
-        RenderTree(RenderBuffer, SampleBuffer, CoverageBuffer, Node->Prev, BackBuffer, OffsetX, OffsetY);
+        RenderTree(RenderBuffer, RendererState, Node->Prev, OffsetX, OffsetY);
     }
     for(binary_node *Chain = Node;
         Chain;
@@ -1316,7 +1323,7 @@ RenderTree(render_buffer *RenderBuffer, void *SampleBuffer, void *CoverageBuffer
             {
                 render_bitmap_data *Data = (render_bitmap_data *)(Header + 1);
 
-                RenderBitmap(BackBuffer, Data->Bitmap,
+                RenderBitmap(RendererState->BackBuffer, Data->Bitmap,
                              Data->Origin,
                              Data->XAxis, Data->YAxis,
                              Data->Color, OffsetX, OffsetY);
@@ -1325,20 +1332,20 @@ RenderTree(render_buffer *RenderBuffer, void *SampleBuffer, void *CoverageBuffer
             case RenderCommand_aligned_rectangle:
             {
                 render_aligned_rectangle_data *Data = (render_aligned_rectangle_data *)(Header + 1);
-                RenderAlignedRectangle(BackBuffer, Data->Rect, Data->Color, OffsetX, OffsetY);
+                RenderAlignedRectangle(RendererState->BackBuffer, Data->Rect, Data->Color, OffsetX, OffsetY);
             } break;
             
             case RenderCommand_triangle:
             {
                 render_triangle_data *Data = (render_triangle_data *)(Header + 1);
-                RenderTriangle(BackBuffer, SampleBuffer, CoverageBuffer, Data->A, Data->B, Data->C,
+                RenderTriangle(RendererState, Data->A, Data->B, Data->C,
                                Data->Color, OffsetX, OffsetY);
             } break;
             
             case RenderCommand_clear:
             {
                 render_clear_data *Data = (render_clear_data *)(Header + 1);
-                Clear(BackBuffer, Data->Color, OffsetX, OffsetY);
+                Clear(RendererState->BackBuffer, Data->Color, OffsetX, OffsetY);
             } break;
 
 #if TROIDS_INTERNAL
@@ -1346,14 +1353,14 @@ RenderTree(render_buffer *RenderBuffer, void *SampleBuffer, void *CoverageBuffer
             {
                 render_DEBUGrectangle_data *Data = (render_DEBUGrectangle_data *)(Header + 1);
 
-                DEBUGRenderSolidRectangle(BackBuffer, Data->Origin, Data->XAxis, Data->YAxis,
+                DEBUGRenderSolidRectangle(RendererState->BackBuffer, Data->Origin, Data->XAxis, Data->YAxis,
                                           Data->Color.rgb, OffsetX, OffsetY);
             } break;
             case RenderCommand_DEBUGtriangle:
             {
                 render_DEBUGtriangle_data *Data = (render_DEBUGtriangle_data *)(Header + 1);
 
-                DEBUGRenderSolidTriangle(BackBuffer, Data->A, Data->B, Data->C,
+                DEBUGRenderSolidTriangle(RendererState->BackBuffer, Data->A, Data->B, Data->C,
                                          Data->Color.rgb, OffsetX, OffsetY);
             } break;
 
@@ -1361,14 +1368,14 @@ RenderTree(render_buffer *RenderBuffer, void *SampleBuffer, void *CoverageBuffer
             {
                 render_DEBUGcircle_data *Data = (render_DEBUGcircle_data *)(Header + 1);
 
-                DEBUGRenderSolidCircle(BackBuffer, Data->P, Data->Radius, Data->Color.rgb, OffsetX, OffsetY);
+                DEBUGRenderSolidCircle(RendererState->BackBuffer, Data->P, Data->Radius, Data->Color.rgb, OffsetX, OffsetY);
             } break;
             
             case RenderCommand_DEBUGline:
             {
                 render_DEBUGline_data *Data = (render_DEBUGline_data *)(Header + 1);
 
-                DEBUGRenderLine(BackBuffer, Data->A, Data->B, Data->Color, OffsetX, OffsetY);
+                DEBUGRenderLine(RendererState->BackBuffer, Data->A, Data->B, Data->Color, OffsetX, OffsetY);
             } break;
 #endif
 
@@ -1377,17 +1384,18 @@ RenderTree(render_buffer *RenderBuffer, void *SampleBuffer, void *CoverageBuffer
     }
     if(Node->Next)
     {
-        RenderTree(RenderBuffer, SampleBuffer, CoverageBuffer, Node->Next, BackBuffer, OffsetX, OffsetY);
+        RenderTree(RenderBuffer, RendererState, Node->Next, OffsetX, OffsetY);
     }
 }
 
 struct render_tree_data
 {
-    render_buffer *RenderBuffer;
-    binary_node *Node;
-    loaded_bitmap BackBuffer;
     s32 OffsetX;
     s32 OffsetY;
+    b32 UsePipeline;
+    loaded_bitmap BackBuffer;
+    render_buffer *RenderBuffer;
+    binary_node *Node;
     void *SampleBuffer;
     void *CoverageBuffer;
 };
@@ -1396,11 +1404,22 @@ THREAD_CALLBACK(RenderTreeCallback)
 {
     TIMED_FUNCTION();
     render_tree_data *Data = (render_tree_data *)Params;
-    ClearBuffers(&Data->BackBuffer, Data->SampleBuffer, Data->CoverageBuffer);
-    RenderTree(Data->RenderBuffer, Data->SampleBuffer, Data->CoverageBuffer, Data->Node,
-               &Data->BackBuffer, Data->OffsetX, Data->OffsetY);
-    RenderSamples(&Data->BackBuffer, Data->SampleBuffer, Data->CoverageBuffer,
-                  Data->OffsetX, Data->OffsetY);
+    renderer_state RendererState;
+    RendererState.Used = false;
+    RendererState.BackBuffer = &Data->BackBuffer;
+    RendererState.SampleBuffer = Data->SampleBuffer;
+    RendererState.CoverageBuffer = Data->CoverageBuffer;
+    if(Data->UsePipeline)
+    {
+        ClearBuffers(&RendererState);
+    }
+    RenderTree(Data->RenderBuffer, &RendererState, Data->Node,
+               Data->OffsetX, Data->OffsetY);
+    if(Data->UsePipeline && RendererState.Used)
+    {
+        RenderSamples(&Data->BackBuffer, Data->SampleBuffer, Data->CoverageBuffer,
+                      Data->OffsetX, Data->OffsetY);
+    }
 }
 
 inline void
@@ -1410,17 +1429,10 @@ SplitWorkIntoSquares(render_buffer *RenderBuffer, binary_node *Node, void *Memor
 {
     if(CoreCount == 1)
     {
-        Data->RenderBuffer = RenderBuffer;
-        Data->Node = Node;
         Data->OffsetX = OffsetX;
         Data->OffsetY = OffsetY;
         Data->BackBuffer.Height = Height;
         Data->BackBuffer.Width = Width;
-        Data->BackBuffer.Pitch = Pitch;
-        Data->BackBuffer.Memory = Memory;
-        u32 PixelCount = Data->BackBuffer.Width*Data->BackBuffer.Height;
-        Data->SampleBuffer = PushSize(&RenderBuffer->Arena, PixelCount*sizeof(u32)*SAMPLE_COUNT);
-        Data->CoverageBuffer = PushSize(&RenderBuffer->Arena, PixelCount*sizeof(b32));
     }
     else if(CoreCount & 1)
     {
@@ -1466,17 +1478,10 @@ SplitWorkIntoHorizontalStrips(render_buffer *RenderBuffer, binary_node *Node, vo
 
         s32 NextOffsetY = RoundS32(Height*(CoreIndex+1)*InverseCoreCount);
         
-        CoreData->RenderBuffer = RenderBuffer;
-        CoreData->Node = Node;
         CoreData->OffsetX = 0;
         CoreData->OffsetY = OffsetY;
         CoreData->BackBuffer.Height = NextOffsetY-OffsetY;
         CoreData->BackBuffer.Width = Width;
-        CoreData->BackBuffer.Pitch = Pitch;
-        CoreData->BackBuffer.Memory = Memory;
-        u32 PixelCount = CoreData->BackBuffer.Width*CoreData->BackBuffer.Height;
-        CoreData->SampleBuffer = PushSize(&RenderBuffer->Arena, PixelCount*sizeof(u32)*SAMPLE_COUNT);
-        CoreData->CoverageBuffer = PushSize(&RenderBuffer->Arena, PixelCount*sizeof(b32));
 
         OffsetY = NextOffsetY;
     }
@@ -1496,17 +1501,10 @@ SplitWorkIntoVerticalStrips(render_buffer *RenderBuffer, binary_node *Node, void
 
         s32 NextOffsetX = RoundS32(Width*(CoreIndex+1)*InverseCoreCount);
         
-        CoreData->RenderBuffer = RenderBuffer;
-        CoreData->Node = Node;
         CoreData->OffsetX = OffsetX;
         CoreData->OffsetY = 0;
         CoreData->BackBuffer.Height = Height;
         CoreData->BackBuffer.Width = NextOffsetX-OffsetX;
-        CoreData->BackBuffer.Pitch = Pitch;
-        CoreData->BackBuffer.Memory = Memory;
-        u32 PixelCount = CoreData->BackBuffer.Width*CoreData->BackBuffer.Height;
-        CoreData->SampleBuffer = PushSize(&RenderBuffer->Arena, PixelCount*sizeof(u32)*SAMPLE_COUNT);
-        CoreData->CoverageBuffer = PushSize(&RenderBuffer->Arena, PixelCount*sizeof(b32));
 
         OffsetX = NextOffsetX;
     }
@@ -1521,7 +1519,7 @@ SplitWorkIntoVerticalStrips(render_buffer *RenderBuffer, binary_node *Node, void
 
 
 internal void
-RenderBufferToBackBuffer(render_buffer *RenderBuffer, loaded_bitmap *BackBuffer)
+RenderBufferToBackBuffer(render_buffer *RenderBuffer, loaded_bitmap *BackBuffer, u32 Flags = 0)
 {
     binary_node *SortTree = 0;
     u8 *Cursor = (u8 *)RenderBuffer->Arena.Memory;
@@ -1551,7 +1549,7 @@ RenderBufferToBackBuffer(render_buffer *RenderBuffer, loaded_bitmap *BackBuffer)
         render_tree_data RenderTreeData[64];
         thread_progress ThreadProgress[64];
         // TODO(chris): Optimize this for the number of logical cores.
-        u32 CoreCount = 64;
+        s32 CoreCount = 64;
 #if 0
         SplitWorkIntoVerticalStrips(RenderBuffer, SortTree, BackBuffer->Memory, CoreCount,
             BackBuffer->Width, BackBuffer->Height, BackBuffer->Pitch,
@@ -1561,23 +1559,38 @@ RenderBufferToBackBuffer(render_buffer *RenderBuffer, loaded_bitmap *BackBuffer)
             BackBuffer->Width, BackBuffer->Height, BackBuffer->Pitch, 0, 0,
             RenderTreeData);
 #endif
-        
-        for(u32 RenderChunkIndex = 1;
-            RenderChunkIndex < CoreCount;
-            ++RenderChunkIndex)
+
+        for(s32 RenderChunkIndex = CoreCount-1;
+            RenderChunkIndex >= 0;
+            --RenderChunkIndex)
         {
             render_tree_data *Data = RenderTreeData + RenderChunkIndex;
             thread_progress *Progress = ThreadProgress + RenderChunkIndex;
-            PlatformPushThreadWork(RenderTreeCallback, Data, Progress);
+            
+            Data->BackBuffer.Pitch = BackBuffer->Pitch;
+            Data->BackBuffer.Memory = BackBuffer->Memory;
+            Data->RenderBuffer = RenderBuffer;
+            Data->Node = SortTree;
+            u32 PixelCount = Data->BackBuffer.Width*Data->BackBuffer.Height;
+            Data->SampleBuffer = PushSize(&RenderBuffer->Arena, PixelCount*sizeof(u32)*SAMPLE_COUNT);
+            Data->CoverageBuffer = PushSize(&RenderBuffer->Arena, PixelCount*sizeof(b32));
+            Data->UsePipeline = IsSet(Flags, RenderFlags_UsePipeline);
+            if(RenderChunkIndex == 0)
+            {
+                RenderTreeCallback(Data);
+                Progress->Finished = true;
+            }
+            else
+            {
+                PlatformPushThreadWork(RenderTreeCallback, Data, Progress);
+            }
         }
-        RenderTreeCallback(&RenderTreeData[0]);
-        ThreadProgress[0].Finished = true;
 
         b32 Finished;
         do
         {
             Finished = true;
-            for(u32 ProgressIndex = 0;
+            for(s32 ProgressIndex = 0;
                 ProgressIndex < CoreCount;
                 ++ProgressIndex)
             {
