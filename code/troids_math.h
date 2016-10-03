@@ -96,59 +96,10 @@ Cube(r32 A)
     return(Result);
 }
 
-inline s32
-RoundS32(r32 A)
-{
-    s32 Result = (s32)(A + 0.5f);
-    return(Result);
-}
-
-inline u32
-RoundU32(r32 A)
-{
-    u32 Result = (u32)(A + 0.5f);
-    return(Result);
-}
-
 inline r32
 AbsoluteValue(r32 A)
 {
     r32 Result = fabs(A);
-    return(Result);
-}
-
-inline s32
-Clamp(s32 Min, s32 A, s32 Max)
-{
-    s32 Result = Maximum(Min, Minimum(Max, A));
-    return(Result);
-}
-
-inline r32
-Clamp(r32 Min, r32 A, r32 Max)
-{
-    r32 Result = Maximum(Min, Minimum(Max, A));
-    return(Result);
-}
-
-inline r64
-Clamp(r64 Min, r64 A, r64 Max)
-{
-    r64 Result = Maximum(Min, Minimum(Max, A));
-    return(Result);
-}
-
-inline r32
-Clamp01(r32 A)
-{
-    r32 Result = Clamp(0.0f, A, 1.0f);
-    return(Result);
-}
-
-inline r64
-Clamp01(r64 A)
-{
-    r64 Result = Clamp(0.0, A, 1.0);
     return(Result);
 }
 

@@ -7,7 +7,7 @@
    ======================================================================== */
 
 internal void
-TitleScreenMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
+TitleScreenMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererState)
 {
     game_state *GameState = (game_state *)GameMemory->PermanentMemory;
     title_screen_state *State = &GameState->TitleScreenState;
@@ -73,7 +73,7 @@ TitleScreenMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackB
     
     {
         TIMED_BLOCK("Render Game");
-        RenderBufferToBackBuffer(RenderBuffer, BackBuffer);
+        RenderBufferToBackBuffer(RendererState, RenderBuffer);
     }
     EndTemporaryMemory(RenderMemory);
 }

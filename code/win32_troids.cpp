@@ -324,8 +324,11 @@ FileExists(char *Path)
     return(Result);
 }
 
+global_variable thread_progress GlobalNullProgress;
+
 inline void
-Win32PushThreadWork(thread_callback *Callback, void *Params, thread_progress *Progress)
+Win32PushThreadWork(thread_callback *Callback, void *Params,
+                    thread_progress *Progress = &GlobalNullProgress)
 {
     Progress->Finished = false;
     u32 WorkIndex = (++GlobalThreadQueueNextIndex &
@@ -357,6 +360,55 @@ ThreadProc(void *Parameter)
     }
 
     return(Result);
+}
+
+internal void
+ClearBuffers(render_chunk *RenderChunk)
+{
+    if(RenderChunk->Used)
+    {
+        TIMED_FUNCTION();
+        loaded_bitmap *CoverageBuffer = &RenderChunk->CoverageBuffer;
+        loaded_bitmap *SampleBuffer = &RenderChunk->SampleBuffer;
+        Assert((CoverageBuffer->Width&3) == 0);
+        s32 XMin = RenderChunk->OffsetX;
+        s32 YMin = RenderChunk->OffsetY;
+        s32 XMax = RenderChunk->OffsetX + CoverageBuffer->Width;
+        s32 YMax = RenderChunk->OffsetY + CoverageBuffer->Height;
+        u32 SampleAdvance = 4*SAMPLE_COUNT;
+        u8 *SampleRow = (u8 *)SampleBuffer->Memory + SampleBuffer->Pitch*YMin;
+        u8 *CoverageRow = (u8 *)CoverageBuffer->Memory + CoverageBuffer->Pitch*YMin;
+        __m128i Zero = _mm_set1_epi32(0);
+        for(s32 Y = YMin;
+            Y < YMax;
+            ++Y)
+        {
+            u32 *Sample = (u32 *)SampleRow + SAMPLE_COUNT*XMin;
+            b32 *Coverage = (b32 *)CoverageRow + XMin;
+            for(s32 X = XMin;
+                X < XMax;
+                X += 4)
+            {
+                _mm_storeu_si128((__m128i *)Coverage, Zero);
+                _mm_storeu_si128((__m128i *)(Sample), Zero);
+                _mm_storeu_si128((__m128i *)(Sample + 4), Zero);
+                _mm_storeu_si128((__m128i *)(Sample + 8), Zero);
+                _mm_storeu_si128((__m128i *)(Sample + 12), Zero);
+            
+                Sample += SampleAdvance;
+                Coverage += 4;
+            }
+            SampleRow += SampleBuffer->Pitch;
+            CoverageRow += CoverageBuffer->Pitch;
+        }
+    }
+    RenderChunk->Cleared = true;
+    RenderChunk->Used = false;
+}
+
+THREAD_CALLBACK(ClearRenderBuffersCallback)
+{
+    ClearBuffers((render_chunk *)Params);
 }
 
 int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int Show)
@@ -468,15 +520,31 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
 
             InitializeOpenGL(DeviceContext);
 
-            game_memory GameMemory;
+            renderer_state RendererState;            
+            RendererState.BackBuffer.Width = GlobalBackBuffer.Width;
+            RendererState.BackBuffer.Height = GlobalBackBuffer.Height;
+            RendererState.BackBuffer.Pitch = GlobalBackBuffer.Pitch;
+            RendererState.BackBuffer.Memory = GlobalBackBuffer.Memory;
+            RendererState.CoverageBuffer.Width = GlobalBackBuffer.Width;
+            RendererState.CoverageBuffer.Height = GlobalBackBuffer.Height;
+            RendererState.CoverageBuffer.Pitch = GlobalBackBuffer.Pitch;
+            RendererState.SampleBuffer.Width = SAMPLE_COUNT*GlobalBackBuffer.Width;
+            RendererState.SampleBuffer.Height = GlobalBackBuffer.Height;
+            RendererState.SampleBuffer.Pitch = SAMPLE_COUNT*GlobalBackBuffer.Pitch;
 
+            memory_size CoverageBufferMemorySize = RendererState.CoverageBuffer.Height*RendererState.CoverageBuffer.Pitch;
+            memory_size SampleBufferMemorySize = RendererState.SampleBuffer.Height*RendererState.SampleBuffer.Pitch;
+
+            game_memory GameMemory;
             GameMemory.PermanentMemorySize = Megabytes(256);
             GameMemory.TemporaryMemorySize = Gigabytes(2);
 #if TROIDS_INTERNAL
             GameMemory.DebugMemorySize = Gigabytes(2);
 #endif
             u64 TotalMemorySize = (GameMemory.PermanentMemorySize +
-                                   GameMemory.TemporaryMemorySize
+                                   GameMemory.TemporaryMemorySize +
+                                   CoverageBufferMemorySize + SampleBufferMemorySize
+                                   
 #if TROIDS_INTERNAL
                                    + GameMemory.DebugMemorySize
 #endif
@@ -485,34 +553,47 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                                                       MEM_COMMIT|MEM_RESERVE,
                                                       PAGE_READWRITE);
             GameMemory.TemporaryMemory = (u8 *)GameMemory.PermanentMemory + GameMemory.PermanentMemorySize;
+            RendererState.CoverageBuffer.Memory = (u8 *)GameMemory.TemporaryMemory + GameMemory.TemporaryMemorySize;
+            RendererState.SampleBuffer.Memory = (u8 *)RendererState.CoverageBuffer.Memory + CoverageBufferMemorySize;
 #if TROIDS_INTERNAL
-            GameMemory.DebugMemory = (u8 *)GameMemory.TemporaryMemory + GameMemory.TemporaryMemorySize;
+            GameMemory.DebugMemory = (u8 *)RendererState.SampleBuffer.Memory + SampleBufferMemorySize;
             GlobalDebugState = (debug_state *)GameMemory.DebugMemory;
             InitializeArena(&GlobalDebugState->Arena,
                             GameMemory.DebugMemorySize - sizeof(debug_state),
                             (u8 *)GameMemory.DebugMemory + sizeof(debug_state));
-            GlobalDebugState->StringArena = SubArena(&GlobalDebugState->Arena, Megabytes(16));
-        
+            GlobalDebugState->StringArena = SubArena(&GlobalDebugState->Arena, Megabytes(16));        
 #endif
+
+            SplitWorkIntoSquares(RendererState.RenderChunks, RENDER_CHUNK_COUNT,
+                                 RendererState.BackBuffer.Width,
+                                 RendererState.BackBuffer.Height,
+                                 0, 0);
+            
+            for(s32 RenderChunkIndex = 0;
+                RenderChunkIndex < RENDER_CHUNK_COUNT;
+                ++RenderChunkIndex)
+            {
+                render_chunk *RenderChunk = RendererState.RenderChunks + RenderChunkIndex;
+                RenderChunk->Cleared = true;
+                RenderChunk->Used = false;
+                RenderChunk->BackBuffer.Pitch = RendererState.BackBuffer.Pitch;
+                RenderChunk->BackBuffer.Memory = RendererState.BackBuffer.Memory;
+                RenderChunk->CoverageBuffer.Pitch = RendererState.CoverageBuffer.Pitch;
+                RenderChunk->CoverageBuffer.Memory = RendererState.CoverageBuffer.Memory;
+                RenderChunk->SampleBuffer.Pitch = RendererState.SampleBuffer.Pitch;
+                RenderChunk->SampleBuffer.Memory = RendererState.SampleBuffer.Memory;
+            }
 
 #if TROIDS_INTERNAL
             Win32LoadFont(&GlobalDebugState->Font, DeviceContext, "Courier New", 42, FW_BOLD);
 #endif
             Win32LoadFont(&GameMemory.Font, DeviceContext, "Arial", 128, FW_NORMAL);
-            
-            ReleaseDC(GlobalWindow, DeviceContext);
 
             GameMemory.PlatformReadFile = Win32ReadFile;
             GameMemory.PlatformPushThreadWork = Win32PushThreadWork;
             
             // TODO(chris): Query monitor refresh rate
             r32 dtForFrame = 1.0f / 60.0f;
-            
-            loaded_bitmap GameBackBuffer;
-            GameBackBuffer.Width = GlobalBackBuffer.Width;
-            GameBackBuffer.Height = GlobalBackBuffer.Height;
-            GameBackBuffer.Pitch = GlobalBackBuffer.Pitch;
-            GameBackBuffer.Memory = GlobalBackBuffer.Memory;
 
             LPDIRECTSOUND DirectSound;
             LPDIRECTSOUNDBUFFER PrimarySoundBuffer = 0;
@@ -680,7 +761,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
             QueryPerformanceCounter(&LastCounter);
             while(GlobalRunning)
             {
-                BEGIN_TIMED_BLOCK("Platform");
+                BEGIN_TIMED_BLOCK(FrameIndex, "Platform");
                 {
                     TIMED_BLOCK("Input");
 
@@ -912,11 +993,11 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                         }
                     }
                 }
-                END_TIMED_BLOCK();
+                END_TIMED_BLOCK(FrameIndex);
 
                 if(GameUpdateAndRender)
                 {
-                    GameUpdateAndRender(&GameMemory, NewInput, &GameBackBuffer);
+                    GameUpdateAndRender(&GameMemory, NewInput, &RendererState);
                 }
                 if(GameGetSoundSamples && SecondarySoundBuffer)
                 {
@@ -952,6 +1033,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                     }
                 }
 
+                loaded_bitmap *GameBackBuffer = &RendererState.BackBuffer;
                 {
                     TIMED_BLOCK("Draw Recording");
                     u32 RecordIconMargin = 10;
@@ -961,8 +1043,8 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                         case RecordingState_Recording:
                         {
                             u32 RecordIconRadius = 10;
-                            u8 *PixelRow = ((u8 *)GameBackBuffer.Memory +
-                                            GameBackBuffer.Pitch*(GameBackBuffer.Height -
+                            u8 *PixelRow = ((u8 *)GameBackBuffer->Memory +
+                                            GameBackBuffer->Pitch*(GameBackBuffer->Height -
                                                                   (RecordIconMargin + 1)));
                             for(u32 Y = RecordIconMargin;
                                 Y < RecordIconMargin + RecordIconRadius*2;
@@ -975,14 +1057,14 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                                 {
                                     *Pixel++ = 0xFFFF0000;
                                 }
-                                PixelRow -= GameBackBuffer.Pitch;
+                                PixelRow -= GameBackBuffer->Pitch;
                             }
                         } break;
 
                         case RecordingState_PlayingRecord:
                         {
-                            u8 *PixelRow = ((u8 *)GameBackBuffer.Memory +
-                                            GameBackBuffer.Pitch*(GameBackBuffer.Height -
+                            u8 *PixelRow = ((u8 *)GameBackBuffer->Memory +
+                                            GameBackBuffer->Pitch*(GameBackBuffer->Height -
                                                                   (RecordIconMargin + 1)));
                             for(u32 Y = RecordIconMargin;
                                 Y < RecordIconMargin + RecordIconRadius;
@@ -996,7 +1078,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                                 {
                                     *Pixel++ = 0xFFFFFFFF;
                                 }
-                                PixelRow -= GameBackBuffer.Pitch;
+                                PixelRow -= GameBackBuffer->Pitch;
                             }
                             for(u32 Y = RecordIconMargin + RecordIconRadius;
                                 Y < RecordIconMargin + 2*RecordIconRadius;
@@ -1010,7 +1092,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                                 {
                                     *Pixel++ = 0xFFFFFFFF;
                                 }
-                                PixelRow -= GameBackBuffer.Pitch;
+                                PixelRow -= GameBackBuffer->Pitch;
                             }
                         } break;
                     }
@@ -1019,9 +1101,21 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
 #if TROIDS_INTERNAL
                 if(DebugCollate)
                 {
-                    DebugCollate(&GameMemory, NewInput, &GameBackBuffer);
+                    DebugCollate(&GameMemory, NewInput, &RendererState);
                 }
 #endif
+
+                BEGIN_TIMED_BLOCK(GUID, "Buffer Clear Kickoff");
+                for(s32 RenderChunkIndex = 0;
+                    RenderChunkIndex < RENDER_CHUNK_COUNT;
+                    ++RenderChunkIndex)
+                {
+                    render_chunk *RenderChunk = RendererState.RenderChunks + RenderChunkIndex;
+                    RenderChunk->Cleared = false;
+                    
+                    Win32PushThreadWork(ClearRenderBuffersCallback, RenderChunk);
+                }
+                END_TIMED_BLOCK(GUID);
 
 #if 0
                 QueryPerformanceCounter(&Counter);
@@ -1052,9 +1146,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                 }
 #endif
 
-                HDC DeviceContext = GetDC(GlobalWindow);
                 CopyBackBufferToWindow(DeviceContext, &GlobalBackBuffer);
-                ReleaseDC(GlobalWindow, DeviceContext);
 
                 QueryPerformanceCounter(&Counter);
                 r32 FrameSeconds = (Counter.QuadPart - LastCounter.QuadPart)*ClocksToSeconds;

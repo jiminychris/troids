@@ -9,7 +9,6 @@
 #define TEXT_Z 200000.0f
 #define HUD_Z 100000.0f
 #define DEBUG_BITMAPS 0
-#define SAMPLE_COUNT 4
 
 inline r32
 GetTextAdvance(loaded_font *Font, char A, char B)
@@ -380,6 +379,270 @@ RenderBitmap(loaded_bitmap *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAx
         PixelRow += BackBuffer->Pitch;
     }
 }
+// TODO(chris): Further optimization
+internal void
+RenderBitmap(render_chunk *RenderChunk, loaded_bitmap *Bitmap, v2 Origin, v2 XAxis, v2 YAxis,
+             v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f), s32 OffsetX = 0, s32 OffsetY = 0)
+{
+    // TODO(chris): This should probably be called ColorModulation?
+    // NOTE(chris): This color is just a linear multiply, so it's not sRGB
+    // NOTE(chris): pre-multiply alpha
+    v4 Tint = Color;
+    Tint.rgb *= Tint.a;
+    
+    loaded_bitmap *SampleBuffer = &RenderChunk->SampleBuffer;
+    loaded_bitmap *CoverageBuffer = &RenderChunk->CoverageBuffer;
+    s32 XMin = Clamp(OffsetX, Floor(Minimum(Minimum(Origin.x, Origin.x + XAxis.x),
+                                      Minimum(Origin.x + YAxis.x, Origin.x + XAxis.x + YAxis.x))),
+                     OffsetX + CoverageBuffer->Width);
+    s32 YMin = Clamp(OffsetY, Floor(Minimum(Minimum(Origin.y, Origin.y + XAxis.y),
+                                      Minimum(Origin.y + YAxis.y, Origin.y + XAxis.y + YAxis.y))),
+                     OffsetY + CoverageBuffer->Height);
+
+    s32 XMax = Clamp(OffsetX, Ceiling(Maximum(Maximum(Origin.x, Origin.x + XAxis.x),
+                                        Maximum(Origin.x + YAxis.x, Origin.x + XAxis.x + YAxis.x))),
+                     OffsetX + CoverageBuffer->Width);
+    s32 YMax = Clamp(OffsetY, Ceiling(Maximum(Maximum(Origin.y, Origin.y + XAxis.y),
+                                        Maximum(Origin.y + YAxis.y, Origin.y + XAxis.y + YAxis.y))),
+                     OffsetY + CoverageBuffer->Height);
+    // TODO(chris): Crashed here once when drawing in the top right corner. Check that out.
+
+    s32 AdjustedXMin = (XMin/4)*4;
+    s32 AdjustedXMax = ((XMax+3)/4)*4;
+
+    __m128 One255 = _mm_set_ps1(255.0f);
+    __m128 Inv255 = _mm_set_ps1(1.0f / 255.0f);
+    __m128 InvXAxisLengthSq = _mm_set_ps1(1.0f / LengthSq(XAxis));
+    __m128 InvYAxisLengthSq = _mm_set_ps1(1.0f / LengthSq(YAxis));
+    __m128 BitmapInternalWidth = _mm_set_ps1((r32)(Bitmap->Width - 2));
+    __m128 BitmapInternalHeight = _mm_set_ps1((r32)(Bitmap->Height - 2));
+    __m128 BitmapWidth = _mm_set_ps1((r32)Bitmap->Width);
+    __m128i BitmapHeight = _mm_set1_epi32(Bitmap->Height);
+    __m128 OriginX = _mm_set_ps1(Origin.x);
+    __m128 OriginY = _mm_set_ps1(Origin.y);
+    __m128 XAxisX = _mm_set_ps1(XAxis.x);
+    __m128 XAxisY = _mm_set_ps1(XAxis.y);
+    __m128 YAxisX = _mm_set_ps1(YAxis.x);
+    __m128 YAxisY = _mm_set_ps1(YAxis.y);
+    __m128i One = _mm_set1_epi32(1);
+    __m128 Four = _mm_set_ps1(4.0f);
+    __m128 RealZero = _mm_set_ps1(0.0f);
+    __m128 RealOne = _mm_set_ps1(1.0f);
+    __m128 Half = _mm_set_ps1(0.5f);
+    __m128i ColorMask = _mm_set1_epi32(0xFF);
+    __m128 TintR = _mm_set_ps1(Tint.r);
+    __m128 TintG = _mm_set_ps1(Tint.g);
+    __m128 TintB = _mm_set_ps1(Tint.b);
+    __m128 TintA = _mm_set_ps1(Tint.a);
+    __m128 Mask;
+    __m128i Used = _mm_set1_epi32(0);
+    u32 SampleAdvance = 4*SAMPLE_COUNT;
+    u8 *CoverageRow = (u8 *)CoverageBuffer->Memory + (CoverageBuffer->Pitch*YMin);
+    u8 *SampleRow = (u8 *)SampleBuffer->Memory + (SampleBuffer->Pitch*YMin);
+    IGNORED_TIMED_LOOP_FUNCTION(Width*Height);
+#if DEBUG_BITMAPS
+    __m128i Pink = _mm_set1_epi32(0xFFFF00FF);
+    __m128i Blue = _mm_set1_epi32(0xFF0000FF);
+#endif
+    for(s32 Y = YMin;
+        Y < YMax;
+        ++Y)
+    {
+        u32 *Coverage = (u32 *)CoverageRow + AdjustedXMin;
+        u32 *Sample = (u32 *)SampleRow + SAMPLE_COUNT*AdjustedXMin;
+        __m128 X4 = _mm_set_ps((r32)AdjustedXMin + 3, (r32)AdjustedXMin + 2,
+                                   (r32)AdjustedXMin + 1, (r32)AdjustedXMin + 0);
+        __m128 Y4 = _mm_set_ps1((r32)Y);
+        for(s32 X = AdjustedXMin;
+            X < AdjustedXMax;
+            X += 4)
+        {
+            __m128 TestPointX = _mm_sub_ps(X4, OriginX);
+            __m128 TestPointY = _mm_sub_ps(Y4, OriginY);
+
+            __m128 U = _mm_mul_ps(_mm_add_ps((_mm_mul_ps(TestPointX, XAxisX)),
+                                             _mm_mul_ps(TestPointY, XAxisY)),
+                                  InvXAxisLengthSq);
+            __m128 V = _mm_mul_ps(_mm_add_ps((_mm_mul_ps(TestPointX, YAxisX)),
+                                             _mm_mul_ps(TestPointY, YAxisY)),
+                                  InvYAxisLengthSq);
+
+            Mask = _mm_and_ps(_mm_and_ps(_mm_cmpge_ps(U, RealZero), _mm_cmpge_ps(V, RealZero)),
+                              _mm_and_ps(_mm_cmple_ps(U, RealOne), _mm_cmple_ps(V, RealOne)));
+
+            _mm_storeu_si128((__m128i *)Coverage,
+                             _mm_or_si128(_mm_loadu_si128((__m128i *)Coverage),
+                                          _mm_castps_si128(Mask)));
+            Used = _mm_or_si128(Used, _mm_castps_si128(Mask));
+
+            __m128 tX = _mm_add_ps(_mm_mul_ps(U, BitmapInternalWidth), Half);
+            __m128 tY = _mm_add_ps(_mm_mul_ps(V, BitmapInternalHeight), Half);
+
+            __m128 ttX = _mm_cvtepi32_ps(_mm_cvttps_epi32(_mm_and_ps(tX, Mask)));
+            __m128 ttY = _mm_cvtepi32_ps(_mm_cvttps_epi32(_mm_and_ps(tY, Mask)));
+
+            __m128 OffsetA = _mm_add_ps(_mm_mul_ps(ttY, BitmapWidth), ttX);
+            __m128 OffsetB = _mm_add_ps(OffsetA, RealOne);
+            __m128 OffsetC = _mm_add_ps(OffsetA, BitmapWidth);
+            __m128 OffsetD = _mm_add_ps(OffsetC, RealOne);
+
+            __m128i TexelA = _mm_set_epi32(*((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetA).m128i_u32[3]),
+                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetA).m128i_u32[2]),
+                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetA).m128i_u32[1]),
+                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetA).m128i_u32[0]));
+            __m128i TexelB = _mm_set_epi32(*((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetB).m128i_u32[3]),
+                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetB).m128i_u32[2]),
+                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetB).m128i_u32[1]),
+                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetB).m128i_u32[0]));
+            __m128i TexelC = _mm_set_epi32(*((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetC).m128i_u32[3]),
+                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetC).m128i_u32[2]),
+                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetC).m128i_u32[1]),
+                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetC).m128i_u32[0]));
+            __m128i TexelD = _mm_set_epi32(*((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetD).m128i_u32[3]),
+                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetD).m128i_u32[2]),
+                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetD).m128i_u32[1]),
+                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetD).m128i_u32[0]));
+
+
+            __m128 TexelAR = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelA, 16), ColorMask));
+            __m128 TexelBR = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelB, 16), ColorMask));
+            __m128 TexelCR = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelC, 16), ColorMask));
+            __m128 TexelDR = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelD, 16), ColorMask));
+
+            __m128 TexelAG = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelA, 8), ColorMask));
+            __m128 TexelBG = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelB, 8), ColorMask));
+            __m128 TexelCG = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelC, 8), ColorMask));
+            __m128 TexelDG = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelD, 8), ColorMask));
+
+            __m128 TexelAB = _mm_cvtepi32_ps(_mm_and_si128(TexelA, ColorMask));
+            __m128 TexelBB = _mm_cvtepi32_ps(_mm_and_si128(TexelB, ColorMask));
+            __m128 TexelCB = _mm_cvtepi32_ps(_mm_and_si128(TexelC, ColorMask));
+            __m128 TexelDB = _mm_cvtepi32_ps(_mm_and_si128(TexelD, ColorMask));
+
+            __m128 TexelAA = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelA, 24), ColorMask));
+            __m128 TexelBA = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelB, 24), ColorMask));
+            __m128 TexelCA = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelC, 24), ColorMask));
+            __m128 TexelDA = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelD, 24), ColorMask));
+
+#if GAMMA_CORRECT
+            // NOTE(chris): sRGB to linear
+            TexelAR = _mm_mul_ps(_mm_mul_ps(TexelAR, TexelAR), Inv255);
+            TexelBR = _mm_mul_ps(_mm_mul_ps(TexelBR, TexelBR), Inv255);
+            TexelCR = _mm_mul_ps(_mm_mul_ps(TexelCR, TexelCR), Inv255);
+            TexelDR = _mm_mul_ps(_mm_mul_ps(TexelDR, TexelDR), Inv255);
+
+            TexelAG = _mm_mul_ps(_mm_mul_ps(TexelAG, TexelAG), Inv255);
+            TexelBG = _mm_mul_ps(_mm_mul_ps(TexelBG, TexelBG), Inv255);
+            TexelCG = _mm_mul_ps(_mm_mul_ps(TexelCG, TexelCG), Inv255);
+            TexelDG = _mm_mul_ps(_mm_mul_ps(TexelDG, TexelDG), Inv255);
+
+            TexelAB = _mm_mul_ps(_mm_mul_ps(TexelAB, TexelAB), Inv255);
+            TexelBB = _mm_mul_ps(_mm_mul_ps(TexelBB, TexelBB), Inv255);
+            TexelCB = _mm_mul_ps(_mm_mul_ps(TexelCB, TexelCB), Inv255);
+            TexelDB = _mm_mul_ps(_mm_mul_ps(TexelDB, TexelDB), Inv255);
+#endif
+
+            __m128 tU = _mm_sub_ps(tX, ttX);
+            __m128 tV = _mm_sub_ps(tY, ttY);
+            __m128 tUInv = _mm_sub_ps(RealOne, tU);
+            __m128 tVInv = _mm_sub_ps(RealOne, tV);
+
+            __m128 LerpR = _mm_and_ps(_mm_add_ps(_mm_mul_ps(_mm_add_ps(_mm_mul_ps(TexelAR, tUInv), _mm_mul_ps(TexelBR, tU)), tVInv),
+                                                 _mm_mul_ps(_mm_add_ps(_mm_mul_ps(TexelCR, tUInv), _mm_mul_ps(TexelDR, tU)), tV)), Mask);
+            __m128 LerpG = _mm_and_ps(_mm_add_ps(_mm_mul_ps(_mm_add_ps(_mm_mul_ps(TexelAG, tUInv), _mm_mul_ps(TexelBG, tU)), tVInv),
+                                                 _mm_mul_ps(_mm_add_ps(_mm_mul_ps(TexelCG, tUInv), _mm_mul_ps(TexelDG, tU)), tV)), Mask);
+            __m128 LerpB = _mm_and_ps(_mm_add_ps(_mm_mul_ps(_mm_add_ps(_mm_mul_ps(TexelAB, tUInv), _mm_mul_ps(TexelBB, tU)), tVInv),
+                                                 _mm_mul_ps(_mm_add_ps(_mm_mul_ps(TexelCB, tUInv), _mm_mul_ps(TexelDB, tU)), tV)), Mask);
+            __m128 LerpA = _mm_and_ps(_mm_add_ps(_mm_mul_ps(_mm_add_ps(_mm_mul_ps(TexelAA, tUInv), _mm_mul_ps(TexelBA, tU)), tVInv),
+                                                 _mm_mul_ps(_mm_add_ps(_mm_mul_ps(TexelCA, tUInv), _mm_mul_ps(TexelDA, tU)), tV)), Mask);
+
+            __m128i Sample00 = _mm_loadu_si128((__m128i *)Sample);
+            __m128i Sample10 = _mm_loadu_si128((__m128i *)(Sample+4));
+            __m128i Sample01 = _mm_loadu_si128((__m128i *)(Sample+8));
+            __m128i Sample11 = _mm_loadu_si128((__m128i *)(Sample+12));
+
+            __m128 Sample00R = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(Sample00, 16), ColorMask));
+            __m128 Sample00G = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(Sample00, 8), ColorMask));
+            __m128 Sample00B = _mm_cvtepi32_ps(_mm_and_si128(Sample00, ColorMask));
+            __m128 Sample10R = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(Sample10, 16), ColorMask));
+            __m128 Sample10G = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(Sample10, 8), ColorMask));
+            __m128 Sample10B = _mm_cvtepi32_ps(_mm_and_si128(Sample10, ColorMask));
+            __m128 Sample01R = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(Sample01, 16), ColorMask));
+            __m128 Sample01G = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(Sample01, 8), ColorMask));
+            __m128 Sample01B = _mm_cvtepi32_ps(_mm_and_si128(Sample01, ColorMask));
+            __m128 Sample11R = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(Sample11, 16), ColorMask));
+            __m128 Sample11G = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(Sample11, 8), ColorMask));
+            __m128 Sample11B = _mm_cvtepi32_ps(_mm_and_si128(Sample11, ColorMask));
+
+#if GAMMA_CORRECT
+            // NOTE(chris): sRGB to linear
+            Sample00R = _mm_mul_ps(_mm_mul_ps(Sample00R, Sample00R), Inv255);
+            Sample10R = _mm_mul_ps(_mm_mul_ps(Sample10R, Sample10R), Inv255);
+            Sample01R = _mm_mul_ps(_mm_mul_ps(Sample01R, Sample01R), Inv255);
+            Sample11R = _mm_mul_ps(_mm_mul_ps(Sample11R, Sample11R), Inv255);
+
+            Sample00G = _mm_mul_ps(_mm_mul_ps(Sample00G, Sample00G), Inv255);
+            Sample10G = _mm_mul_ps(_mm_mul_ps(Sample10G, Sample10G), Inv255);
+            Sample01G = _mm_mul_ps(_mm_mul_ps(Sample01G, Sample01G), Inv255);
+            Sample11G = _mm_mul_ps(_mm_mul_ps(Sample11G, Sample11G), Inv255);
+
+            Sample00B = _mm_mul_ps(_mm_mul_ps(Sample00B, Sample00B), Inv255);
+            Sample10B = _mm_mul_ps(_mm_mul_ps(Sample10B, Sample10B), Inv255);
+            Sample01B = _mm_mul_ps(_mm_mul_ps(Sample01B, Sample01B), Inv255);
+            Sample11B = _mm_mul_ps(_mm_mul_ps(Sample11B, Sample11B), Inv255);
+#endif
+            __m128 DA = _mm_sub_ps(RealOne, _mm_mul_ps(Inv255, _mm_mul_ps(LerpA, TintA)));
+
+            __m128 Result00R = _mm_add_ps(_mm_mul_ps(TintR, LerpR), _mm_mul_ps(DA, Sample00R));
+            __m128 Result00G = _mm_add_ps(_mm_mul_ps(TintG, LerpG), _mm_mul_ps(DA, Sample00G));
+            __m128 Result00B = _mm_add_ps(_mm_mul_ps(TintB, LerpB), _mm_mul_ps(DA, Sample00B));
+            __m128 Result10R = _mm_add_ps(_mm_mul_ps(TintR, LerpR), _mm_mul_ps(DA, Sample10R));
+            __m128 Result10G = _mm_add_ps(_mm_mul_ps(TintG, LerpG), _mm_mul_ps(DA, Sample10G));
+            __m128 Result10B = _mm_add_ps(_mm_mul_ps(TintB, LerpB), _mm_mul_ps(DA, Sample10B));
+            __m128 Result01R = _mm_add_ps(_mm_mul_ps(TintR, LerpR), _mm_mul_ps(DA, Sample01R));
+            __m128 Result01G = _mm_add_ps(_mm_mul_ps(TintG, LerpG), _mm_mul_ps(DA, Sample01G));
+            __m128 Result01B = _mm_add_ps(_mm_mul_ps(TintB, LerpB), _mm_mul_ps(DA, Sample01B));
+            __m128 Result11R = _mm_add_ps(_mm_mul_ps(TintR, LerpR), _mm_mul_ps(DA, Sample11R));
+            __m128 Result11G = _mm_add_ps(_mm_mul_ps(TintG, LerpG), _mm_mul_ps(DA, Sample11G));
+            __m128 Result11B = _mm_add_ps(_mm_mul_ps(TintB, LerpB), _mm_mul_ps(DA, Sample11B));
+
+            __m128i Result00 = _mm_or_si128(
+                _mm_or_si128(_mm_slli_epi32(_mm_cvtps_epi32(Result00R), 16),
+                             _mm_slli_epi32(_mm_cvtps_epi32(Result00G), 8)),
+                _mm_cvtps_epi32(Result00B));
+            __m128i Result10 = _mm_or_si128(
+                _mm_or_si128(_mm_slli_epi32(_mm_cvtps_epi32(Result10R), 16),
+                             _mm_slli_epi32(_mm_cvtps_epi32(Result10G), 8)),
+                _mm_cvtps_epi32(Result10B));
+            __m128i Result01 = _mm_or_si128(
+                _mm_or_si128(_mm_slli_epi32(_mm_cvtps_epi32(Result01R), 16),
+                             _mm_slli_epi32(_mm_cvtps_epi32(Result01G), 8)),
+                _mm_cvtps_epi32(Result01B));
+            __m128i Result11 = _mm_or_si128(
+                _mm_or_si128(_mm_slli_epi32(_mm_cvtps_epi32(Result11R), 16),
+                             _mm_slli_epi32(_mm_cvtps_epi32(Result11G), 8)),
+                _mm_cvtps_epi32(Result11B));
+
+            _mm_storeu_si128((__m128i *)Sample, _mm_or_si128(_mm_and_si128(_mm_castps_si128(Mask), Result00),
+                                                             _mm_andnot_si128(_mm_castps_si128(Mask), Sample00)));
+            _mm_storeu_si128((__m128i *)(Sample+4), _mm_or_si128(_mm_and_si128(_mm_castps_si128(Mask), Result10),
+                                                                 _mm_andnot_si128(_mm_castps_si128(Mask), Sample10)));
+            _mm_storeu_si128((__m128i *)(Sample+8), _mm_or_si128(_mm_and_si128(_mm_castps_si128(Mask), Result01),
+                                                                 _mm_andnot_si128(_mm_castps_si128(Mask), Sample01)));
+            _mm_storeu_si128((__m128i *)(Sample+12), _mm_or_si128(_mm_and_si128(_mm_castps_si128(Mask), Result11),
+                                                                  _mm_andnot_si128(_mm_castps_si128(Mask), Sample11)));
+
+            Coverage += 4;
+            Sample += SampleAdvance;
+            X4 = _mm_add_ps(X4, Four);
+        }
+        CoverageRow += CoverageBuffer->Pitch;
+        SampleRow += SampleBuffer->Pitch;
+    }
+    b32 UsedArray[4];
+    _mm_storeu_si128((__m128i *)UsedArray, Used);
+    RenderChunk->Used |= UsedArray[0] || UsedArray[1] || UsedArray[2] || UsedArray[3];
+}
 
 // TODO(chris): SIMD this!
 internal void
@@ -524,19 +787,20 @@ RenderAlignedInvertedRectangle(loaded_bitmap *BackBuffer, rectangle2 Rect,
 
 // TODO(chris): Further optimization
 internal void
-RenderTriangle(renderer_state *RendererState, 
+RenderTriangle(render_chunk *RenderChunk, 
                v2 A, v2 B, v2 C, v4 Color, s32 OffsetX = 0, s32 OffsetY = 0)
 {
-    loaded_bitmap *BackBuffer = RendererState->BackBuffer;
+    loaded_bitmap *SampleBuffer = &RenderChunk->SampleBuffer;
+    loaded_bitmap *CoverageBuffer = &RenderChunk->CoverageBuffer;
     s32 XMin = Clamp(OffsetX, RoundS32(Minimum(Minimum(A.x, B.x), C.x)),
-                     OffsetX + BackBuffer->Width);
+                     OffsetX + CoverageBuffer->Width);
     s32 YMin = Clamp(OffsetY, RoundS32(Minimum(Minimum(A.y, B.y), C.y)),
-                     OffsetY + BackBuffer->Height);
+                     OffsetY + CoverageBuffer->Height);
 
     s32 XMax = Clamp(OffsetX, RoundS32(Maximum(Maximum(A.x, B.x), C.x)),
-                     OffsetX + BackBuffer->Width);
+                     OffsetX + CoverageBuffer->Width);
     s32 YMax = Clamp(OffsetY, RoundS32(Maximum(Maximum(A.y, B.y), C.y)),
-                     OffsetY + BackBuffer->Height);
+                     OffsetY + CoverageBuffer->Height);
 
     s32 AdjustedXMin = (XMin/4)*4;
     s32 AdjustedXMax = ((XMax+3)/4)*4;
@@ -575,11 +839,9 @@ RenderTriangle(renderer_state *RendererState,
     __m128 Inv255 = _mm_set_ps1(1.0f/255.0f);
     __m128 One255 = _mm_set_ps1(255.0f);
     __m128i ColorMask = _mm_set1_epi32(0x000000FF);
-    u32 SamplePitch = BackBuffer->Width*sizeof(u32)*SAMPLE_COUNT;
     u32 SampleAdvance = 4*SAMPLE_COUNT;
-    u32 CoveragePitch = BackBuffer->Width*sizeof(u32);
-    u8 *SampleRow = (u8 *)RendererState->SampleBuffer + (SamplePitch*(YMin-OffsetY));
-    u8 *CoverageRow = (u8 *)RendererState->CoverageBuffer + (CoveragePitch*(YMin-OffsetY));
+    u8 *SampleRow = (u8 *)SampleBuffer->Memory + SampleBuffer->Pitch*YMin;
+    u8 *CoverageRow = (u8 *)CoverageBuffer->Memory + CoverageBuffer->Pitch*YMin;
     __m128 SampleY0 = _mm_set_ps1((r32)YMin + 0.25f);
     __m128 SampleY1 = _mm_set_ps1((r32)YMin + 0.75f);
     __m128 SampleY0RelA = _mm_sub_ps(SampleY0, AY);
@@ -598,8 +860,8 @@ RenderTriangle(renderer_state *RendererState,
         Y < YMax;
         ++Y)
     {
-        u32 *Sample = (u32 *)SampleRow + (SAMPLE_COUNT*(AdjustedXMin-OffsetX));
-        b32 *Coverage = (b32 *)CoverageRow + AdjustedXMin-OffsetX;
+        u32 *Sample = (u32 *)SampleRow + SAMPLE_COUNT*AdjustedXMin;
+        b32 *Coverage = (b32 *)CoverageRow + AdjustedXMin;
 
         __m128 SampleX0RelA = _mm_sub_ps(SampleX0, AX);
         __m128 SampleX0RelB = _mm_sub_ps(SampleX0, BX);
@@ -653,8 +915,6 @@ RenderTriangle(renderer_state *RendererState,
                                         _mm_mul_ps(SampleY1RelC, PerpCAY)),
                              RealZero));
 
-            // TODO(chris): IMPORTANT Something is wrong with something. Maybe the bitwise functions
-            // aren't behaving as expected.
             __m128i Cover = _mm_castps_si128(_mm_or_ps(_mm_or_ps(Sample00Mask, Sample10Mask),
                                                        _mm_or_ps(Sample01Mask, Sample11Mask)));
             _mm_storeu_si128((__m128i *)Coverage,
@@ -754,70 +1014,37 @@ RenderTriangle(renderer_state *RendererState,
         SampleY1RelA = _mm_add_ps(SampleY1RelA, RealOne);
         SampleY1RelB = _mm_add_ps(SampleY1RelB, RealOne);
         SampleY1RelC = _mm_add_ps(SampleY1RelC, RealOne);
-        SampleRow += SamplePitch;
-        CoverageRow += CoveragePitch;
+        SampleRow += SampleBuffer->Pitch;
+        CoverageRow += CoverageBuffer->Pitch;
     }
     b32 UsedArray[4];
     _mm_storeu_si128((__m128i *)UsedArray, Used);
-    RendererState->Used |= UsedArray[0] || UsedArray[1] || UsedArray[2] || UsedArray[3];
+    RenderChunk->Used |= UsedArray[0] || UsedArray[1] || UsedArray[2] || UsedArray[3];
 }
 
 internal void
-ClearBuffers(renderer_state *RendererState)
-{
-    loaded_bitmap *BackBuffer = RendererState->BackBuffer;
-    TIMED_FUNCTION();
-    Assert((BackBuffer->Width&3) == 0);
-    u32 SamplePitch = BackBuffer->Width*sizeof(u32)*SAMPLE_COUNT;
-    u32 CoveragePitch = BackBuffer->Width*sizeof(u32);
-    u32 SampleAdvance = 4*SAMPLE_COUNT;
-    u8 *SampleRow = (u8 *)RendererState->SampleBuffer;
-    u8 *CoverageRow = (u8 *)RendererState->CoverageBuffer;
-    __m128i Zero = _mm_set1_epi32(0);
-    for(s32 Y = 0;
-        Y < BackBuffer->Height;
-        ++Y)
-    {
-        u32 *Sample = (u32 *)SampleRow;
-        b32 *Coverage = (b32 *)CoverageRow;
-        for(s32 X = 0;
-            X < BackBuffer->Width;
-            X += 4)
-        {
-            _mm_storeu_si128((__m128i *)Coverage, Zero);
-            _mm_storeu_si128((__m128i *)(Sample), Zero);
-            _mm_storeu_si128((__m128i *)(Sample + 4), Zero);
-            _mm_storeu_si128((__m128i *)(Sample + 8), Zero);
-            _mm_storeu_si128((__m128i *)(Sample + 12), Zero);
-            
-            Sample += SampleAdvance;
-            Coverage += 4;
-        }
-        SampleRow += SamplePitch;
-        CoverageRow += CoveragePitch;
-    }
-}
-
-internal void
-RenderSamples(loaded_bitmap *BackBuffer, void *SampleBuffer, void *CoverageBuffer,
-              s32 OffsetX, s32 OffsetY)
+RenderSamples(render_chunk *RenderChunk)
 {
     TIMED_FUNCTION();
-    u8 *PixelRow = (u8 *)BackBuffer->Memory + BackBuffer->Pitch*OffsetY;
-    u32 SamplePitch = BackBuffer->Width*sizeof(u32)*SAMPLE_COUNT;
-    u32 CoveragePitch = BackBuffer->Width*sizeof(u32);
-    u8 *SampleRow = (u8 *)SampleBuffer;
-    u8 *CoverageRow = (u8 *)CoverageBuffer;
-    __m128 Four = _mm_set_ps1(4.0f);
-    __m128 Quarter = _mm_set_ps1(0.25f);
-    __m128 One255 = _mm_set_ps1(255.0f);
-    __m128i ColorMask = _mm_set1_epi32(0x000000FF);
-    u32 SampleAdvance = 4*SAMPLE_COUNT;
+    loaded_bitmap *BackBuffer = &RenderChunk->BackBuffer;
+    loaded_bitmap *SampleBuffer = &RenderChunk->SampleBuffer;
+    loaded_bitmap *CoverageBuffer = &RenderChunk->CoverageBuffer;
+    s32 OffsetX = RenderChunk->OffsetX;
+    s32 OffsetY = RenderChunk->OffsetY;
 
     s32 XMin = OffsetX;
     s32 YMin = OffsetY;
     s32 XMax = OffsetX + BackBuffer->Width;
     s32 YMax = OffsetY + BackBuffer->Height;
+    
+    u8 *PixelRow = (u8 *)BackBuffer->Memory + BackBuffer->Pitch*OffsetY;
+    u8 *SampleRow = (u8 *)SampleBuffer->Memory + YMin*SampleBuffer->Pitch;
+    u8 *CoverageRow = (u8 *)CoverageBuffer->Memory + YMin*CoverageBuffer->Pitch;
+    __m128 Four = _mm_set_ps1(4.0f);
+    __m128 Quarter = _mm_set_ps1(0.25f);
+    __m128 One255 = _mm_set_ps1(255.0f);
+    __m128i ColorMask = _mm_set1_epi32(0x000000FF);
+    u32 SampleAdvance = 4*SAMPLE_COUNT;
 
     s32 AdjustedXMin = (XMin/4)*4;
     s32 AdjustedXMax = ((XMax+3)/4)*4;
@@ -830,8 +1057,8 @@ RenderSamples(loaded_bitmap *BackBuffer, void *SampleBuffer, void *CoverageBuffe
         ++Y)
     {
         u32 *Pixel = (u32 *)PixelRow + AdjustedXMin;
-        u32 *Sample = (u32 *)SampleRow + (SAMPLE_COUNT*(AdjustedXMin-OffsetX));
-        b32 *Coverage = (b32 *)CoverageRow + AdjustedXMin-OffsetX;
+        u32 *Sample = (u32 *)SampleRow + SAMPLE_COUNT*AdjustedXMin;
+        b32 *Coverage = (b32 *)CoverageRow + AdjustedXMin;
         __m128 X4 = _mm_set_ps((r32)AdjustedXMin + 3, (r32)AdjustedXMin + 2,
                                (r32)AdjustedXMin + 1, (r32)AdjustedXMin);
         for(s32 X = AdjustedXMin;
@@ -900,8 +1127,8 @@ RenderSamples(loaded_bitmap *BackBuffer, void *SampleBuffer, void *CoverageBuffe
             X4 = _mm_add_ps(X4, Four);
         }
         PixelRow += BackBuffer->Pitch;
-        SampleRow += SamplePitch;
-        CoverageRow += CoveragePitch;
+        SampleRow += SampleBuffer->Pitch;
+        CoverageRow += CoverageBuffer->Pitch;
     }
 }
 
@@ -1304,12 +1531,12 @@ Insert(memory_arena *Arena, binary_node **NodePtr, r32 SortKey, u32 Index)
 }
 
 internal void
-RenderTree(render_buffer *RenderBuffer, renderer_state *RendererState,
-           binary_node *Node, s32 OffsetX, s32 OffsetY)
+RenderTree(render_buffer *RenderBuffer, render_chunk *RenderChunk,
+           binary_node *Node, s32 OffsetX, s32 OffsetY, u32 Flags)
 {
     if(Node->Prev)
     {
-        RenderTree(RenderBuffer, RendererState, Node->Prev, OffsetX, OffsetY);
+        RenderTree(RenderBuffer, RenderChunk, Node->Prev, OffsetX, OffsetY, Flags);
     }
     for(binary_node *Chain = Node;
         Chain;
@@ -1323,29 +1550,45 @@ RenderTree(render_buffer *RenderBuffer, renderer_state *RendererState,
             {
                 render_bitmap_data *Data = (render_bitmap_data *)(Header + 1);
 
-                RenderBitmap(RendererState->BackBuffer, Data->Bitmap,
-                             Data->Origin,
-                             Data->XAxis, Data->YAxis,
-                             Data->Color, OffsetX, OffsetY);
+                if(IsSet(Flags, RenderFlags_UsePipeline))
+                {
+                    RenderBitmap(RenderChunk, Data->Bitmap,
+                                 Data->Origin,
+                                 Data->XAxis, Data->YAxis,
+                                 Data->Color, OffsetX, OffsetY);
+                }
+                else
+                {
+                    RenderBitmap(&RenderChunk->BackBuffer, Data->Bitmap,
+                                 Data->Origin,
+                                 Data->XAxis, Data->YAxis,
+                                 Data->Color, OffsetX, OffsetY);
+                }
             } break;
 
             case RenderCommand_aligned_rectangle:
             {
                 render_aligned_rectangle_data *Data = (render_aligned_rectangle_data *)(Header + 1);
-                RenderAlignedRectangle(RendererState->BackBuffer, Data->Rect, Data->Color, OffsetX, OffsetY);
+                RenderAlignedRectangle(&RenderChunk->BackBuffer, Data->Rect, Data->Color, OffsetX, OffsetY);
             } break;
             
             case RenderCommand_triangle:
             {
                 render_triangle_data *Data = (render_triangle_data *)(Header + 1);
-                RenderTriangle(RendererState, Data->A, Data->B, Data->C,
-                               Data->Color, OffsetX, OffsetY);
+                if(IsSet(Flags, RenderFlags_UsePipeline))
+                {
+                    RenderTriangle(RenderChunk, Data->A, Data->B, Data->C,
+                                   Data->Color, OffsetX, OffsetY);
+                }
+                else
+                {
+                }
             } break;
             
             case RenderCommand_clear:
             {
                 render_clear_data *Data = (render_clear_data *)(Header + 1);
-                Clear(RendererState->BackBuffer, Data->Color, OffsetX, OffsetY);
+                Clear(&RenderChunk->BackBuffer, Data->Color, OffsetX, OffsetY);
             } break;
 
 #if TROIDS_INTERNAL
@@ -1353,14 +1596,14 @@ RenderTree(render_buffer *RenderBuffer, renderer_state *RendererState,
             {
                 render_DEBUGrectangle_data *Data = (render_DEBUGrectangle_data *)(Header + 1);
 
-                DEBUGRenderSolidRectangle(RendererState->BackBuffer, Data->Origin, Data->XAxis, Data->YAxis,
+                DEBUGRenderSolidRectangle(&RenderChunk->BackBuffer, Data->Origin, Data->XAxis, Data->YAxis,
                                           Data->Color.rgb, OffsetX, OffsetY);
             } break;
             case RenderCommand_DEBUGtriangle:
             {
                 render_DEBUGtriangle_data *Data = (render_DEBUGtriangle_data *)(Header + 1);
 
-                DEBUGRenderSolidTriangle(RendererState->BackBuffer, Data->A, Data->B, Data->C,
+                DEBUGRenderSolidTriangle(&RenderChunk->BackBuffer, Data->A, Data->B, Data->C,
                                          Data->Color.rgb, OffsetX, OffsetY);
             } break;
 
@@ -1368,14 +1611,14 @@ RenderTree(render_buffer *RenderBuffer, renderer_state *RendererState,
             {
                 render_DEBUGcircle_data *Data = (render_DEBUGcircle_data *)(Header + 1);
 
-                DEBUGRenderSolidCircle(RendererState->BackBuffer, Data->P, Data->Radius, Data->Color.rgb, OffsetX, OffsetY);
+                DEBUGRenderSolidCircle(&RenderChunk->BackBuffer, Data->P, Data->Radius, Data->Color.rgb, OffsetX, OffsetY);
             } break;
             
             case RenderCommand_DEBUGline:
             {
                 render_DEBUGline_data *Data = (render_DEBUGline_data *)(Header + 1);
 
-                DEBUGRenderLine(RendererState->BackBuffer, Data->A, Data->B, Data->Color, OffsetX, OffsetY);
+                DEBUGRenderLine(&RenderChunk->BackBuffer, Data->A, Data->B, Data->Color, OffsetX, OffsetY);
             } break;
 #endif
 
@@ -1384,129 +1627,33 @@ RenderTree(render_buffer *RenderBuffer, renderer_state *RendererState,
     }
     if(Node->Next)
     {
-        RenderTree(RenderBuffer, RendererState, Node->Next, OffsetX, OffsetY);
+        RenderTree(RenderBuffer, RenderChunk, Node->Next, OffsetX, OffsetY, Flags);
     }
 }
 
 struct render_tree_data
 {
-    s32 OffsetX;
-    s32 OffsetY;
-    b32 UsePipeline;
-    loaded_bitmap BackBuffer;
-    render_buffer *RenderBuffer;
+    u32 Flags;
     binary_node *Node;
-    void *SampleBuffer;
-    void *CoverageBuffer;
+    render_buffer *RenderBuffer;
+    render_chunk *RenderChunk;
 };
 
 THREAD_CALLBACK(RenderTreeCallback)
 {
     TIMED_FUNCTION();
     render_tree_data *Data = (render_tree_data *)Params;
-    renderer_state RendererState;
-    RendererState.Used = false;
-    RendererState.BackBuffer = &Data->BackBuffer;
-    RendererState.SampleBuffer = Data->SampleBuffer;
-    RendererState.CoverageBuffer = Data->CoverageBuffer;
-    if(Data->UsePipeline)
-    {
-        ClearBuffers(&RendererState);
-    }
-    RenderTree(Data->RenderBuffer, &RendererState, Data->Node,
-               Data->OffsetX, Data->OffsetY);
-    if(Data->UsePipeline && RendererState.Used)
-    {
-        RenderSamples(&Data->BackBuffer, Data->SampleBuffer, Data->CoverageBuffer,
-                      Data->OffsetX, Data->OffsetY);
-    }
-}
+    render_chunk *RenderChunk = Data->RenderChunk;
 
-inline void
-SplitWorkIntoSquares(render_buffer *RenderBuffer, binary_node *Node, void *Memory,
-                     u32 CoreCount, s32 Width, s32 Height, s32 Pitch, s32 OffsetX, s32 OffsetY,
-                     render_tree_data *Data)
-{
-    if(CoreCount == 1)
+    // NOTE(chris): The worst that can happen here is just some tearing, right?
+//    if(RenderChunk->Cleared)
     {
-        Data->OffsetX = OffsetX;
-        Data->OffsetY = OffsetY;
-        Data->BackBuffer.Height = Height;
-        Data->BackBuffer.Width = Width;
-    }
-    else if(CoreCount & 1)
-    {
-        Assert(!"Odd core count not supported");
-    }
-    else
-    {
-        u32 HalfCores = CoreCount/2;
-        if(Width >= Height)
+        RenderTree(Data->RenderBuffer, RenderChunk, Data->Node,
+                   RenderChunk->OffsetX, RenderChunk->OffsetY, Data->Flags);
+        if(IsSet(Data->Flags, RenderFlags_UsePipeline) && RenderChunk->Used && RenderChunk->Cleared)
         {
-            s32 HalfWidth = Width/2;
-            SplitWorkIntoSquares(RenderBuffer, Node, Memory,
-                      HalfCores, HalfWidth, Height, Pitch, OffsetX, OffsetY,
-                      Data);
-            SplitWorkIntoSquares(RenderBuffer, Node, Memory,
-                      HalfCores, HalfWidth, Height, Pitch, OffsetX+HalfWidth, OffsetY,
-                      Data+HalfCores);
+            RenderSamples(RenderChunk);
         }
-        else
-        {
-            s32 HalfHeight = Height/2;
-            SplitWorkIntoSquares(RenderBuffer, Node, Memory,
-                      HalfCores, Width, HalfHeight, Pitch, OffsetX, OffsetY,
-                      Data);
-            SplitWorkIntoSquares(RenderBuffer, Node, Memory,
-                      HalfCores, Width, HalfHeight, Pitch, OffsetX, OffsetY+HalfHeight,
-                      Data+HalfCores);
-        }
-    }
-}
-
-inline void
-SplitWorkIntoHorizontalStrips(render_buffer *RenderBuffer, binary_node *Node, void *Memory,
-                              u32 CoreCount, s32 Width, s32 Height, s32 Pitch, render_tree_data *Data)
-{
-    s32 OffsetY = 0;
-    r32 InverseCoreCount = 1.0f / CoreCount;
-    for(u32 CoreIndex = 0;
-        CoreIndex < CoreCount;
-        ++CoreIndex)
-    {
-        render_tree_data *CoreData = Data + CoreIndex;
-
-        s32 NextOffsetY = RoundS32(Height*(CoreIndex+1)*InverseCoreCount);
-        
-        CoreData->OffsetX = 0;
-        CoreData->OffsetY = OffsetY;
-        CoreData->BackBuffer.Height = NextOffsetY-OffsetY;
-        CoreData->BackBuffer.Width = Width;
-
-        OffsetY = NextOffsetY;
-    }
-}
-
-inline void
-SplitWorkIntoVerticalStrips(render_buffer *RenderBuffer, binary_node *Node, void *Memory,
-                            u32 CoreCount, s32 Width, s32 Height, s32 Pitch, render_tree_data *Data)
-{
-    s32 OffsetX = 0;
-    r32 InverseCoreCount = 1.0f / CoreCount;
-    for(u32 CoreIndex = 0;
-        CoreIndex < CoreCount;
-        ++CoreIndex)
-    {
-        render_tree_data *CoreData = Data + CoreIndex;
-
-        s32 NextOffsetX = RoundS32(Width*(CoreIndex+1)*InverseCoreCount);
-        
-        CoreData->OffsetX = OffsetX;
-        CoreData->OffsetY = 0;
-        CoreData->BackBuffer.Height = Height;
-        CoreData->BackBuffer.Width = NextOffsetX-OffsetX;
-
-        OffsetX = NextOffsetX;
     }
 }
 
@@ -1519,7 +1666,7 @@ SplitWorkIntoVerticalStrips(render_buffer *RenderBuffer, binary_node *Node, void
 
 
 internal void
-RenderBufferToBackBuffer(render_buffer *RenderBuffer, loaded_bitmap *BackBuffer, u32 Flags = 0)
+RenderBufferToBackBuffer(renderer_state *RendererState, render_buffer *RenderBuffer, u32 Flags = 0)
 {
     binary_node *SortTree = 0;
     u8 *Cursor = (u8 *)RenderBuffer->Arena.Memory;
@@ -1546,35 +1693,20 @@ RenderBufferToBackBuffer(render_buffer *RenderBuffer, loaded_bitmap *BackBuffer,
     }
     if(SortTree)
     {
-        render_tree_data RenderTreeData[64];
-        thread_progress ThreadProgress[64];
-        // TODO(chris): Optimize this for the number of logical cores.
-        s32 CoreCount = 64;
-#if 0
-        SplitWorkIntoVerticalStrips(RenderBuffer, SortTree, BackBuffer->Memory, CoreCount,
-            BackBuffer->Width, BackBuffer->Height, BackBuffer->Pitch,
-            RenderTreeData);
-#else
-        SplitWorkIntoSquares(RenderBuffer, SortTree, BackBuffer->Memory, CoreCount,
-            BackBuffer->Width, BackBuffer->Height, BackBuffer->Pitch, 0, 0,
-            RenderTreeData);
-#endif
+        render_tree_data RenderTreeData[RENDER_CHUNK_COUNT];
+        thread_progress ThreadProgress[RENDER_CHUNK_COUNT];
 
-        for(s32 RenderChunkIndex = CoreCount-1;
+        for(s32 RenderChunkIndex = RENDER_CHUNK_COUNT-1;
             RenderChunkIndex >= 0;
             --RenderChunkIndex)
         {
             render_tree_data *Data = RenderTreeData + RenderChunkIndex;
             thread_progress *Progress = ThreadProgress + RenderChunkIndex;
             
-            Data->BackBuffer.Pitch = BackBuffer->Pitch;
-            Data->BackBuffer.Memory = BackBuffer->Memory;
-            Data->RenderBuffer = RenderBuffer;
+            Data->Flags = Flags;
             Data->Node = SortTree;
-            u32 PixelCount = Data->BackBuffer.Width*Data->BackBuffer.Height;
-            Data->SampleBuffer = PushSize(&RenderBuffer->Arena, PixelCount*sizeof(u32)*SAMPLE_COUNT);
-            Data->CoverageBuffer = PushSize(&RenderBuffer->Arena, PixelCount*sizeof(b32));
-            Data->UsePipeline = IsSet(Flags, RenderFlags_UsePipeline);
+            Data->RenderBuffer = RenderBuffer;
+            Data->RenderChunk = RendererState->RenderChunks + RenderChunkIndex;
             if(RenderChunkIndex == 0)
             {
                 RenderTreeCallback(Data);
@@ -1591,7 +1723,7 @@ RenderBufferToBackBuffer(render_buffer *RenderBuffer, loaded_bitmap *BackBuffer,
         {
             Finished = true;
             for(s32 ProgressIndex = 0;
-                ProgressIndex < CoreCount;
+                ProgressIndex < RENDER_CHUNK_COUNT;
                 ++ProgressIndex)
             {
                 thread_progress *Progress = ThreadProgress + ProgressIndex;

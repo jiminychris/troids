@@ -574,7 +574,7 @@ GetThread(debug_frame *Frame, u32 ThreadID)
     {
         Assert(Frame->ThreadCount < ArrayCount(Frame->Threads));
         Thread = Frame->Threads + Frame->ThreadCount++;
-        Thread->CurrentElement = &Thread->ProfilerSentinel;
+        Thread->CollatingElement = Thread->CurrentElement = &Thread->ProfilerSentinel;
         Thread->ProfilerSentinel.EndTicks = 0;
         Thread->ID = ThreadID;
     }
@@ -637,17 +637,17 @@ extern "C" DEBUG_COLLATE(DebugCollate)
                         Element->Child = 0;
 
                         debug_thread *Thread = GetThread(Frame, Event->ThreadID);
-                        if(Thread->CurrentElement->EndTicks)
+                        if(Thread->CollatingElement->EndTicks)
                         {
-                            Thread->CurrentElement->Next = Element;
-                            Element->Parent = Thread->CurrentElement->Parent;
+                            Thread->CollatingElement->Next = Element;
+                            Element->Parent = Thread->CollatingElement->Parent;
                         }
                         else
                         {
-                            Thread->CurrentElement->Child = Element;
-                            Element->Parent = Thread->CurrentElement;
+                            Thread->CollatingElement->Child = Element;
+                            Element->Parent = Thread->CollatingElement;
                         }
-                        Thread->CurrentElement = Element;
+                        Thread->CollatingElement = Element;
                     }
                 } break;
 
@@ -655,16 +655,32 @@ extern "C" DEBUG_COLLATE(DebugCollate)
                 {
                     if(!GlobalDebugState->Paused)
                     {
-                        debug_thread *Thread = GetThread(Frame, Event->ThreadID);
-                        Assert(Thread->CurrentElement);
-                        // TODO(chris): IMPORTANT FIX THIS ASAP!!!
-                        if(Thread->CurrentElement->EndTicks)
+                        for(u32 BackIndex = 0;
+                            BackIndex < 5;
+                            ++BackIndex)
                         {
-                            Assert(Thread->CurrentElement->Parent);
-                            Thread->CurrentElement = Thread->CurrentElement->Parent;
+                            u32 BackFrameIndex = (GlobalDebugState->CollatingFrameIndex - BackIndex)&(MAX_DEBUG_FRAMES-1);
+                            debug_frame *BackFrame = GlobalDebugState->Frames + BackFrameIndex;
+                            
+                            debug_thread *Thread = GetThread(BackFrame, Event->ThreadID);
+                            Assert(Thread->CollatingElement);
+
+                            profiler_element *BeginElement = Thread->CollatingElement;
+                            if(BeginElement != &Thread->ProfilerSentinel)
+                            {
+                                if(BeginElement->EndTicks)
+                                {
+                                    Assert(BeginElement->Parent);
+                                    BeginElement = BeginElement->Parent;
+                                }
+                                if(StringsMatch(BeginElement->GUID, Event->GUID))
+                                {
+                                    BeginElement->EndTicks = Event->Value_u64;
+                                    Thread->CollatingElement = BeginElement;
+                                    break;
+                                }
+                            }
                         }
-                        Assert(Thread->CurrentElement != &Thread->ProfilerSentinel);
-                        Thread->CurrentElement->EndTicks = Event->Value_u64;
                     }
                 } break;
 
@@ -674,16 +690,6 @@ extern "C" DEBUG_COLLATE(DebugCollate)
                     {
                         Frame->ElapsedSeconds = Event->ElapsedSeconds;
                         Frame->EndTicks = Event->Value_u64;
-
-                        for(u32 ThreadIndex = 0;
-                            ThreadIndex < Frame->ThreadCount;
-                            ++ThreadIndex)
-                        {
-                            debug_thread *Thread = Frame->Threads + ThreadIndex;
-                            Thread->CurrentElement = &Thread->ProfilerSentinel;
-                            Thread->CurrentElement->BeginTicks = Frame->BeginTicks;
-                            Thread->CurrentElement->EndTicks = Frame->EndTicks;
-                        }
                         GlobalDebugState->ViewingFrameIndex = GlobalDebugState->CollatingFrameIndex;
 
                         // NOTE(chris): Trick only works if MAX_DEBUG_FRAMES is a power of two.
@@ -705,33 +711,6 @@ extern "C" DEBUG_COLLATE(DebugCollate)
                             }
                             NewFrame->NodeHash[NodeIndex] = 0;
                         }
-                        // TODO(chris): IMPORTANT Instead of this, check the global hash when creating
-                        // any new node and grab the string pointer out of there if it exists.
-#if 0
-                        for(u32 NodeIndex = 0;
-                            NodeIndex < ArrayCount(Frame->NodeHash);
-                            ++NodeIndex)
-                        {
-                            for(debug_node *Chain = Frame->NodeHash[NodeIndex];
-                                Chain;
-                                Chain = Chain->NextInHash)
-                            {
-                                debug_node *NewNode;
-                                if(GlobalDebugState->FirstFreeNode)
-                                {
-                                    NewNode = GlobalDebugState->FirstFreeNode;
-                                    GlobalDebugState->FirstFreeNode = NewNode->NextFree;
-                                }
-                                else
-                                {
-                                    NewNode = PushStruct(&GlobalDebugState->Arena, debug_node, PushFlag_Zero);
-                                }
-                                *NewNode = *Chain;
-                                NewNode->NextInHash = NewFrame->NodeHash[NodeIndex];
-                                NewFrame->NodeHash[NodeIndex] = NewNode;
-                            }
-                        }
-#endif
                         for(u32 ThreadIndex = 0;
                             ThreadIndex < NewFrame->ThreadCount;
                             ++ThreadIndex)
@@ -772,13 +751,13 @@ extern "C" DEBUG_COLLATE(DebugCollate)
                             ++ThreadIndex)
                         {
                             debug_thread *OldThread = Frame->Threads + ThreadIndex;
-                            GetThread(NewFrame, OldThread->ID);
+                            
+                            debug_thread *NewThread = GetThread(NewFrame, OldThread->ID);
+
+                            OldThread->CurrentElement->BeginTicks = Frame->BeginTicks;
+                            OldThread->CurrentElement->EndTicks = Frame->EndTicks;
                         }
                         NewFrame->BeginTicks = Event->Value_u64;
-#if 0
-                        NewFrame->CurrentElement = &NewFrame->ProfilerSentinel;
-                        NewFrame->CurrentElement->EndTicks = 0;
-#endif
                         Frame = NewFrame;
                     }
                     GroupBeginStackCount = 0;
@@ -822,7 +801,7 @@ extern "C" DEBUG_COLLATE(DebugCollate)
             Layout.Font = &GlobalDebugState->Font;
             Layout.Scale = 21.0f / Layout.Font->Height;
             Layout.DropShadow = true;
-            Layout.P = V2(0, BackBuffer->Height - Layout.Font->Ascent*Layout.Scale);
+            Layout.P = V2(0, RendererState->BackBuffer.Height - Layout.Font->Ascent*Layout.Scale);
             Layout.Color = V4(1, 1, 1, 1);
 #if TROIDS_DEBUG_DISPLAY
             DrawNodes(RenderBuffer, &Layout, Frame, GlobalDebugState->NodeSentinel.Next, Input);
@@ -832,9 +811,9 @@ extern "C" DEBUG_COLLATE(DebugCollate)
 
     GlobalDebugState->EventStart = EventIndex;
 
-    BEGIN_TIMED_BLOCK("DEBUGRender");
-    RenderBufferToBackBuffer(RenderBuffer, BackBuffer);
-    END_TIMED_BLOCK();
+    BEGIN_TIMED_BLOCK(GUID, "DEBUGRender");
+    RenderBufferToBackBuffer(RendererState, RenderBuffer);
+    END_TIMED_BLOCK(GUID);
 
     EndTemporaryMemory(RenderMemory);
     RenderBuffer->Projection = RenderBuffer->DefaultProjection;

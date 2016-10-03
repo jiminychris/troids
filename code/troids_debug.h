@@ -47,6 +47,7 @@ struct debug_event
     {
         r32 ElapsedSeconds;
         u32 Iterations;
+        u32 FrameIndex;
     };
     debug_event_type Type;
     union
@@ -126,6 +127,8 @@ struct debug_thread
     profiler_element ProfilerSentinel;
     profiler_element *CurrentElement;
     profiler_element *NextElement;
+
+    profiler_element *CollatingElement;
 };
 
 #define MAX_DEBUG_FRAMES 128
@@ -261,34 +264,36 @@ NextDebugEvent(char *GUID = "")
     return(Result);
 }
 
-inline void
+inline char *
 BeginTimedBlock(char *GUID, u32 Iterations)
 {
     debug_event *Event = NextDebugEvent(GUID);
     Event->Type = DebugEventType_CodeBegin;
     Event->Value_u64 = __rdtsc();
     Event->Iterations = Iterations;
+    return(Event->GUID);
 }
-#define BEGIN_TIMED_BLOCK(Name) BeginTimedBlock(DEBUG_GUID(Name), 1)
+#define BEGIN_TIMED_BLOCK(GUIDName, Name) char *GUIDName = BeginTimedBlock(DEBUG_GUID(Name), 1);
 
 inline void
-EndTimedBlock()
+EndTimedBlock(char *GUID)
 {
-    debug_event *Event = NextDebugEvent();
+    debug_event *Event = NextDebugEvent(GUID);
     Event->Type = DebugEventType_CodeEnd;
     Event->Value_u64 = __rdtsc();
 }
-#define END_TIMED_BLOCK() EndTimedBlock()
+#define END_TIMED_BLOCK(GUID) EndTimedBlock(GUID)
 
 struct debug_timer
 {
-    debug_timer(char *GUID, u32 Iterations)
+    char *GUID;
+    debug_timer(char *GUIDInit, u32 Iterations)
     {
-        BeginTimedBlock(GUID, Iterations);
+        GUID = BeginTimedBlock(GUIDInit, Iterations);
     }
     ~debug_timer(void)
     {
-        EndTimedBlock();
+        EndTimedBlock(GUID);
     }
 };
 

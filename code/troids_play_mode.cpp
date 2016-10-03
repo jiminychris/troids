@@ -548,7 +548,7 @@ ResetGame(play_state *State, render_buffer *RenderBuffer, loaded_font *Font)
 }
 
 internal void
-PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
+PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererState)
 {
     game_state *GameState = (game_state *)GameMemory->PermanentMemory;
     transient_state *TranState = (transient_state *)GameMemory->TemporaryMemory;
@@ -789,7 +789,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
         EntityIndex = NextIndex;
     }
 
-    BEGIN_TIMED_BLOCK("Collision");
+    BEGIN_TIMED_BLOCK(GUID, "Collision");
     // NOTE(chris): Collision pass
     for(u32 EntityIndex = 1;
         EntityIndex < State->EntityCount;
@@ -1552,7 +1552,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
             }
         }
     }
-    END_TIMED_BLOCK();
+    END_TIMED_BLOCK(GUID);
 
 #if COLLISION_DEBUG
 #define LINEAR_BOUNDING_EXTRUSION_Z_OFFSET -0.0002f
@@ -1902,14 +1902,23 @@ PlayMode(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
             LifeIndex < State->Lives;
             ++LifeIndex)
         {
-            PushBitmap(RenderBuffer, &GameState->ShipBitmap, P, XAxis, YAxis, Dim);
+            PushTriangle(RenderBuffer,
+                         P + 0.97f*V3(0, HalfDim.y, 0),
+                         P + 0.96f*V3(-HalfDim.x, -HalfDim.y, 0),
+                         P + 0.69f*V3(0, -HalfDim.y, 0),
+                         V4(1, 1, 1, 1));
+            PushTriangle(RenderBuffer,
+                         P + 0.97f*V3(0, HalfDim.y, 0),
+                         P + 0.69f*V3(0, -HalfDim.y, 0),
+                         P + 0.96f*V3(HalfDim.x, -HalfDim.y, 0),
+                         V4(1, 1, 1, 1));
             P.x -= 1.2f*Dim.x;
         }        
     }
 
     {
         TIMED_BLOCK("Render Game");
-        RenderBufferToBackBuffer(RenderBuffer, BackBuffer, RenderFlags_UsePipeline);
+        RenderBufferToBackBuffer(RendererState, RenderBuffer, RenderFlags_UsePipeline);
     }
     EndTemporaryMemory(RenderMemory);
 }

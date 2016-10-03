@@ -257,6 +257,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 #if TROIDS_INTERNAL
     GlobalDebugState = (debug_state *)GameMemory->DebugMemory;
 #endif
+    loaded_bitmap *BackBuffer = &RendererState->BackBuffer;
     TIMED_FUNCTION();
     game_state *State = (game_state *)GameMemory->PermanentMemory;
     PlatformReadFile = GameMemory->PlatformReadFile;
@@ -273,10 +274,10 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         State->MetersToPixels = 3674.9418959066769192359305459154f;
 
 #if 1
-        State->ShipBitmap = LoadBitmap("ship_opaque.bmp");
+//        State->ShipBitmap = LoadBitmap("ship_opaque.bmp");
 //        State->AsteroidBitmap = LoadBitmap("asteroid_opaque.bmp");
 #else
-        State->ShipBitmap = LoadBitmap("ship_opaque.bmp");
+//        State->ShipBitmap = LoadBitmap("ship_opaque.bmp");
 //        State->AsteroidBitmap = LoadBitmap("asteroid_opaque.bmp");
 #endif
         State->BulletBitmap = LoadBitmap("bullet.bmp");
@@ -297,7 +298,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         TranState->RenderBuffer.Projection = TranState->RenderBuffer.DefaultProjection;
         TranState->RenderBuffer.CameraP = V3(0.0f, 0.0f, 200.0f);
         
-        State->HeadMesh = LoadObj("head.obj", &TranState->Arena);
+//        State->HeadMesh = LoadObj("head.obj", &TranState->Arena);
 
         TranState->IsInitialized = true;
     }
@@ -360,12 +361,12 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     {
         case GameMode_TitleScreen:
         {
-            TitleScreenMode(GameMemory, Input, BackBuffer);
+            TitleScreenMode(GameMemory, Input, RendererState);
         } break;
 
         case GameMode_Play:
         {
-            PlayMode(GameMemory, Input, BackBuffer);
+            PlayMode(GameMemory, Input, RendererState);
         } break;
     }
 }

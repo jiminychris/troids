@@ -43,9 +43,8 @@ struct game_state
         title_screen_state TitleScreenState;
     };
 
-    loaded_bitmap ShipBitmap;
     loaded_bitmap BulletBitmap;
-    loaded_obj HeadMesh;
+//    loaded_obj HeadMesh;
 
     memory_arena Arena;
 };

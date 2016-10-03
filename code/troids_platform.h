@@ -11,6 +11,7 @@
 #include <float.h>
 
 #define GAMMA_CORRECT 1
+#define SAMPLE_COUNT 4
 
 #define global_variable static
 #define local_persist static
@@ -223,6 +224,55 @@ Maximum(r64 A, r64 B)
     return(A);
 }
 
+inline s32
+RoundS32(r32 A)
+{
+    s32 Result = (s32)(A + 0.5f);
+    return(Result);
+}
+
+inline u32
+RoundU32(r32 A)
+{
+    u32 Result = (u32)(A + 0.5f);
+    return(Result);
+}
+
+inline s32
+Clamp(s32 Min, s32 A, s32 Max)
+{
+    s32 Result = Maximum(Min, Minimum(Max, A));
+    return(Result);
+}
+
+inline r32
+Clamp(r32 Min, r32 A, r32 Max)
+{
+    r32 Result = Maximum(Min, Minimum(Max, A));
+    return(Result);
+}
+
+inline r64
+Clamp(r64 Min, r64 A, r64 Max)
+{
+    r64 Result = Maximum(Min, Minimum(Max, A));
+    return(Result);
+}
+
+inline r32
+Clamp01(r32 A)
+{
+    r32 Result = Clamp(0.0f, A, 1.0f);
+    return(Result);
+}
+
+inline r64
+Clamp01(r64 A)
+{
+    r64 Result = Clamp(0.0, A, 1.0);
+    return(Result);
+}
+
 #if TROIDS_SLOW
 #define Assert(Expr) {if(!(Expr)) int A = *((int *)0);}
 #else
@@ -273,6 +323,117 @@ struct loaded_bitmap
     s32 Pitch;
     void *Memory;
 };
+
+struct render_chunk
+{
+    b32 Cleared;
+    b32 Used;
+    loaded_bitmap BackBuffer;
+    loaded_bitmap CoverageBuffer;
+    loaded_bitmap SampleBuffer;
+    s32 OffsetX;
+    s32 OffsetY;
+};
+
+// TODO(chris): Optimize this for the number of logical cores.
+#define RENDER_CHUNK_COUNT 64
+struct renderer_state
+{
+    loaded_bitmap BackBuffer;
+    loaded_bitmap CoverageBuffer;
+    loaded_bitmap SampleBuffer;
+
+    render_chunk RenderChunks[RENDER_CHUNK_COUNT];
+};
+
+inline void
+SplitWorkIntoSquares(render_chunk *RenderChunks, u32 CoreCount, s32 Width, s32 Height,
+                     s32 OffsetX, s32 OffsetY)
+{
+    if(CoreCount == 1)
+    {
+        RenderChunks->OffsetX = OffsetX;
+        RenderChunks->OffsetY = OffsetY;
+        RenderChunks->BackBuffer.Height = Height;
+        RenderChunks->BackBuffer.Width = Width;
+        RenderChunks->CoverageBuffer.Height = RenderChunks->BackBuffer.Height;
+        RenderChunks->CoverageBuffer.Width = RenderChunks->BackBuffer.Width;
+        RenderChunks->SampleBuffer.Height = RenderChunks->BackBuffer.Height;
+        RenderChunks->SampleBuffer.Width = SAMPLE_COUNT*RenderChunks->BackBuffer.Width;
+    }
+    else if(CoreCount & 1)
+    {
+        Assert(!"Odd core count not supported");
+    }
+    else
+    {
+        u32 HalfCores = CoreCount/2;
+        if(Width >= Height)
+        {
+            s32 HalfWidth = Width/2;
+            SplitWorkIntoSquares(RenderChunks, HalfCores, HalfWidth, Height, OffsetX, OffsetY);
+            SplitWorkIntoSquares(RenderChunks+HalfCores, HalfCores, HalfWidth, Height, OffsetX+HalfWidth, OffsetY);
+        }
+        else
+        {
+            s32 HalfHeight = Height/2;
+            SplitWorkIntoSquares(RenderChunks, HalfCores, Width, HalfHeight, OffsetX, OffsetY);
+            SplitWorkIntoSquares(RenderChunks+HalfCores, HalfCores, Width, HalfHeight, OffsetX, OffsetY+HalfHeight);
+        }
+    }
+}
+
+inline void
+SplitWorkIntoHorizontalStrips(render_chunk *RenderChunks, u32 CoreCount, s32 Width, s32 Height)
+{
+    s32 OffsetY = 0;
+    r32 InverseCoreCount = 1.0f / CoreCount;
+    for(u32 CoreIndex = 0;
+        CoreIndex < CoreCount;
+        ++CoreIndex)
+    {
+        render_chunk *RenderChunk = RenderChunks + CoreIndex;
+
+        s32 NextOffsetY = RoundS32(Height*(CoreIndex+1)*InverseCoreCount);
+        
+        RenderChunk->OffsetX = 0;
+        RenderChunk->OffsetY = OffsetY;
+        RenderChunk->BackBuffer.Height = NextOffsetY-OffsetY;
+        RenderChunk->BackBuffer.Width = Width;
+        RenderChunks->CoverageBuffer.Height = RenderChunk->BackBuffer.Height;
+        RenderChunks->CoverageBuffer.Width = RenderChunks->BackBuffer.Width;
+        RenderChunks->SampleBuffer.Height = RenderChunk->BackBuffer.Height;
+        RenderChunks->SampleBuffer.Width = SAMPLE_COUNT*RenderChunks->BackBuffer.Width;
+
+        OffsetY = NextOffsetY;
+    }
+}
+
+inline void
+SplitWorkIntoVerticalStrips(render_chunk *RenderChunks, u32 CoreCount, s32 Width, s32 Height)
+{
+    s32 OffsetX = 0;
+    r32 InverseCoreCount = 1.0f / CoreCount;
+    for(u32 CoreIndex = 0;
+        CoreIndex < CoreCount;
+        ++CoreIndex)
+    {
+        render_chunk *RenderChunk = RenderChunks + CoreIndex;
+
+        s32 NextOffsetX = RoundS32(Width*(CoreIndex+1)*InverseCoreCount);
+        
+        RenderChunk->OffsetX = OffsetX;
+        RenderChunk->OffsetY = 0;
+        RenderChunk->BackBuffer.Height = Height;
+        RenderChunk->BackBuffer.Width = NextOffsetX-OffsetX;
+        RenderChunks->CoverageBuffer.Height = RenderChunk->BackBuffer.Height;
+        RenderChunks->CoverageBuffer.Width = RenderChunks->BackBuffer.Width;
+        RenderChunks->SampleBuffer.Height = RenderChunk->BackBuffer.Height;
+        RenderChunks->SampleBuffer.Width = SAMPLE_COUNT*RenderChunks->BackBuffer.Width;
+
+        OffsetX = NextOffsetX;
+    }
+}
 
 enum font_weight
 {
@@ -567,25 +728,29 @@ CatStrings(u32 DestSize, char *DestInit,
 inline b32
 StringsMatch(char *A, char *B)
 {
-    b32 Result = true;
-    while(*A || *B)
+    b32 Result = false;
+    if(A && B)
     {
-        if(*A++ != *B++)
+        Result = true;
+        while(*A || *B)
         {
-            Result = false;
-            break;
-        }
-    } 
+            if(*A++ != *B++)
+            {
+                Result = false;
+                break;
+            }
+        } 
+    }
     return Result;
 }
 
-#define GAME_UPDATE_AND_RENDER(Name) void Name(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
+#define GAME_UPDATE_AND_RENDER(Name) void Name(game_memory *GameMemory, game_input *Input, renderer_state *RendererState)
 typedef GAME_UPDATE_AND_RENDER(game_update_and_render);
 
 #define GAME_GET_SOUND_SAMPLES(Name) void Name(game_memory *GameMemory, game_input *Input, game_sound_buffer *SoundBuffer)
 typedef GAME_GET_SOUND_SAMPLES(game_get_sound_samples);
 
-#define DEBUG_COLLATE(Name) void Name(game_memory *GameMemory, game_input *Input, loaded_bitmap *BackBuffer)
+#define DEBUG_COLLATE(Name) void Name(game_memory *GameMemory, game_input *Input, renderer_state *RendererState)
 typedef DEBUG_COLLATE(debug_collate);
 
 #define TROIDS_PLATFORM_H

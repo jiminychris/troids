@@ -19,14 +19,6 @@ enum render_flags
     RenderFlags_UsePipeline = 1<<0,
 };
 
-struct renderer_state
-{
-    b32 Used;
-    loaded_bitmap *BackBuffer;
-    void *SampleBuffer;
-    void *CoverageBuffer;
-};
-
 struct render_buffer
 {
     u32 Width;
