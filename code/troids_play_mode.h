@@ -66,6 +66,7 @@ struct play_state
     physics_state PhysicsState;
 
     s32 Lives;
+    s32 AsteroidCount;
     seed AsteroidSeed;
 
     u32 EntityCount;

@@ -460,14 +460,6 @@ PushTriangle(render_buffer *RenderBuffer, v3 A, v3 B, v3 C, v4 Color)
     }
 }
 
-inline void
-PushClear(render_buffer *RenderBuffer, v3 Color)
-{
-    PushRenderHeader(Data, &RenderBuffer->Arena, clear);
-
-    Data->Color = Color;
-}
-
 #if TROIDS_INTERNAL
 struct render_DEBUGrectangle_data
 {
@@ -618,6 +610,95 @@ GetTightCenteredOffset(text_measurement TextMeasurement)
                         TextMeasurement.TextMinY + TextMeasurement.TextMaxY);
     v2 Result = AlignP - Center;
     return(Result);
+}
+
+inline void
+SplitWorkIntoSquares(render_chunk *RenderChunks, u32 CoreCount, s32 Width, s32 Height,
+                     s32 OffsetX, s32 OffsetY)
+{
+    if(CoreCount == 1)
+    {
+        RenderChunks->OffsetX = OffsetX;
+        RenderChunks->OffsetY = OffsetY;
+        RenderChunks->BackBuffer.Height = Height;
+        RenderChunks->BackBuffer.Width = Width;
+        RenderChunks->CoverageBuffer.Height = RenderChunks->BackBuffer.Height;
+        RenderChunks->CoverageBuffer.Width = RenderChunks->BackBuffer.Width;
+        RenderChunks->SampleBuffer.Height = RenderChunks->BackBuffer.Height;
+        RenderChunks->SampleBuffer.Width = SAMPLE_COUNT*RenderChunks->BackBuffer.Width;
+    }
+    else if(CoreCount & 1)
+    {
+        Assert(!"Odd core count not supported");
+    }
+    else
+    {
+        u32 HalfCores = CoreCount/2;
+        if(Width >= Height)
+        {
+            s32 HalfWidth = Width/2;
+            SplitWorkIntoSquares(RenderChunks, HalfCores, HalfWidth, Height, OffsetX, OffsetY);
+            SplitWorkIntoSquares(RenderChunks+HalfCores, HalfCores, HalfWidth, Height, OffsetX+HalfWidth, OffsetY);
+        }
+        else
+        {
+            s32 HalfHeight = Height/2;
+            SplitWorkIntoSquares(RenderChunks, HalfCores, Width, HalfHeight, OffsetX, OffsetY);
+            SplitWorkIntoSquares(RenderChunks+HalfCores, HalfCores, Width, HalfHeight, OffsetX, OffsetY+HalfHeight);
+        }
+    }
+}
+
+inline void
+SplitWorkIntoHorizontalStrips(render_chunk *RenderChunks, u32 CoreCount, s32 Width, s32 Height)
+{
+    s32 OffsetY = 0;
+    r32 InverseCoreCount = 1.0f / CoreCount;
+    for(u32 CoreIndex = 0;
+        CoreIndex < CoreCount;
+        ++CoreIndex)
+    {
+        render_chunk *RenderChunk = RenderChunks + CoreIndex;
+
+        s32 NextOffsetY = RoundS32(Height*(CoreIndex+1)*InverseCoreCount);
+        
+        RenderChunk->OffsetX = 0;
+        RenderChunk->OffsetY = OffsetY;
+        RenderChunk->BackBuffer.Height = NextOffsetY-OffsetY;
+        RenderChunk->BackBuffer.Width = Width;
+        RenderChunks->CoverageBuffer.Height = RenderChunk->BackBuffer.Height;
+        RenderChunks->CoverageBuffer.Width = RenderChunks->BackBuffer.Width;
+        RenderChunks->SampleBuffer.Height = RenderChunk->BackBuffer.Height;
+        RenderChunks->SampleBuffer.Width = SAMPLE_COUNT*RenderChunks->BackBuffer.Width;
+
+        OffsetY = NextOffsetY;
+    }
+}
+
+inline void
+SplitWorkIntoVerticalStrips(render_chunk *RenderChunks, u32 CoreCount, s32 Width, s32 Height)
+{
+    s32 OffsetX = 0;
+    r32 InverseCoreCount = 1.0f / CoreCount;
+    for(u32 CoreIndex = 0;
+        CoreIndex < CoreCount;
+        ++CoreIndex)
+    {
+        render_chunk *RenderChunk = RenderChunks + CoreIndex;
+
+        s32 NextOffsetX = RoundS32(Width*(CoreIndex+1)*InverseCoreCount);
+        
+        RenderChunk->OffsetX = OffsetX;
+        RenderChunk->OffsetY = 0;
+        RenderChunk->BackBuffer.Height = Height;
+        RenderChunk->BackBuffer.Width = NextOffsetX-OffsetX;
+        RenderChunks->CoverageBuffer.Height = RenderChunk->BackBuffer.Height;
+        RenderChunks->CoverageBuffer.Width = RenderChunks->BackBuffer.Width;
+        RenderChunks->SampleBuffer.Height = RenderChunk->BackBuffer.Height;
+        RenderChunks->SampleBuffer.Width = SAMPLE_COUNT*RenderChunks->BackBuffer.Width;
+
+        OffsetX = NextOffsetX;
+    }
 }
 
 #define TROIDS_RENDER_H

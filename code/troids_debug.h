@@ -120,6 +120,12 @@ struct debug_node
     };
 };
 
+struct hashed_string
+{
+    hashed_string *NextInHash;
+    // NOTE(chris): Stored after this is a null-terminated string
+};
+
 struct debug_thread
 {
     u32 ID;
@@ -129,6 +135,15 @@ struct debug_thread
     profiler_element *NextElement;
 
     profiler_element *CollatingElement;
+};
+
+struct debug_thread_storage
+{
+    u32 ID;
+    
+    memory_arena StringArena;
+    // TODO(chris): These never get freed!
+    hashed_string *StringHash[256];
 };
 
 #define MAX_DEBUG_FRAMES 128
@@ -146,19 +161,12 @@ struct debug_frame
     debug_thread Threads[MAX_DEBUG_THREADS];
 };
 
-struct hashed_string
-{
-    hashed_string *NextInHash;
-    // NOTE(chris): Stored after this is a null-terminated string
-};
-
 struct debug_state
 {
     b32 IsInitialized;
 
     b32 Paused;
     memory_arena Arena;
-    memory_arena StringArena;
     u32 EventStart;
     // TODO(chris): This has the unintended effect of ignoring everything. e.g., I want to ignore
     // only the events raised when drawing the debug display, but this would also ignore background
@@ -177,8 +185,8 @@ struct debug_state
     debug_node *NodeHash[256];
     debug_node *FirstFreeNode;
 
-    // TODO(chris): These never get freed!
-    hashed_string *StringHash[256];
+    u32 ThreadCount;
+    debug_thread_storage ThreadStorage[MAX_DEBUG_THREADS];
     
     profiler_element *FirstFreeProfilerElement;
 
@@ -186,6 +194,32 @@ struct debug_state
 };
 
 global_variable debug_state *GlobalDebugState;
+
+inline debug_thread_storage *
+GetThreadStorage(u32 ThreadID)
+{
+    debug_thread_storage *Thread = 0;
+    b32 Found = false;
+    for(u32 ThreadIndex = 0;
+        ThreadIndex < GlobalDebugState->ThreadCount;
+        ++ThreadIndex)
+    {
+        Thread = GlobalDebugState->ThreadStorage + ThreadIndex;
+        if(Thread->ID == ThreadID)
+        {
+            Found = true;
+            break;
+        }
+    }
+    if(!Found)
+    {
+        Assert(GlobalDebugState->ThreadCount < ArrayCount(GlobalDebugState->ThreadStorage));
+        Thread = GlobalDebugState->ThreadStorage + GlobalDebugState->ThreadCount++;
+        Thread->ID = ThreadID;
+        Thread->StringArena = SubArena(&GlobalDebugState->Arena, Megabytes(16));        
+    }
+    return(Thread);
+}
 
 inline u32
 HashString(char *String)
@@ -213,14 +247,14 @@ CopyString(memory_arena *Arena, char *String)
 }
 
 inline char *
-GetStringFromHash(char *String)
+GetStringFromHash(char *String, debug_thread_storage *Thread = GlobalDebugState->ThreadStorage)
 {
     char *Result = 0;
     
     u32 HashValue = HashString(String);
-    u32 Index = HashValue & (ArrayCount(GlobalDebugState->StringHash) - 1);
-    Assert(Index < ArrayCount(GlobalDebugState->StringHash));
-    hashed_string *FirstInHash = GlobalDebugState->StringHash[Index];
+    u32 Index = HashValue & (ArrayCount(Thread->StringHash) - 1);
+    Assert(Index < ArrayCount(Thread->StringHash));
+    hashed_string *FirstInHash = Thread->StringHash[Index];
 
     for(hashed_string *Chain = FirstInHash;
         Chain;
@@ -236,10 +270,10 @@ GetStringFromHash(char *String)
 
     if(!Result)
     {
-        hashed_string *Header = PushStruct(&GlobalDebugState->StringArena, hashed_string);
-        Result = CopyString(&GlobalDebugState->StringArena, String);
+        hashed_string *Header = PushStruct(&Thread->StringArena, hashed_string);
+        Result = CopyString(&Thread->StringArena, String);
         Header->NextInHash = FirstInHash;
-        GlobalDebugState->StringHash[Index] = Header;
+        Thread->StringHash[Index] = Header;
     }
 
     return(Result);
@@ -257,9 +291,9 @@ NextDebugEvent(char *GUID = "")
                       
     Assert(((EventIndex+1)&Mask) != GlobalDebugState->EventStart);
     debug_event *Result = GlobalDebugState->Events + EventIndex;
-    // TODO(chris): Does this impact the calling code too much?
-    Result->GUID = GetStringFromHash(GUID);
     Result->ThreadID = GetCurrentThreadID();
+    // TODO(chris): Does this impact the calling code too much?
+    Result->GUID = GetStringFromHash(GUID, GetThreadStorage(Result->ThreadID));
     Result->Ignored = GlobalDebugState->Ignored;
     return(Result);
 }

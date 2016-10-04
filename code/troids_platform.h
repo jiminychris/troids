@@ -154,6 +154,14 @@ struct rectangle2i
     v2i Max;
 };
 
+inline r32
+RealMask(b32 Value)
+{
+    u32 IntResult = Value ? 0xFFFFFFFF : 0;
+    r32 Result = *((r32 *)(&IntResult));
+    return(Result);
+}
+
 inline s32
 Minimum(s32 A, s32 B)
 {
@@ -324,117 +332,6 @@ struct loaded_bitmap
     void *Memory;
 };
 
-struct render_chunk
-{
-    b32 Cleared;
-    b32 Used;
-    loaded_bitmap BackBuffer;
-    loaded_bitmap CoverageBuffer;
-    loaded_bitmap SampleBuffer;
-    s32 OffsetX;
-    s32 OffsetY;
-};
-
-// TODO(chris): Optimize this for the number of logical cores.
-#define RENDER_CHUNK_COUNT 64
-struct renderer_state
-{
-    loaded_bitmap BackBuffer;
-    loaded_bitmap CoverageBuffer;
-    loaded_bitmap SampleBuffer;
-
-    render_chunk RenderChunks[RENDER_CHUNK_COUNT];
-};
-
-inline void
-SplitWorkIntoSquares(render_chunk *RenderChunks, u32 CoreCount, s32 Width, s32 Height,
-                     s32 OffsetX, s32 OffsetY)
-{
-    if(CoreCount == 1)
-    {
-        RenderChunks->OffsetX = OffsetX;
-        RenderChunks->OffsetY = OffsetY;
-        RenderChunks->BackBuffer.Height = Height;
-        RenderChunks->BackBuffer.Width = Width;
-        RenderChunks->CoverageBuffer.Height = RenderChunks->BackBuffer.Height;
-        RenderChunks->CoverageBuffer.Width = RenderChunks->BackBuffer.Width;
-        RenderChunks->SampleBuffer.Height = RenderChunks->BackBuffer.Height;
-        RenderChunks->SampleBuffer.Width = SAMPLE_COUNT*RenderChunks->BackBuffer.Width;
-    }
-    else if(CoreCount & 1)
-    {
-        Assert(!"Odd core count not supported");
-    }
-    else
-    {
-        u32 HalfCores = CoreCount/2;
-        if(Width >= Height)
-        {
-            s32 HalfWidth = Width/2;
-            SplitWorkIntoSquares(RenderChunks, HalfCores, HalfWidth, Height, OffsetX, OffsetY);
-            SplitWorkIntoSquares(RenderChunks+HalfCores, HalfCores, HalfWidth, Height, OffsetX+HalfWidth, OffsetY);
-        }
-        else
-        {
-            s32 HalfHeight = Height/2;
-            SplitWorkIntoSquares(RenderChunks, HalfCores, Width, HalfHeight, OffsetX, OffsetY);
-            SplitWorkIntoSquares(RenderChunks+HalfCores, HalfCores, Width, HalfHeight, OffsetX, OffsetY+HalfHeight);
-        }
-    }
-}
-
-inline void
-SplitWorkIntoHorizontalStrips(render_chunk *RenderChunks, u32 CoreCount, s32 Width, s32 Height)
-{
-    s32 OffsetY = 0;
-    r32 InverseCoreCount = 1.0f / CoreCount;
-    for(u32 CoreIndex = 0;
-        CoreIndex < CoreCount;
-        ++CoreIndex)
-    {
-        render_chunk *RenderChunk = RenderChunks + CoreIndex;
-
-        s32 NextOffsetY = RoundS32(Height*(CoreIndex+1)*InverseCoreCount);
-        
-        RenderChunk->OffsetX = 0;
-        RenderChunk->OffsetY = OffsetY;
-        RenderChunk->BackBuffer.Height = NextOffsetY-OffsetY;
-        RenderChunk->BackBuffer.Width = Width;
-        RenderChunks->CoverageBuffer.Height = RenderChunk->BackBuffer.Height;
-        RenderChunks->CoverageBuffer.Width = RenderChunks->BackBuffer.Width;
-        RenderChunks->SampleBuffer.Height = RenderChunk->BackBuffer.Height;
-        RenderChunks->SampleBuffer.Width = SAMPLE_COUNT*RenderChunks->BackBuffer.Width;
-
-        OffsetY = NextOffsetY;
-    }
-}
-
-inline void
-SplitWorkIntoVerticalStrips(render_chunk *RenderChunks, u32 CoreCount, s32 Width, s32 Height)
-{
-    s32 OffsetX = 0;
-    r32 InverseCoreCount = 1.0f / CoreCount;
-    for(u32 CoreIndex = 0;
-        CoreIndex < CoreCount;
-        ++CoreIndex)
-    {
-        render_chunk *RenderChunk = RenderChunks + CoreIndex;
-
-        s32 NextOffsetX = RoundS32(Width*(CoreIndex+1)*InverseCoreCount);
-        
-        RenderChunk->OffsetX = OffsetX;
-        RenderChunk->OffsetY = 0;
-        RenderChunk->BackBuffer.Height = Height;
-        RenderChunk->BackBuffer.Width = NextOffsetX-OffsetX;
-        RenderChunks->CoverageBuffer.Height = RenderChunk->BackBuffer.Height;
-        RenderChunks->CoverageBuffer.Width = RenderChunks->BackBuffer.Width;
-        RenderChunks->SampleBuffer.Height = RenderChunk->BackBuffer.Height;
-        RenderChunks->SampleBuffer.Width = SAMPLE_COUNT*RenderChunks->BackBuffer.Width;
-
-        OffsetX = NextOffsetX;
-    }
-}
-
 enum font_weight
 {
     FontWeight_Normal,
@@ -449,6 +346,8 @@ struct loaded_font
     loaded_bitmap Glyphs[128];
     r32 KerningTable[128][128];
 };
+
+global_variable thread_progress GlobalNullProgress;
 
 #define PLATFORM_PUSH_THREAD_WORK(Name) void Name(thread_callback *Callback, void *Params, thread_progress *Progress)
 typedef PLATFORM_PUSH_THREAD_WORK(platform_push_thread_work);
@@ -743,6 +642,30 @@ StringsMatch(char *A, char *B)
     }
     return Result;
 }
+
+struct render_chunk
+{
+    b32 Cleared;
+    b32 Used;
+    loaded_bitmap BackBuffer;
+    loaded_bitmap CoverageBuffer;
+    loaded_bitmap SampleBuffer;
+    s32 OffsetX;
+    s32 OffsetY;
+    v3 ClearColor;
+};
+
+// TODO(chris): Optimize this for the number of logical cores.
+#define RENDER_CHUNK_COUNT 64
+struct renderer_state
+{
+    v3 ClearColor;
+    loaded_bitmap BackBuffer;
+    loaded_bitmap CoverageBuffer;
+    loaded_bitmap SampleBuffer;
+
+    render_chunk RenderChunks[64];
+};
 
 #define GAME_UPDATE_AND_RENDER(Name) void Name(game_memory *GameMemory, game_input *Input, renderer_state *RendererState)
 typedef GAME_UPDATE_AND_RENDER(game_update_and_render);

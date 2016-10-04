@@ -266,6 +266,11 @@ SplitAsteroid(play_state *State, entity *Asteroid)
         r32 InvAsteroidToSplitLength = 1.0f / Length(AsteroidToSplit);
         Asteroid->P -= 0.01f*AsteroidToSplit*InvAsteroidToSplitLength;
         Split->P += 0.01f*AsteroidToSplit*InvAsteroidToSplitLength;
+        State->AsteroidCount += 1;
+    }
+    else
+    {
+        State->AsteroidCount -= 1;
     }
 }
 
@@ -519,11 +524,7 @@ ResetGame(play_state *State, render_buffer *RenderBuffer, loaded_font *Font)
 
     State->Lives = 3;
 
-#if 0
-    State->ShipStartingP = V3(-128.0f, 74.0f, 0.0f);
-#else
     State->ShipStartingP = V3(0.0f, 0.0f, 0.0f);
-#endif
     State->CameraStartingP = V3(0, 0, 0);
     State->ShipStartingYaw = 0.0f;
     if(State->Lives)
@@ -535,16 +536,12 @@ ResetGame(play_state *State, render_buffer *RenderBuffer, loaded_font *Font)
     {
         GameOver(State, RenderBuffer, Font);
     }
-    //entity *FloatingHead = CreateFloatingHead(State);
 
     entity *SmallAsteroid = CreateAsteroid(State);
-#if 0
-    SmallAsteroid->P.x = SmallAsteroid->CollisionShapes[0].Radius +
-        Ship->CollisionShapes[0].A.x;
-#endif
     entity *SmallAsteroid3 = CreateAsteroid(State);
     entity *SmallAsteroid2 = CreateAsteroid(State);
     entity *LargeAsteroid = CreateAsteroid(State);
+    State->AsteroidCount = 4;
 }
 
 internal void
@@ -578,7 +575,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
     }
     
     temporary_memory RenderMemory = BeginTemporaryMemory(&RenderBuffer->Arena);
-    PushClear(RenderBuffer, V3(0.0f, 0.0f, 0.0f));
+    PushClear(RendererState, RenderBuffer, V3(0.0f, 0.0f, 0.0f));
     v2 ScreenCenter = 0.5f*V2i(RenderBuffer->Width, RenderBuffer->Height); 
 
 #if DEBUG_CAMERA
@@ -650,7 +647,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
                 Entity->dYaw = Clamp(-MaxdYawPerSecond, Entity->dYaw + dYaw, MaxdYawPerSecond);
     
                 v3 Acceleration = {};
-                if((WentDown(ShipController->RightShoulder1) || WentDown(Keyboard->RightShoulder1)))
+                if((WentDown(ShipController->ActionDown) || WentDown(Keyboard->ActionDown)))
                 {
                     if(Entity->Timer <= 0.0f)
                     {
@@ -1728,16 +1725,6 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
     }
 #endif
 
-    if(Keyboard->ActionUp.EndedDown || ShipController->ActionUp.EndedDown)
-    {
-        RenderBuffer->CameraP.z += 100.0f*Input->dtForFrame;
-    }
-
-    if(Keyboard->ActionDown.EndedDown || ShipController->ActionDown.EndedDown)
-    {
-        RenderBuffer->CameraP.z -= 100.0f*Input->dtForFrame;
-    }
-
     // NOTE(chris): Post collision pass
     for(u32 EntityIndex = 1;
         EntityIndex < State->EntityCount;
@@ -1789,18 +1776,6 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
         {
             ++EntityIndex;
         }
-    }
-
-    if(State->Lives <= 0)
-    {
-        if(WentDown(ShipController->Start))
-        {
-            ResetGame(State, RenderBuffer, &GameMemory->Font);
-        }
-    }
-    if(WentDown(ShipController->Select))
-    {
-        GameState->NextMode = GameMode_TitleScreen;
     }
     
     // NOTE(chris): Render pass
@@ -1914,6 +1889,22 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
                          V4(1, 1, 1, 1));
             P.x -= 1.2f*Dim.x;
         }        
+    }
+
+    if(State->Lives <= 0)
+    {
+        if(WentDown(ShipController->Start))
+        {
+            ResetGame(State, RenderBuffer, &GameMemory->Font);
+        }
+    }
+    if(State->AsteroidCount <= 0)
+    {
+        ResetGame(State, RenderBuffer, &GameMemory->Font);
+    }
+    if(WentDown(ShipController->Select))
+    {
+        GameState->NextMode = GameMode_TitleScreen;
     }
 
     {

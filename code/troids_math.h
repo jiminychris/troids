@@ -292,6 +292,20 @@ V3(v2 XY, r32 Z)
     return(Result);
 }
 
+inline b32
+operator==(v3 A, v3 B)
+{
+    b32 Result = (A.x == B.x) && (A.y == B.y) && (A.z == B.z);
+    return(Result);
+}
+
+inline b32
+operator!=(v3 A, v3 B)
+{
+    b32 Result = (A.x != B.x) || (A.y != B.y) || (A.z != B.z);
+    return(Result);
+}
+
 inline v3
 operator-(v3 A)
 {
@@ -739,6 +753,29 @@ sRGB1ToLinear1(v4 Color)
     Result.g = Square(Color.g);
     Result.b = Square(Color.b);
     Result.a = Color.a;
+    
+    return(Result);
+}
+
+inline v4
+sRGB1ToLinear255(v4 Color)
+{
+    v4 Result;
+    Result.r = 255.0f*Square(Color.r);
+    Result.g = 255.0f*Square(Color.g);
+    Result.b = 255.0f*Square(Color.b);
+    Result.a = 255.0f*Color.a;
+    
+    return(Result);
+}
+
+inline v3
+sRGB1ToLinear255(v3 Color)
+{
+    v3 Result;
+    Result.r = 255.0f*Square(Color.r);
+    Result.g = 255.0f*Square(Color.g);
+    Result.b = 255.0f*Square(Color.b);
     
     return(Result);
 }

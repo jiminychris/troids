@@ -574,23 +574,6 @@ RenderBitmap(render_chunk *RenderChunk, loaded_bitmap *Bitmap, v2 Origin, v2 XAx
             __m128 Sample11G = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(Sample11, 8), ColorMask));
             __m128 Sample11B = _mm_cvtepi32_ps(_mm_and_si128(Sample11, ColorMask));
 
-#if GAMMA_CORRECT
-            // NOTE(chris): sRGB to linear
-            Sample00R = _mm_mul_ps(_mm_mul_ps(Sample00R, Sample00R), Inv255);
-            Sample10R = _mm_mul_ps(_mm_mul_ps(Sample10R, Sample10R), Inv255);
-            Sample01R = _mm_mul_ps(_mm_mul_ps(Sample01R, Sample01R), Inv255);
-            Sample11R = _mm_mul_ps(_mm_mul_ps(Sample11R, Sample11R), Inv255);
-
-            Sample00G = _mm_mul_ps(_mm_mul_ps(Sample00G, Sample00G), Inv255);
-            Sample10G = _mm_mul_ps(_mm_mul_ps(Sample10G, Sample10G), Inv255);
-            Sample01G = _mm_mul_ps(_mm_mul_ps(Sample01G, Sample01G), Inv255);
-            Sample11G = _mm_mul_ps(_mm_mul_ps(Sample11G, Sample11G), Inv255);
-
-            Sample00B = _mm_mul_ps(_mm_mul_ps(Sample00B, Sample00B), Inv255);
-            Sample10B = _mm_mul_ps(_mm_mul_ps(Sample10B, Sample10B), Inv255);
-            Sample01B = _mm_mul_ps(_mm_mul_ps(Sample01B, Sample01B), Inv255);
-            Sample11B = _mm_mul_ps(_mm_mul_ps(Sample11B, Sample11B), Inv255);
-#endif
             __m128 DA = _mm_sub_ps(RealOne, _mm_mul_ps(Inv255, _mm_mul_ps(LerpA, TintA)));
 
             __m128 Result00R = _mm_add_ps(_mm_mul_ps(TintR, LerpR), _mm_mul_ps(DA, Sample00R));
@@ -792,14 +775,14 @@ RenderTriangle(render_chunk *RenderChunk,
 {
     loaded_bitmap *SampleBuffer = &RenderChunk->SampleBuffer;
     loaded_bitmap *CoverageBuffer = &RenderChunk->CoverageBuffer;
-    s32 XMin = Clamp(OffsetX, RoundS32(Minimum(Minimum(A.x, B.x), C.x)),
+    s32 XMin = Clamp(OffsetX, Floor(Minimum(Minimum(A.x, B.x), C.x)),
                      OffsetX + CoverageBuffer->Width);
-    s32 YMin = Clamp(OffsetY, RoundS32(Minimum(Minimum(A.y, B.y), C.y)),
+    s32 YMin = Clamp(OffsetY, Floor(Minimum(Minimum(A.y, B.y), C.y)),
                      OffsetY + CoverageBuffer->Height);
 
-    s32 XMax = Clamp(OffsetX, RoundS32(Maximum(Maximum(A.x, B.x), C.x)),
+    s32 XMax = Clamp(OffsetX, Ceiling(Maximum(Maximum(A.x, B.x), C.x)),
                      OffsetX + CoverageBuffer->Width);
-    s32 YMax = Clamp(OffsetY, RoundS32(Maximum(Maximum(A.y, B.y), C.y)),
+    s32 YMax = Clamp(OffsetY, Ceiling(Maximum(Maximum(A.y, B.y), C.y)),
                      OffsetY + CoverageBuffer->Height);
 
     s32 AdjustedXMin = (XMin/4)*4;
@@ -824,6 +807,9 @@ RenderTriangle(render_chunk *RenderChunk,
     __m128 PerpABY = _mm_set_ps1(PerpAB.y);
     __m128 PerpBCY = _mm_set_ps1(PerpBC.y);
     __m128 PerpCAY = _mm_set_ps1(PerpCA.y);
+    __m128 ABIsTopLeft = _mm_set_ps1(RealMask(((A.y == B.y) && (B.x < A.x)) || (B.y < A.y)));
+    __m128 BCIsTopLeft = _mm_set_ps1(RealMask(((B.y == C.y) && (C.x < B.x)) || (C.y < B.y)));
+    __m128 CAIsTopLeft = _mm_set_ps1(RealMask(((C.y == A.y) && (A.x < C.x)) || (A.y < C.y)));
     __m128 AX = _mm_set_ps1(A.x);
     __m128 BX = _mm_set_ps1(B.x);
     __m128 CX = _mm_set_ps1(C.x);
@@ -874,46 +860,58 @@ RenderTriangle(render_chunk *RenderChunk,
             X += 4)
         {
             // TODO(chris): IMPORTANT "top-left" rule
+            __m128 Sample00InnerAB = _mm_add_ps(_mm_mul_ps(SampleX0RelA, PerpABX),
+                                                   _mm_mul_ps(SampleY0RelA, PerpABY));
+            __m128 Sample00InnerBC = _mm_add_ps(_mm_mul_ps(SampleX0RelB, PerpBCX),
+                                                   _mm_mul_ps(SampleY0RelB, PerpBCY));
+            __m128 Sample00InnerCA = _mm_add_ps(_mm_mul_ps(SampleX0RelC, PerpCAX),
+                                                   _mm_mul_ps(SampleY0RelC, PerpCAY));
+            __m128 Sample10InnerAB = _mm_add_ps(_mm_mul_ps(SampleX1RelA, PerpABX),
+                                                   _mm_mul_ps(SampleY0RelA, PerpABY));
+            __m128 Sample10InnerBC = _mm_add_ps(_mm_mul_ps(SampleX1RelB, PerpBCX),
+                                                   _mm_mul_ps(SampleY0RelB, PerpBCY));
+            __m128 Sample10InnerCA = _mm_add_ps(_mm_mul_ps(SampleX1RelC, PerpCAX),
+                                                   _mm_mul_ps(SampleY0RelC, PerpCAY));
+            __m128 Sample01InnerAB = _mm_add_ps(_mm_mul_ps(SampleX0RelA, PerpABX),
+                                                   _mm_mul_ps(SampleY1RelA, PerpABY));
+            __m128 Sample01InnerBC = _mm_add_ps(_mm_mul_ps(SampleX0RelB, PerpBCX),
+                                                   _mm_mul_ps(SampleY1RelB, PerpBCY));
+            __m128 Sample01InnerCA = _mm_add_ps(_mm_mul_ps(SampleX0RelC, PerpCAX),
+                                                   _mm_mul_ps(SampleY1RelC, PerpCAY));
+            __m128 Sample11InnerAB = _mm_add_ps(_mm_mul_ps(SampleX1RelA, PerpABX),
+                                                   _mm_mul_ps(SampleY1RelA, PerpABY));
+            __m128 Sample11InnerBC = _mm_add_ps(_mm_mul_ps(SampleX1RelB, PerpBCX),
+                                                   _mm_mul_ps(SampleY1RelB, PerpBCY));
+            __m128 Sample11InnerCA = _mm_add_ps(_mm_mul_ps(SampleX1RelC, PerpCAX),
+                                                   _mm_mul_ps(SampleY1RelC, PerpCAY));
             __m128 Sample00Mask = _mm_and_ps(
-                _mm_and_ps(_mm_cmpge_ps(_mm_add_ps(_mm_mul_ps(SampleX0RelA, PerpABX),
-                                                   _mm_mul_ps(SampleY0RelA, PerpABY)),
-                                        RealZero),
-                           _mm_cmpge_ps(_mm_add_ps(_mm_mul_ps(SampleX0RelB, PerpBCX),
-                                                   _mm_mul_ps(SampleY0RelB, PerpBCY)),
-                                        RealZero)),
-                _mm_cmpge_ps(_mm_add_ps(_mm_mul_ps(SampleX0RelC, PerpCAX),
-                                        _mm_mul_ps(SampleY0RelC, PerpCAY)),
-                             RealZero));
+                _mm_and_ps(_mm_or_ps(_mm_cmpgt_ps(Sample00InnerAB, RealZero),
+                                     _mm_and_ps(ABIsTopLeft, _mm_cmpeq_ps(Sample00InnerAB, RealZero))),
+                           _mm_or_ps(_mm_cmpgt_ps(Sample00InnerBC, RealZero),
+                                     _mm_and_ps(BCIsTopLeft, _mm_cmpeq_ps(Sample00InnerBC, RealZero)))),
+                _mm_or_ps(_mm_cmpgt_ps(Sample00InnerCA, RealZero),
+                          _mm_and_ps(CAIsTopLeft, _mm_cmpeq_ps(Sample00InnerCA, RealZero))));
             __m128 Sample10Mask = _mm_and_ps(
-                _mm_and_ps(_mm_cmpge_ps(_mm_add_ps(_mm_mul_ps(SampleX1RelA, PerpABX),
-                                                   _mm_mul_ps(SampleY0RelA, PerpABY)),
-                                        RealZero),
-                           _mm_cmpge_ps(_mm_add_ps(_mm_mul_ps(SampleX1RelB, PerpBCX),
-                                                   _mm_mul_ps(SampleY0RelB, PerpBCY)),
-                                        RealZero)),
-                _mm_cmpge_ps(_mm_add_ps(_mm_mul_ps(SampleX1RelC, PerpCAX),
-                                        _mm_mul_ps(SampleY0RelC, PerpCAY)),
-                             RealZero));
+                _mm_and_ps(_mm_or_ps(_mm_cmpgt_ps(Sample10InnerAB, RealZero),
+                                     _mm_and_ps(ABIsTopLeft, _mm_cmpeq_ps(Sample10InnerAB, RealZero))),
+                           _mm_or_ps(_mm_cmpgt_ps(Sample10InnerBC, RealZero),
+                                     _mm_and_ps(BCIsTopLeft, _mm_cmpeq_ps(Sample10InnerBC, RealZero)))),
+                _mm_or_ps(_mm_cmpgt_ps(Sample10InnerCA, RealZero),
+                          _mm_and_ps(CAIsTopLeft, _mm_cmpeq_ps(Sample10InnerCA, RealZero))));
             __m128 Sample01Mask = _mm_and_ps(
-                _mm_and_ps(_mm_cmpge_ps(_mm_add_ps(_mm_mul_ps(SampleX0RelA, PerpABX),
-                                                   _mm_mul_ps(SampleY1RelA, PerpABY)),
-                                        RealZero),
-                           _mm_cmpge_ps(_mm_add_ps(_mm_mul_ps(SampleX0RelB, PerpBCX),
-                                                   _mm_mul_ps(SampleY1RelB, PerpBCY)),
-                                        RealZero)),
-                _mm_cmpge_ps(_mm_add_ps(_mm_mul_ps(SampleX0RelC, PerpCAX),
-                                        _mm_mul_ps(SampleY1RelC, PerpCAY)),
-                             RealZero));
+                _mm_and_ps(_mm_or_ps(_mm_cmpgt_ps(Sample01InnerAB, RealZero),
+                                     _mm_and_ps(ABIsTopLeft, _mm_cmpeq_ps(Sample01InnerAB, RealZero))),
+                           _mm_or_ps(_mm_cmpgt_ps(Sample01InnerBC, RealZero),
+                                     _mm_and_ps(BCIsTopLeft, _mm_cmpeq_ps(Sample01InnerBC, RealZero)))),
+                _mm_or_ps(_mm_cmpgt_ps(Sample01InnerCA, RealZero),
+                          _mm_and_ps(CAIsTopLeft, _mm_cmpeq_ps(Sample01InnerCA, RealZero))));
             __m128 Sample11Mask = _mm_and_ps(
-                _mm_and_ps(_mm_cmpge_ps(_mm_add_ps(_mm_mul_ps(SampleX1RelA, PerpABX),
-                                                   _mm_mul_ps(SampleY1RelA, PerpABY)),
-                                        RealZero),
-                           _mm_cmpge_ps(_mm_add_ps(_mm_mul_ps(SampleX1RelB, PerpBCX),
-                                                   _mm_mul_ps(SampleY1RelB, PerpBCY)),
-                                        RealZero)),
-                _mm_cmpge_ps(_mm_add_ps(_mm_mul_ps(SampleX1RelC, PerpCAX),
-                                        _mm_mul_ps(SampleY1RelC, PerpCAY)),
-                             RealZero));
+                _mm_and_ps(_mm_or_ps(_mm_cmpgt_ps(Sample11InnerAB, RealZero),
+                                     _mm_and_ps(ABIsTopLeft, _mm_cmpeq_ps(Sample11InnerAB, RealZero))),
+                           _mm_or_ps(_mm_cmpgt_ps(Sample11InnerBC, RealZero),
+                                     _mm_and_ps(BCIsTopLeft, _mm_cmpeq_ps(Sample11InnerBC, RealZero)))),
+                _mm_or_ps(_mm_cmpgt_ps(Sample11InnerCA, RealZero),
+                          _mm_and_ps(CAIsTopLeft, _mm_cmpeq_ps(Sample11InnerCA, RealZero))));
 
             __m128i Cover = _mm_castps_si128(_mm_or_ps(_mm_or_ps(Sample00Mask, Sample10Mask),
                                                        _mm_or_ps(Sample01Mask, Sample11Mask)));
@@ -1023,6 +1021,93 @@ RenderTriangle(render_chunk *RenderChunk,
 }
 
 internal void
+ClearBuffers(render_chunk *RenderChunk)
+{
+    if(RenderChunk->Used)
+    {
+        TIMED_FUNCTION();
+        loaded_bitmap *CoverageBuffer = &RenderChunk->CoverageBuffer;
+        loaded_bitmap *SampleBuffer = &RenderChunk->SampleBuffer;
+        Assert((CoverageBuffer->Width&3) == 0);
+        s32 XMin = RenderChunk->OffsetX;
+        s32 YMin = RenderChunk->OffsetY;
+        s32 XMax = RenderChunk->OffsetX + CoverageBuffer->Width;
+        s32 YMax = RenderChunk->OffsetY + CoverageBuffer->Height;
+        u32 SampleAdvance = 4*SAMPLE_COUNT;
+        u8 *SampleRow = (u8 *)SampleBuffer->Memory + SampleBuffer->Pitch*YMin;
+        u8 *CoverageRow = (u8 *)CoverageBuffer->Memory + CoverageBuffer->Pitch*YMin;
+#if GAMMA_CORRECT
+        v3 ClearColor = sRGB1ToLinear255(RenderChunk->ClearColor);
+#else
+        v3 ClearColor = 255.0f*RenderChunk->ClearColor;
+#endif
+        __m128i Color = _mm_set1_epi32((RoundU32(ClearColor.r) << 16) |
+                                            (RoundU32(ClearColor.g) << 8) |
+                                            (RoundU32(ClearColor.b)));
+        __m128i Zero = _mm_set1_epi32(0);
+        for(s32 Y = YMin;
+            Y < YMax;
+            ++Y)
+        {
+            u32 *Sample = (u32 *)SampleRow + SAMPLE_COUNT*XMin;
+            b32 *Coverage = (b32 *)CoverageRow + XMin;
+            for(s32 X = XMin;
+                X < XMax;
+                X += 4)
+            {
+                _mm_storeu_si128((__m128i *)Coverage, Zero);
+                _mm_storeu_si128((__m128i *)(Sample), Color);
+                _mm_storeu_si128((__m128i *)(Sample + 4), Color);
+                _mm_storeu_si128((__m128i *)(Sample + 8), Color);
+                _mm_storeu_si128((__m128i *)(Sample + 12), Color);
+            
+                Sample += SampleAdvance;
+                Coverage += 4;
+            }
+            SampleRow += SampleBuffer->Pitch;
+            CoverageRow += CoverageBuffer->Pitch;
+        }
+    }
+    RenderChunk->Cleared = true;
+    RenderChunk->Used = false;
+}
+
+THREAD_CALLBACK(ClearRenderBuffersCallback)
+{
+    ClearBuffers((render_chunk *)Params);
+}
+
+inline void
+ClearAllBuffers(renderer_state *RendererState, b32 Force = false)
+{
+    BEGIN_TIMED_BLOCK(GUID, "Buffer Clear Kickoff");
+    for(s32 RenderChunkIndex = 0;
+        RenderChunkIndex < RENDER_CHUNK_COUNT;
+        ++RenderChunkIndex)
+    {
+        render_chunk *RenderChunk = RendererState->RenderChunks + RenderChunkIndex;
+        RenderChunk->Cleared = false;
+        RenderChunk->Used |= Force;
+        RenderChunk->ClearColor = RendererState->ClearColor;
+                    
+        PlatformPushThreadWork(ClearRenderBuffersCallback, RenderChunk, 0);
+    }
+    END_TIMED_BLOCK(GUID);
+}
+
+inline void
+PushClear(renderer_state *RendererState, render_buffer *RenderBuffer, v3 Color)
+{
+    if(Color != RendererState->ClearColor)
+    {
+        RendererState->ClearColor = Color;
+        ClearAllBuffers(RendererState, true);
+    }
+    PushRenderHeader(Data, &RenderBuffer->Arena, clear);
+    Data->Color = Color;
+}
+
+internal void
 RenderSamples(render_chunk *RenderChunk)
 {
     TIMED_FUNCTION();
@@ -1041,9 +1126,12 @@ RenderSamples(render_chunk *RenderChunk)
     u8 *SampleRow = (u8 *)SampleBuffer->Memory + YMin*SampleBuffer->Pitch;
     u8 *CoverageRow = (u8 *)CoverageBuffer->Memory + YMin*CoverageBuffer->Pitch;
     __m128 Four = _mm_set_ps1(4.0f);
-    __m128 Quarter = _mm_set_ps1(0.25f);
+    __m128 SampleFraction = _mm_set_ps1(1.0f / SAMPLE_COUNT);
     __m128 One255 = _mm_set_ps1(255.0f);
     __m128i ColorMask = _mm_set1_epi32(0x000000FF);
+    __m128i ClearColor = _mm_set1_epi32((RoundU32(255.0f*RenderChunk->ClearColor.r) << 16) |
+                                        (RoundU32(255.0f*RenderChunk->ClearColor.g) << 8) |
+                                        (RoundU32(255.0f*RenderChunk->ClearColor.b)));
     u32 SampleAdvance = 4*SAMPLE_COUNT;
 
     s32 AdjustedXMin = (XMin/4)*4;
@@ -1088,13 +1176,13 @@ RenderSamples(render_chunk *RenderChunk)
             __m128 Sample11G = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(Sample11, 8), ColorMask));
             __m128 Sample11B = _mm_cvtepi32_ps(_mm_and_si128(Sample11, ColorMask));
 
-            __m128 R = _mm_mul_ps(Quarter,
+            __m128 R = _mm_mul_ps(SampleFraction,
                                   _mm_add_ps(_mm_add_ps(Sample00R, Sample10R),
                                              _mm_add_ps(Sample01R, Sample11R)));
-            __m128 G = _mm_mul_ps(Quarter,
+            __m128 G = _mm_mul_ps(SampleFraction,
                                   _mm_add_ps(_mm_add_ps(Sample00G, Sample10G),
                                              _mm_add_ps(Sample01G, Sample11G)));
-            __m128 B = _mm_mul_ps(Quarter,
+            __m128 B = _mm_mul_ps(SampleFraction,
                                   _mm_add_ps(_mm_add_ps(Sample00B, Sample10B),
                                              _mm_add_ps(Sample01B, Sample11B)));
 
@@ -1115,11 +1203,15 @@ RenderSamples(render_chunk *RenderChunk)
                     _mm_slli_epi32(_mm_cvtps_epi32(G), 8)),
                 _mm_cvtps_epi32(B));
 
-            __m128i Pixels = _mm_loadu_si128((__m128i *)Pixel);
+            if((Result.m128i_u32[0] & 0xFFFFFF) == 0x000000)
+            {
+                int A = 0;
+            }
+
             __m128i Mask = _mm_and_si128(_mm_loadu_si128((__m128i *)Coverage), XMask);
 
             _mm_storeu_si128((__m128i *)Pixel, _mm_or_si128(_mm_and_si128(Mask, Result),
-                                                            _mm_andnot_si128(Mask, Pixels)));
+                                                            _mm_andnot_si128(Mask, ClearColor)));
             
             Pixel += 4;
             Sample += SampleAdvance;
@@ -1696,6 +1788,11 @@ RenderBufferToBackBuffer(renderer_state *RendererState, render_buffer *RenderBuf
         render_tree_data RenderTreeData[RENDER_CHUNK_COUNT];
         thread_progress ThreadProgress[RENDER_CHUNK_COUNT];
 
+        SplitWorkIntoSquares(RendererState->RenderChunks, RENDER_CHUNK_COUNT,
+                             RendererState->BackBuffer.Width,
+                             RendererState->BackBuffer.Height,
+                             0, 0);
+        
         for(s32 RenderChunkIndex = RENDER_CHUNK_COUNT-1;
             RenderChunkIndex >= 0;
             --RenderChunkIndex)

@@ -324,12 +324,14 @@ FileExists(char *Path)
     return(Result);
 }
 
-global_variable thread_progress GlobalNullProgress;
-
 inline void
 Win32PushThreadWork(thread_callback *Callback, void *Params,
-                    thread_progress *Progress = &GlobalNullProgress)
+                    thread_progress *Progress = 0)
 {
+    if(!Progress)
+    {
+        Progress = &GlobalNullProgress;
+    }
     Progress->Finished = false;
     u32 WorkIndex = (++GlobalThreadQueueNextIndex &
                      (ArrayCount(GlobalThreadQueue)-1));
@@ -360,55 +362,6 @@ ThreadProc(void *Parameter)
     }
 
     return(Result);
-}
-
-internal void
-ClearBuffers(render_chunk *RenderChunk)
-{
-    if(RenderChunk->Used)
-    {
-        TIMED_FUNCTION();
-        loaded_bitmap *CoverageBuffer = &RenderChunk->CoverageBuffer;
-        loaded_bitmap *SampleBuffer = &RenderChunk->SampleBuffer;
-        Assert((CoverageBuffer->Width&3) == 0);
-        s32 XMin = RenderChunk->OffsetX;
-        s32 YMin = RenderChunk->OffsetY;
-        s32 XMax = RenderChunk->OffsetX + CoverageBuffer->Width;
-        s32 YMax = RenderChunk->OffsetY + CoverageBuffer->Height;
-        u32 SampleAdvance = 4*SAMPLE_COUNT;
-        u8 *SampleRow = (u8 *)SampleBuffer->Memory + SampleBuffer->Pitch*YMin;
-        u8 *CoverageRow = (u8 *)CoverageBuffer->Memory + CoverageBuffer->Pitch*YMin;
-        __m128i Zero = _mm_set1_epi32(0);
-        for(s32 Y = YMin;
-            Y < YMax;
-            ++Y)
-        {
-            u32 *Sample = (u32 *)SampleRow + SAMPLE_COUNT*XMin;
-            b32 *Coverage = (b32 *)CoverageRow + XMin;
-            for(s32 X = XMin;
-                X < XMax;
-                X += 4)
-            {
-                _mm_storeu_si128((__m128i *)Coverage, Zero);
-                _mm_storeu_si128((__m128i *)(Sample), Zero);
-                _mm_storeu_si128((__m128i *)(Sample + 4), Zero);
-                _mm_storeu_si128((__m128i *)(Sample + 8), Zero);
-                _mm_storeu_si128((__m128i *)(Sample + 12), Zero);
-            
-                Sample += SampleAdvance;
-                Coverage += 4;
-            }
-            SampleRow += SampleBuffer->Pitch;
-            CoverageRow += CoverageBuffer->Pitch;
-        }
-    }
-    RenderChunk->Cleared = true;
-    RenderChunk->Used = false;
-}
-
-THREAD_CALLBACK(ClearRenderBuffersCallback)
-{
-    ClearBuffers((render_chunk *)Params);
 }
 
 int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int Show)
@@ -561,16 +514,10 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
             InitializeArena(&GlobalDebugState->Arena,
                             GameMemory.DebugMemorySize - sizeof(debug_state),
                             (u8 *)GameMemory.DebugMemory + sizeof(debug_state));
-            GlobalDebugState->StringArena = SubArena(&GlobalDebugState->Arena, Megabytes(16));        
 #endif
-
-            SplitWorkIntoSquares(RendererState.RenderChunks, RENDER_CHUNK_COUNT,
-                                 RendererState.BackBuffer.Width,
-                                 RendererState.BackBuffer.Height,
-                                 0, 0);
             
             for(s32 RenderChunkIndex = 0;
-                RenderChunkIndex < RENDER_CHUNK_COUNT;
+                RenderChunkIndex < ArrayCount(RendererState.RenderChunks);
                 ++RenderChunkIndex)
             {
                 render_chunk *RenderChunk = RendererState.RenderChunks + RenderChunkIndex;
@@ -1104,18 +1051,6 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                     DebugCollate(&GameMemory, NewInput, &RendererState);
                 }
 #endif
-
-                BEGIN_TIMED_BLOCK(GUID, "Buffer Clear Kickoff");
-                for(s32 RenderChunkIndex = 0;
-                    RenderChunkIndex < RENDER_CHUNK_COUNT;
-                    ++RenderChunkIndex)
-                {
-                    render_chunk *RenderChunk = RendererState.RenderChunks + RenderChunkIndex;
-                    RenderChunk->Cleared = false;
-                    
-                    Win32PushThreadWork(ClearRenderBuffersCallback, RenderChunk);
-                }
-                END_TIMED_BLOCK(GUID);
 
 #if 0
                 QueryPerformanceCounter(&Counter);

@@ -14,13 +14,12 @@ TitleScreenMode(game_memory *GameMemory, game_input *Input, renderer_state *Rend
     transient_state *TranState = (transient_state *)GameMemory->TemporaryMemory;
     render_buffer *RenderBuffer = &TranState->RenderBuffer;
     temporary_memory RenderMemory = BeginTemporaryMemory(&RenderBuffer->Arena);
-    PushClear(RenderBuffer, V3(0.0f, 0.0f, 0.0f));
+    PushClear(RendererState, RenderBuffer, V3(0.2f, 0.2f, 0.2f));
 
     game_controller *Keyboard = &Input->Keyboard;
     game_controller *ShipController = Input->GamePads + 0;
 
     RenderBuffer->Projection = RenderBuffer->DefaultProjection;
-    PushTriangle(RenderBuffer, V3(21.3133755, -6.88235092, 0), V3(33.5888405, -6.88235092, 0), V3(21.3133755, 2.45302391, 0), V4(1, 1, 1, 1));
     RenderBuffer->Projection = Projection_None;
     v2 Center = 0.5f*V2i(RenderBuffer->Width, RenderBuffer->Height);
     r32 FadeInDuration = 3.0f;
@@ -73,7 +72,7 @@ TitleScreenMode(game_memory *GameMemory, game_input *Input, renderer_state *Rend
     
     {
         TIMED_BLOCK("Render Game");
-        RenderBufferToBackBuffer(RendererState, RenderBuffer);
+        RenderBufferToBackBuffer(RendererState, RenderBuffer, RenderFlags_UsePipeline);
     }
     EndTemporaryMemory(RenderMemory);
 }
