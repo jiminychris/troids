@@ -11,12 +11,13 @@ enum entity_type
 {
     EntityType_Ship = 1<<0,
     EntityType_FloatingHead = 1<<1,
-    EntityType_Bullet = 1<<2,
+    EntityType_Laser = 1<<2,
     EntityType_Asteroid = 1<<3,
     EntityType_Letter = 1<<4,
+    EntityType_Wall = 1<<5,
 };
 
-global_variable const u32 EntityPair_AsteroidBullet = EntityType_Asteroid|EntityType_Bullet;
+global_variable const u32 EntityPair_AsteroidLaser = EntityType_Asteroid|EntityType_Laser;
 global_variable const u32 EntityPair_AsteroidShip = EntityType_Asteroid|EntityType_Ship;
 
 struct entity
@@ -73,6 +74,35 @@ struct play_state
     entity Entities[256];
 };
 
+internal r32
+CalculateBoundingRadius(entity *Entity)
+{
+    r32 MaxRadius = 0.0f;
+    for(collision_shape *Shape = Entity->CollisionShapes;
+        Shape;
+        Shape = Shape->Next)
+    {
+        r32 Radius = 0.0f;
+        switch(Shape->Type)
+        {
+            case CollisionShapeType_Circle:
+            {
+                Radius = Length(Shape->Center) + Shape->Radius;
+            } break;
+
+            case CollisionShapeType_Triangle:
+            {
+                Radius = Maximum(Maximum(Length(Shape->A),
+                                         Length(Shape->B)),
+                                 Length(Shape->C));
+            } break;
+        }
+        MaxRadius = Maximum(Radius, MaxRadius);
+    }
+    r32 Result = MaxRadius + 1.0f;
+    return(Result);
+}
+
 inline entity *
 CreateEntity(play_state *State, u32 ShapeCount = 0, collision_shape *Shapes = 0)
 {
@@ -103,6 +133,7 @@ CreateEntity(play_state *State, u32 ShapeCount = 0, collision_shape *Shapes = 0)
                 Result->CollisionShapes = Shape;
                 Result->CollisionShapeCount = ShapeCount;
             }
+            Result->BoundingRadius = CalculateBoundingRadius(Result);
         }
         else
         {

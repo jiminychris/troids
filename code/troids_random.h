@@ -54,5 +54,12 @@ RandomBetween(seed *Seed, s32 Min, s32 Max)
     return(Result);
 }
 
+inline u32
+RandomIndex(seed *Seed, u32 Count)
+{
+    s32 Result = RandomU64(Seed)%Count;
+    return(Result);
+}
+
 #define TROIDS_RANDOM_H
 #endif

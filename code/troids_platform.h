@@ -567,6 +567,7 @@ struct game_controller
 struct game_input
 {
     r32 dtForFrame;
+    u64 SeedValue;
 
     v2 MousePosition;
     game_button LeftMouse;

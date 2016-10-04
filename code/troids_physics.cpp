@@ -389,12 +389,7 @@ ResolveCollision(entity *Entity, entity *OtherEntity)
     u32 Pair = (Entity->Type|OtherEntity->Type);
     switch(Pair)
     {
-        case EntityPair_AsteroidBullet:
-        {
-            Entity->Destroyed = OtherEntity->Destroyed = true;
-            Result = true;
-        } break;
-
+        case EntityPair_AsteroidLaser:
         case EntityPair_AsteroidShip:
         {
             Entity->Destroyed = OtherEntity->Destroyed = true;

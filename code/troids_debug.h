@@ -147,7 +147,7 @@ struct debug_thread_storage
 };
 
 #define MAX_DEBUG_FRAMES 128
-#define MAX_DEBUG_THREADS 32
+#define MAX_DEBUG_THREADS 8
 struct debug_frame
 {
     r32 ElapsedSeconds;
@@ -213,10 +213,18 @@ GetThreadStorage(u32 ThreadID)
     }
     if(!Found)
     {
+        Assert((GlobalDebugState->ThreadCount == 0) ||
+               (GetCurrentThreadID() == GlobalDebugState->ThreadStorage[0].ID));
         Assert(GlobalDebugState->ThreadCount < ArrayCount(GlobalDebugState->ThreadStorage));
         Thread = GlobalDebugState->ThreadStorage + GlobalDebugState->ThreadCount++;
         Thread->ID = ThreadID;
-        Thread->StringArena = SubArena(&GlobalDebugState->Arena, Megabytes(16));        
+        Thread->StringArena = SubArena(&GlobalDebugState->Arena, Megabytes(16));
+        for(u32 HashIndex = 0;
+            HashIndex < ArrayCount(Thread->StringHash);
+            ++HashIndex)
+        {
+            Assert(Thread->StringHash[HashIndex] == 0);
+        }
     }
     return(Thread);
 }

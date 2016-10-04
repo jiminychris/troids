@@ -381,14 +381,6 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
         thread_work *Work = GlobalThreadQueue + ThreadWorkIndex;
         Work->Free = true;
     }
-
-//    SystemInfo.dwNumberOfProcessors = 16;
-    for(u32 ProcessorIndex = 0;
-        ProcessorIndex < SystemInfo.dwNumberOfProcessors - 1;
-        ++ProcessorIndex)
-    {
-        CreateThread(0, 0, ThreadProc, 0, 0, 0);
-    }
     
     MSG Message;
     Message.wParam = 0;
@@ -514,6 +506,19 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
             InitializeArena(&GlobalDebugState->Arena,
                             GameMemory.DebugMemorySize - sizeof(debug_state),
                             (u8 *)GameMemory.DebugMemory + sizeof(debug_state));
+
+//    SystemInfo.dwNumberOfProcessors = 16;
+            GetThreadStorage(GetCurrentThreadID());
+            for(u32 ProcessorIndex = 0;
+                ProcessorIndex < SystemInfo.dwNumberOfProcessors - 1;
+                ++ProcessorIndex)
+            {
+                DWORD ThreadID;
+                CreateThread(0, 0, ThreadProc, 0, 0, &ThreadID);
+
+                GetThreadStorage(ThreadID);
+            }
+
 #endif
             
             for(s32 RenderChunkIndex = 0;
@@ -717,6 +722,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                     OldInput = Temp;
                     *NewInput = {};
                     NewInput->dtForFrame = dtForFrame;
+                    NewInput->SeedValue = LastCounter.QuadPart;
 
                     game_controller *NewKeyboard = &NewInput->Keyboard;
                     game_controller *OldKeyboard = &OldInput->Keyboard;

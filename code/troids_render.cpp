@@ -1774,7 +1774,7 @@ RenderBufferToBackBuffer(renderer_state *RendererState, render_buffer *RenderBuf
             INSERT_RENDER_COMMAND(aligned_rectangle, Data->SortKey);
             INSERT_RENDER_COMMAND(triangle, Data->SortKey);
             INSERT_RENDER_COMMAND(clear, -REAL32_MAX);
-#if TROIDS_DEBUG
+#if TROIDS_INTERNAL
             INSERT_RENDER_COMMAND(DEBUGrectangle, Data->SortKey);
             INSERT_RENDER_COMMAND(DEBUGtriangle, Data->SortKey);
             INSERT_RENDER_COMMAND(DEBUGcircle, Data->SortKey);

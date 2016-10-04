@@ -21,7 +21,9 @@ enum collider_type
     
     ColliderType_None = 1<<0,
     ColliderType_Ship = 1<<1,
-    ColliderType_Asteroid = 1<<2,
+    ColliderType_Laser = 1<<2,
+    ColliderType_Asteroid = 1<<3,
+    ColliderType_Wall = 1<<4,
 };
 
 enum collision_shape_type

@@ -280,7 +280,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 //        State->ShipBitmap = LoadBitmap("ship_opaque.bmp");
 //        State->AsteroidBitmap = LoadBitmap("asteroid_opaque.bmp");
 #endif
-        State->BulletBitmap = LoadBitmap("bullet.bmp");
+        State->LaserBitmap = LoadBitmap("laser.bmp");
     }
 
     transient_state *TranState = (transient_state *)GameMemory->TemporaryMemory;
