@@ -57,6 +57,7 @@ CollisionCircleDiameter(r32 Diameter, v2 Center = V2(0, 0))
     collision_shape Result = CollisionCircle(0.5f*Diameter, Center);
 }
 
+// TODO(chris): Don't need to always allocate this same shape
 inline entity *
 CreateShip(play_state *State, v3 P, r32 Yaw)
 {
@@ -418,6 +419,7 @@ CreateR(play_state *State, loaded_font *Font, v3 P, r32 Scale)
     return(Result);
 }
 
+// TODO(chris): Don't need to always allocate this same shape
 inline entity *
 CreateLaser(play_state *State, v3 P, v3 dP, r32 Yaw)
 {
@@ -474,28 +476,6 @@ GameOver(play_state *State, render_buffer *RenderBuffer, loaded_font *Font)
     CreateE(State, Font, P, Scale);
     P.x += Scale*GetTextAdvance(Font, 'E', 'R');
     CreateR(State, Font, P, Scale);
-}
-
-internal entity *
-CreateWall(play_state *State, rectangle2 Rect)
-{
-    v2 HalfDim = 0.5f*(Rect.Max-Rect.Min);
-    collision_shape Shapes[] =
-    {
-        CollisionTriangle(V2(-HalfDim.x, -HalfDim.y),
-                          V2(HalfDim.x, -HalfDim.y),
-                          V2(-HalfDim.x, HalfDim.y)),
-        CollisionTriangle(V2(HalfDim.x, -HalfDim.y),
-                          V2(HalfDim.x, HalfDim.y),
-                          V2(-HalfDim.x, HalfDim.y)),
-    };
-    
-    entity *Result = CreateEntity(State, ArrayCount(Shapes), Shapes);
-    Result->ColliderType = ColliderType_Wall;
-    Result->Type = EntityType_Wall;
-    Result->P = V3(Rect.Min + HalfDim, 0.0f);
-
-    return(Result);
 }
 
 internal void
@@ -572,15 +552,6 @@ ResetGame(play_state *State, render_buffer *RenderBuffer, loaded_font *Font)
         Cells[CellIndex] = Cells[--CellCount];
         entity *Asteroid = CreateAsteroid(State, MaxRadius, Cell);
     }
-
-    // Left
-    CreateWall(State, MinMax(V2(MinP.x-10.0f, MinP.y), V2(MinP.x, MaxP.y)));
-    // Right
-    CreateWall(State, MinMax(V2(MaxP.x, MinP.y), V2(MaxP.x+10.0f, MaxP.y)));
-    // Top
-    CreateWall(State, MinMax(V2(MinP.x, MaxP.y), V2(MaxP.x, MaxP.y+10.0f)));
-    // Bottom
-    CreateWall(State, MinMax(V2(MinP.x, MinP.y-10.0f), V2(MaxP.x, MinP.y)));
 }
 
 internal void
@@ -609,7 +580,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
         AllowCollision(&State->PhysicsState, ColliderType_Asteroid, ColliderType_IndestructibleLaser);
 
         State->Lives = 3;
-        State->Difficulty = 16;
+        State->Difficulty = 4;
         ResetGame(State, RenderBuffer, &GameMemory->Font);
     }
     
@@ -640,6 +611,13 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
     game_controller *Keyboard = &Input->Keyboard;
     game_controller *ShipController = Input->GamePads + 0;
     game_controller *AsteroidController = Input->GamePads + 1;
+        
+    rectangle2 FieldRect = MinMax(Unproject(RenderBuffer, V3(0, 0, 0)).xy,
+                                  Unproject(RenderBuffer,
+                                            V3i(RenderBuffer->Width, RenderBuffer->Height, 0)).xy);
+    v2 FieldDim = GetDim(FieldRect);
+    v3 FieldWidthOffset = V3(FieldDim.x, 0, 0);
+    v3 FieldHeightOffset = V3(0, FieldDim.y, 0);
 
     b32 FirstAsteroid = true;
     // NOTE(chris): Pre collision pass
@@ -649,14 +627,24 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
     {
         u32 NextIndex = EntityIndex + 1;
         entity *Entity = State->Entities + EntityIndex;
-        while(Entity->Yaw >= Tau)
+
+        if((Entity->P.x - Entity->BoundingRadius) > FieldRect.Max.x)
         {
-            Entity->Yaw -= Tau;
+            Entity->P.x -= FieldDim.x;
         }
-        while(Entity->Yaw <= -Tau)
+        if((Entity->P.x + Entity->BoundingRadius) < FieldRect.Min.x)
         {
-            Entity->Yaw += Tau;
+            Entity->P.x += FieldDim.x;
         }
+        if((Entity->P.y - Entity->BoundingRadius) > FieldRect.Max.y)
+        {
+            Entity->P.y -= FieldDim.y;
+        }
+        if((Entity->P.y + Entity->BoundingRadius) < FieldRect.Min.y)
+        {
+            Entity->P.y += FieldDim.y;
+        }
+
         v3 Facing = V3(Cos(Entity->Yaw), Sin(Entity->Yaw), 0.0f);
         switch(Entity->Type)
         {
@@ -711,6 +699,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
                 {
                     Entity->Destroyed = true;
                 }
+                Acceleration += V3(1000.0f*ShipController->RightStick*Input->dtForFrame, 0);
 #endif
 
 #if COLLISION_FINE_DEBUG
@@ -847,12 +836,13 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
 #endif
 #endif
         }
+        
         EntityIndex = NextIndex;
         Entity->Yaw = RealMod(Entity->Yaw, Tau);
         Assert(0 <= Entity->Yaw && Entity->Yaw <= Tau);
     }
 
-    BEGIN_TIMED_BLOCK(GUID, "Collision");
+    BEGIN_TIMED_BLOCK(Collision, "Collision");
     // NOTE(chris): Collision pass
     for(u32 EntityIndex = 1;
         EntityIndex < State->EntityCount;
@@ -1615,7 +1605,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
             }
         }
     }
-    END_TIMED_BLOCK(GUID);
+    END_TIMED_BLOCK(Collision);
 
 #if COLLISION_DEBUG
 #define LINEAR_BOUNDING_EXTRUSION_Z_OFFSET -0.0002f
@@ -1843,7 +1833,8 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
             ++EntityIndex;
         }
     }
-    
+
+    BEGIN_TIMED_BLOCK(RenderPush, "Render Push");
     // NOTE(chris): Render pass
     for(u32 EntityIndex = 1;
         EntityIndex < State->EntityCount;
@@ -1857,42 +1848,124 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
         switch(Entity->Type)
         {
             case EntityType_Ship:
+            case EntityType_Asteroid:
             {
 //                State->CameraP.xy += 0.2f*(Entity->P.xy - State->CameraP.xy);
 //                State->CameraRot += 0.05f*((Entity->Yaw - 0.25f*Tau) - State->CameraRot);
 //                PushBitmap(RenderBuffer, &GameState->ShipBitmap, Entity->P,
 //                           XAxis, YAxis, Entity->Dim);
+                v4 Color = V4(1, 1, 1, 1);
                 for(collision_shape *Shape = Entity->CollisionShapes;
                     Shape;
                     Shape = Shape->Next)
                 {
+                    v3 A = Entity->P + V3(RotateZ(Shape->A, Entity->Yaw), 0.0f);
+                    v3 B = Entity->P + V3(RotateZ(Shape->B, Entity->Yaw), 0.0f);
+                    v3 C = Entity->P + V3(RotateZ(Shape->C, Entity->Yaw), 0.0f);
+                    
+                    v3 Offset = V3(-FieldDim.x, 0, 0);
                     PushTriangle(RenderBuffer,
-                                 Entity->P + V3(RotateZ(Shape->A, Entity->Yaw), 0.0f),
-                                 Entity->P + V3(RotateZ(Shape->B, Entity->Yaw), 0.0f),
-                                 Entity->P + V3(RotateZ(Shape->C, Entity->Yaw), 0.0f),
-                                 V4(1, 1, 1, 1));
-                }
-            } break;
-
-            case EntityType_Asteroid:
-            {
-                for(collision_shape *Shape = Entity->CollisionShapes;
-                    Shape;
-                    Shape = Shape->Next)
-                {
-                    PushTriangle(RenderBuffer,
-                                 Entity->P + V3(RotateZ(Shape->A, Entity->Yaw), 0.0f),
-                                 Entity->P + V3(RotateZ(Shape->B, Entity->Yaw), 0.0f),
-                                 Entity->P + V3(RotateZ(Shape->C, Entity->Yaw), 0.0f),
-                                 V4(1, 1, 1, 1));
+                                 A,
+                                 B,
+                                 C,
+                                 Color);
+                    b32 WrapRight = (Entity->P.x + Entity->BoundingRadius) > FieldRect.Max.x;
+                    b32 WrapLeft = (Entity->P.x - Entity->BoundingRadius) < FieldRect.Min.x;
+                    b32 WrapTop = (Entity->P.y + Entity->BoundingRadius) > FieldRect.Max.y;
+                    b32 WrapBottom = (Entity->P.y - Entity->BoundingRadius) < FieldRect.Min.y;
+                    if(WrapRight)
+                    {
+                        v3 Offset = V3(-FieldDim.x, 0, 0);
+                        PushTriangle(RenderBuffer,
+                                     A + Offset,
+                                     B + Offset,
+                                     C + Offset,
+                                     Color);
+                    }
+                    if(WrapLeft)
+                    {
+                        v3 Offset = V3(FieldDim.x, 0, 0);
+                        PushTriangle(RenderBuffer,
+                                     A + Offset,
+                                     B + Offset,
+                                     C + Offset,
+                                     Color);
+                    }
+                    if(WrapTop)
+                    {
+                        v3 Offset = V3(0, -FieldDim.y, 0);
+                        PushTriangle(RenderBuffer,
+                                     A + Offset,
+                                     B + Offset,
+                                     C + Offset,
+                                     Color);
+                    }
+                    if(WrapBottom)
+                    {
+                        v3 Offset = V3(0, FieldDim.y, 0);
+                        PushTriangle(RenderBuffer,
+                                     A + Offset,
+                                     B + Offset,
+                                     C + Offset,
+                                     Color);
+                    }
+                    if(WrapRight && WrapTop)
+                    {
+                        v3 Offset = V3(-FieldDim.x, -FieldDim.y, 0);
+                        PushTriangle(RenderBuffer,
+                                     A + Offset,
+                                     B + Offset,
+                                     C + Offset,
+                                     Color);
+                    }
+                    if(WrapLeft && WrapTop)
+                    {
+                        v3 Offset = V3(FieldDim.x, -FieldDim.y, 0);
+                        PushTriangle(RenderBuffer,
+                                     A + Offset,
+                                     B + Offset,
+                                     C + Offset,
+                                     Color);
+                    }
+                    if(WrapRight && WrapBottom)
+                    {
+                        v3 Offset = V3(-FieldDim.x, FieldDim.y, 0);
+                        PushTriangle(RenderBuffer,
+                                     A + Offset,
+                                     B + Offset,
+                                     C + Offset,
+                                     Color);
+                    }
+                    if(WrapLeft && WrapBottom)
+                    {
+                        v3 Offset = V3(FieldDim.x, FieldDim.y, 0);
+                        PushTriangle(RenderBuffer,
+                                     A + Offset,
+                                     B + Offset,
+                                     C + Offset,
+                                     Color);
+                    }
                 }
             } break;
 
             case EntityType_Laser:
             {
-                PushBitmap(RenderBuffer, &GameState->LaserBitmap, Entity->P, XAxis, YAxis,
-                           Entity->Dim,
-                           V4(1.0f, 1.0f, 1.0f, Unlerp(0.0f, Entity->Timer, 2.0f)));
+                v4 Color = V4(1.0f, 1.0f, 1.0f, Unlerp(0.0f, Entity->Timer, 2.0f));
+                for(s32 Y = -1;
+                    Y <= 1;
+                    ++Y)
+                {
+                    for(s32 X = -1;
+                        X <= 1;
+                        ++X)
+                    {
+                        v3 Offset = V3(X*FieldDim.x, Y*FieldDim.y, 0);
+                        PushBitmap(RenderBuffer, &GameState->LaserBitmap, Offset + Entity->P,
+                                   XAxis, YAxis,
+                                   Entity->Dim,
+                                   Color);
+                    }
+                }
 //            DrawLine(BackBuffer, State->P, Laser->P, V4(0.0f, 0.0f, 1.0f, 1.0f));
             } break;
 
@@ -1929,6 +2002,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
             } break;
         }
     }
+    END_TIMED_BLOCK(RenderPush);
 
     {
         RenderBuffer->Projection = Projection_None;
@@ -1961,6 +2035,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
         if(WentDown(ShipController->Start))
         {
             State->Lives = 3;
+            State->Difficulty = 4;
             ResetGame(State, RenderBuffer, &GameMemory->Font);
         }
     }

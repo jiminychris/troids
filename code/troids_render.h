@@ -278,6 +278,7 @@ enum clip_direction
 internal void
 Clip(clipped_polygon *Polygon, r32 Plane, clip_dimension Dimension, clip_direction Direction)
 {
+    TIMED_FUNCTION();
     if(Polygon->VertexCount > 0)
     {
         r32 Multiplier = 1.0f;
@@ -413,6 +414,7 @@ ProjectPolygon(render_buffer *RenderBuffer, clipped_polygon *Polygon, v3 CameraP
 inline void
 PushTriangle(render_buffer *RenderBuffer, v3 A, v3 B, v3 C, v4 Color)
 {
+    TIMED_FUNCTION();
 #if DEBUG_CAMERA
     v3 ClipCameraP = RenderBuffer->ClipCameraP;
     r32 MinX = RenderBuffer->ClipRect.Min.x;

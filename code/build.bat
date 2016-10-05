@@ -9,7 +9,7 @@ set Slow=1
 set Rumble=0
 set DataPath=\"..\\troids\\data\"
 
-set CommonCompilerFlags=/Od -DTROIDS_RUMBLE=%Rumble% -DTROIDS_INTERNAL=%Internal% -DTROIDS_SLOW=%Slow% -DTROIDS_DEBUG_DISPLAY=%DebugDisplay% -DDATA_PATH=%DataPath% /Zi /fp:fast /W4 /WX /nologo /wd4100 /wd4065 /wd4189 /wd4201 /wd4505
+set CommonCompilerFlags=/O2 -DTROIDS_RUMBLE=%Rumble% -DTROIDS_INTERNAL=%Internal% -DTROIDS_SLOW=%Slow% -DTROIDS_DEBUG_DISPLAY=%DebugDisplay% -DDATA_PATH=%DataPath% /Zi /fp:fast /W4 /WX /nologo /wd4100 /wd4065 /wd4189 /wd4201 /wd4505
 set CommonLinkerFlags=/DEBUG /WX /NOLOGO /OPT:REF
 
 if exist troids.dll move troids.dll temp.dll 1> nul
