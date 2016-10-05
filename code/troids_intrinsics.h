@@ -39,6 +39,18 @@ AtomicIncrement(volatile u32 *Value)
     return(Result);
 }
 
+inline b32
+AtomicCompareExchange(volatile u32 *Destination, u32 Exchange, u32 Comparand)
+{
+    b32 Result;
+#if defined(_WIN32)
+    Result = (InterlockedCompareExchange(Destination, Exchange, Comparand) == Comparand);
+#else
+    Assert(!"Not implemeted!");
+#endif
+    return(Result);
+}
+
 inline u32
 GetCurrentThreadID(void)
 {

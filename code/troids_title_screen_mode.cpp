@@ -19,7 +19,6 @@ TitleScreenMode(game_memory *GameMemory, game_input *Input, renderer_state *Rend
     game_controller *Keyboard = &Input->Keyboard;
     game_controller *ShipController = Input->GamePads + 0;
 
-    RenderBuffer->Projection = RenderBuffer->DefaultProjection;
     RenderBuffer->Projection = Projection_None;
     v2 Center = 0.5f*V2i(RenderBuffer->Width, RenderBuffer->Height);
     r32 FadeInDuration = 3.0f;

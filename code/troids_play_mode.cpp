@@ -176,11 +176,11 @@ CreateAsteroid(play_state *State, r32 MaxRadius, rectangle2 Cell)
     Result->Type = EntityType_Asteroid;
     Result->P = V3(RandomBetween(Seed, -100.0f, 100.0f), RandomBetween(Seed, -100.0f, 100.0f), 0.0f);
     Result->P = V3(0.5f*(Cell.Min + Cell.Max), 0.0f);
-    Result->dP = V3(RandomBetween(Seed, -10.0f, 10.0f), RandomBetween(Seed, -10.0f, 10.0f), 0.0f);
+    Result->dP = V3(RandomBetween(Seed, -20.0f, 20.0f), RandomBetween(Seed, -20.0f, 20.0f), 0.0f);
 //    Result->dP = {};
-    Result->Yaw = RandomBetween(Seed, -Tau, Tau);
+    Result->Yaw = RandomBetween(Seed, 0.0f, Tau);
 //    Result->Yaw = 0.0f;
-    Result->dYaw = RandomBetween(Seed, -1.0f, 1.0f);
+    Result->dYaw = RandomBetween(Seed, -0.5f*Tau, 0.5f*Tau);
 //    Result->dYaw = 0.0f;
     
     return(Result);
@@ -189,7 +189,7 @@ CreateAsteroid(play_state *State, r32 MaxRadius, rectangle2 Cell)
 inline void
 SplitAsteroid(play_state *State, entity *Asteroid)
 {
-    if(Asteroid->CollisionShapeCount > 3)
+    if(!Asteroid->Disintegrated && Asteroid->CollisionShapeCount > 3)
     {
         u32 FirstSplitShapeIndex = RandomBetween(&State->AsteroidSeed,
                                                  2, Asteroid->CollisionShapeCount-2);
@@ -263,12 +263,13 @@ CreateLetter(play_state *State, loaded_font *Font, v3 P, r32 Scale, char Charact
     }
     
     entity *Result = CreateEntity(State, ShapeCount, Shapes);
-    Result->ColliderType = ColliderType_Wall;
+    Result->ColliderType = ColliderType_IndestructibleLaser;
     Result->Type = EntityType_Letter;
     Result->P = P;
     Result->Character = Character;
     Result->Dim = Dim;
     Result->Mass = REAL32_MAX;
+    Result->Timer = 0.0f;
 
     return(Result);
 }
@@ -507,8 +508,6 @@ ResetGame(play_state *State, render_buffer *RenderBuffer, loaded_font *Font)
     State->PhysicsState.ShapeArena.Used = 0;
     State->PhysicsState.FirstFreeShape = 0;
 
-    State->Lives = 3;
-
     State->ShipStartingP = V3(0.0f, 0.0f, 0.0f);
     State->CameraStartingP = V3(0, 0, 0);
     State->ShipStartingYaw = 0.0f;
@@ -563,7 +562,7 @@ ResetGame(play_state *State, render_buffer *RenderBuffer, loaded_font *Font)
         }
     }
 
-    State->AsteroidCount = 4;
+    State->AsteroidCount = State->Difficulty;
     for(s32 AsteroidIndex = 0;
         AsteroidIndex < State->AsteroidCount;
         ++AsteroidIndex)
@@ -607,7 +606,10 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
         AllowCollision(&State->PhysicsState, ColliderType_Ship, ColliderType_Wall);
         AllowCollision(&State->PhysicsState, ColliderType_Asteroid, ColliderType_Wall);
         AllowCollision(&State->PhysicsState, ColliderType_Asteroid, ColliderType_Laser);
+        AllowCollision(&State->PhysicsState, ColliderType_Asteroid, ColliderType_IndestructibleLaser);
 
+        State->Lives = 3;
+        State->Difficulty = 16;
         ResetGame(State, RenderBuffer, &GameMemory->Font);
     }
     
@@ -660,10 +662,12 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
         {
             case EntityType_Ship:
             {
+#if TROIDS_INTERNAL
                 if(Keyboard->Start.EndedDown || ShipController->Start.EndedDown)
                 {
                     Entity->P = State->ShipStartingP;
                 }
+#endif
 
                 r32 LeftStickX = (Keyboard->LeftStick.x ?
                                   Keyboard->LeftStick.x :
@@ -702,6 +706,12 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
                         Acceleration += -Facing*100.0f;
                     }
                 }
+#if TROIDS_INTERNAL
+                if(WentDown(ShipController->ActionRight) || WentDown(Keyboard->ActionRight))
+                {
+                    Entity->Destroyed = true;
+                }
+#endif
 
 #if COLLISION_FINE_DEBUG
                 Acceleration += 5000.0f*Facing*Thrust;
@@ -802,6 +812,18 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
                     ZRotationMatrix*YRotationMatrix*XRotationMatrix*Entity->RotationMatrix;
             } break;
 
+            case EntityType_Letter:
+            {
+                if(Entity->Timer == 0.0f)
+                {
+                    Entity->Timer += Input->dtForFrame;
+                }
+                else
+                {
+                    Entity->ColliderType = ColliderType_Wall;
+                }
+            } break;
+
             default:
             {
             } break;
@@ -826,6 +848,8 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
 #endif
         }
         EntityIndex = NextIndex;
+        Entity->Yaw = RealMod(Entity->Yaw, Tau);
+        Assert(0 <= Entity->Yaw && Entity->Yaw <= Tau);
     }
 
     BEGIN_TIMED_BLOCK(GUID, "Collision");
@@ -1936,11 +1960,13 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
     {
         if(WentDown(ShipController->Start))
         {
+            State->Lives = 3;
             ResetGame(State, RenderBuffer, &GameMemory->Font);
         }
     }
     if(State->AsteroidCount <= 0)
     {
+        State->Difficulty *= 2;
         ResetGame(State, RenderBuffer, &GameMemory->Font);
     }
     if(WentDown(ShipController->Select))

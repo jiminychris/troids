@@ -17,9 +17,6 @@ enum entity_type
     EntityType_Wall = 1<<5,
 };
 
-global_variable const u32 EntityPair_AsteroidLaser = EntityType_Asteroid|EntityType_Laser;
-global_variable const u32 EntityPair_AsteroidShip = EntityType_Asteroid|EntityType_Ship;
-
 struct entity
 {
     entity_type Type;
@@ -34,6 +31,7 @@ struct entity
     r32 Timer;
     v2 Dim;
 
+    b32 Disintegrated;
     b32 Destroyed;
     r32 BoundingRadius;
     // NOTE(chris): This is a linked list so this must be maintained.
@@ -66,6 +64,7 @@ struct play_state
 
     physics_state PhysicsState;
 
+    s32 Difficulty;
     s32 Lives;
     s32 AsteroidCount;
     seed AsteroidSeed;

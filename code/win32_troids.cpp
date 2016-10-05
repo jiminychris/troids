@@ -506,20 +506,20 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
             InitializeArena(&GlobalDebugState->Arena,
                             GameMemory.DebugMemorySize - sizeof(debug_state),
                             (u8 *)GameMemory.DebugMemory + sizeof(debug_state));
+            GetThreadStorage(GetCurrentThreadID());
+#endif
 
 //    SystemInfo.dwNumberOfProcessors = 16;
-            GetThreadStorage(GetCurrentThreadID());
             for(u32 ProcessorIndex = 0;
                 ProcessorIndex < SystemInfo.dwNumberOfProcessors - 1;
                 ++ProcessorIndex)
             {
                 DWORD ThreadID;
                 CreateThread(0, 0, ThreadProc, 0, 0, &ThreadID);
-
+#if TROIDS_INTERNAL
                 GetThreadStorage(ThreadID);
-            }
-
 #endif
+            }
             
             for(s32 RenderChunkIndex = 0;
                 RenderChunkIndex < ArrayCount(RendererState.RenderChunks);

@@ -574,6 +574,22 @@ RenderBitmap(render_chunk *RenderChunk, loaded_bitmap *Bitmap, v2 Origin, v2 XAx
             __m128 Sample11G = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(Sample11, 8), ColorMask));
             __m128 Sample11B = _mm_cvtepi32_ps(_mm_and_si128(Sample11, ColorMask));
 
+#if GAMMA_CORRECT
+            // NOTE(chris): sRGB to linear
+            Sample00R = _mm_mul_ps(_mm_mul_ps(Sample00R, Sample00R), Inv255);
+            Sample00B = _mm_mul_ps(_mm_mul_ps(Sample00B, Sample00B), Inv255);
+            Sample00G = _mm_mul_ps(_mm_mul_ps(Sample00G, Sample00G), Inv255);
+            Sample10R = _mm_mul_ps(_mm_mul_ps(Sample10R, Sample10R), Inv255);
+            Sample10B = _mm_mul_ps(_mm_mul_ps(Sample10B, Sample10B), Inv255);
+            Sample10G = _mm_mul_ps(_mm_mul_ps(Sample10G, Sample10G), Inv255);
+            Sample01R = _mm_mul_ps(_mm_mul_ps(Sample01R, Sample01R), Inv255);
+            Sample01B = _mm_mul_ps(_mm_mul_ps(Sample01B, Sample01B), Inv255);
+            Sample01G = _mm_mul_ps(_mm_mul_ps(Sample01G, Sample01G), Inv255);
+            Sample11R = _mm_mul_ps(_mm_mul_ps(Sample11R, Sample11R), Inv255);
+            Sample11B = _mm_mul_ps(_mm_mul_ps(Sample11B, Sample11B), Inv255);
+            Sample11G = _mm_mul_ps(_mm_mul_ps(Sample11G, Sample11G), Inv255);
+#endif
+
             __m128 DA = _mm_sub_ps(RealOne, _mm_mul_ps(Inv255, _mm_mul_ps(LerpA, TintA)));
 
             __m128 Result00R = _mm_add_ps(_mm_mul_ps(TintR, LerpR), _mm_mul_ps(DA, Sample00R));
@@ -588,6 +604,34 @@ RenderBitmap(render_chunk *RenderChunk, loaded_bitmap *Bitmap, v2 Origin, v2 XAx
             __m128 Result11R = _mm_add_ps(_mm_mul_ps(TintR, LerpR), _mm_mul_ps(DA, Sample11R));
             __m128 Result11G = _mm_add_ps(_mm_mul_ps(TintG, LerpG), _mm_mul_ps(DA, Sample11G));
             __m128 Result11B = _mm_add_ps(_mm_mul_ps(TintB, LerpB), _mm_mul_ps(DA, Sample11B));
+
+#if GAMMA_CORRECT
+            // NOTE(chris): linear to sRGB
+            __m128 Result00R255 = _mm_mul_ps(One255, Result00R);
+            __m128 Result00G255 = _mm_mul_ps(One255, Result00G);
+            __m128 Result00B255 = _mm_mul_ps(One255, Result00B);
+            Result00R = _mm_mul_ps(Result00R255, _mm_rsqrt_ps(Result00R255));
+            Result00G = _mm_mul_ps(Result00G255, _mm_rsqrt_ps(Result00G255));
+            Result00B = _mm_mul_ps(Result00B255, _mm_rsqrt_ps(Result00B255));
+            __m128 Result10R255 = _mm_mul_ps(One255, Result10R);
+            __m128 Result10G255 = _mm_mul_ps(One255, Result10G);
+            __m128 Result10B255 = _mm_mul_ps(One255, Result10B);
+            Result10R = _mm_mul_ps(Result10R255, _mm_rsqrt_ps(Result10R255));
+            Result10G = _mm_mul_ps(Result10G255, _mm_rsqrt_ps(Result10G255));
+            Result10B = _mm_mul_ps(Result10B255, _mm_rsqrt_ps(Result10B255));
+            __m128 Result01R255 = _mm_mul_ps(One255, Result01R);
+            __m128 Result01G255 = _mm_mul_ps(One255, Result01G);
+            __m128 Result01B255 = _mm_mul_ps(One255, Result01B);
+            Result01R = _mm_mul_ps(Result01R255, _mm_rsqrt_ps(Result01R255));
+            Result01G = _mm_mul_ps(Result01G255, _mm_rsqrt_ps(Result01G255));
+            Result01B = _mm_mul_ps(Result01B255, _mm_rsqrt_ps(Result01B255));
+            __m128 Result11R255 = _mm_mul_ps(One255, Result11R);
+            __m128 Result11G255 = _mm_mul_ps(One255, Result11G);
+            __m128 Result11B255 = _mm_mul_ps(One255, Result11B);
+            Result11R = _mm_mul_ps(Result11R255, _mm_rsqrt_ps(Result11R255));
+            Result11G = _mm_mul_ps(Result11G255, _mm_rsqrt_ps(Result11G255));
+            Result11B = _mm_mul_ps(Result11B255, _mm_rsqrt_ps(Result11B255));
+#endif
 
             __m128i Result00 = _mm_or_si128(
                 _mm_or_si128(_mm_slli_epi32(_mm_cvtps_epi32(Result00R), 16),
@@ -971,6 +1015,34 @@ RenderTriangle(render_chunk *RenderChunk,
             __m128 Result11G = _mm_add_ps(SG, _mm_mul_ps(Sample11G, DA));
             __m128 Result11B = _mm_add_ps(SB, _mm_mul_ps(Sample11B, DA));
 
+#if GAMMA_CORRECT
+            // NOTE(chris): linear to sRGB
+            __m128 Result00R255 = _mm_mul_ps(One255, Result00R);
+            __m128 Result00G255 = _mm_mul_ps(One255, Result00G);
+            __m128 Result00B255 = _mm_mul_ps(One255, Result00B);
+            Result00R = _mm_mul_ps(Result00R255, _mm_rsqrt_ps(Result00R255));
+            Result00G = _mm_mul_ps(Result00G255, _mm_rsqrt_ps(Result00G255));
+            Result00B = _mm_mul_ps(Result00B255, _mm_rsqrt_ps(Result00B255));
+            __m128 Result10R255 = _mm_mul_ps(One255, Result10R);
+            __m128 Result10G255 = _mm_mul_ps(One255, Result10G);
+            __m128 Result10B255 = _mm_mul_ps(One255, Result10B);
+            Result10R = _mm_mul_ps(Result10R255, _mm_rsqrt_ps(Result10R255));
+            Result10G = _mm_mul_ps(Result10G255, _mm_rsqrt_ps(Result10G255));
+            Result10B = _mm_mul_ps(Result10B255, _mm_rsqrt_ps(Result10B255));
+            __m128 Result01R255 = _mm_mul_ps(One255, Result01R);
+            __m128 Result01G255 = _mm_mul_ps(One255, Result01G);
+            __m128 Result01B255 = _mm_mul_ps(One255, Result01B);
+            Result01R = _mm_mul_ps(Result01R255, _mm_rsqrt_ps(Result01R255));
+            Result01G = _mm_mul_ps(Result01G255, _mm_rsqrt_ps(Result01G255));
+            Result01B = _mm_mul_ps(Result01B255, _mm_rsqrt_ps(Result01B255));
+            __m128 Result11R255 = _mm_mul_ps(One255, Result11R);
+            __m128 Result11G255 = _mm_mul_ps(One255, Result11G);
+            __m128 Result11B255 = _mm_mul_ps(One255, Result11B);
+            Result11R = _mm_mul_ps(Result11R255, _mm_rsqrt_ps(Result11R255));
+            Result11G = _mm_mul_ps(Result11G255, _mm_rsqrt_ps(Result11G255));
+            Result11B = _mm_mul_ps(Result11B255, _mm_rsqrt_ps(Result11B255));
+#endif
+
             __m128i Result00 = _mm_or_si128(
                 _mm_or_si128(_mm_slli_epi32(_mm_cvtps_epi32(Result00R), 16),
                              _mm_slli_epi32(_mm_cvtps_epi32(Result00G), 8)),
@@ -1186,33 +1258,17 @@ RenderSamples(render_chunk *RenderChunk)
                                   _mm_add_ps(_mm_add_ps(Sample00B, Sample10B),
                                              _mm_add_ps(Sample01B, Sample11B)));
 
-#if GAMMA_CORRECT
-            // NOTE(chris): linear to sRGB
-            __m128 ResultR255 = _mm_mul_ps(One255, R);
-            __m128 ResultG255 = _mm_mul_ps(One255, G);
-            __m128 ResultB255 = _mm_mul_ps(One255, B);
-
-            R = _mm_mul_ps(ResultR255, _mm_rsqrt_ps(ResultR255));
-            G = _mm_mul_ps(ResultG255, _mm_rsqrt_ps(ResultG255));
-            B = _mm_mul_ps(ResultB255, _mm_rsqrt_ps(ResultB255));
-#endif
-
             __m128i Result = _mm_or_si128(
                 _mm_or_si128(
                     _mm_slli_epi32(_mm_cvtps_epi32(R), 16),
                     _mm_slli_epi32(_mm_cvtps_epi32(G), 8)),
                 _mm_cvtps_epi32(B));
 
-            if((Result.m128i_u32[0] & 0xFFFFFF) == 0x000000)
-            {
-                int A = 0;
-            }
-
             __m128i Mask = _mm_and_si128(_mm_loadu_si128((__m128i *)Coverage), XMask);
 
             _mm_storeu_si128((__m128i *)Pixel, _mm_or_si128(_mm_and_si128(Mask, Result),
                                                             _mm_andnot_si128(Mask, ClearColor)));
-            
+
             Pixel += 4;
             Sample += SampleAdvance;
             Coverage += 4;

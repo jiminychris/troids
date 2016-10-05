@@ -68,6 +68,14 @@ Sign(r32 A)
     return(Result);
 }
 
+inline r32
+RealMod(r32 Value, r32 Mod)
+{
+    r32 Quotient = Value/Mod;
+    r32 Remainder = (Quotient - Floor(Quotient))*Mod;
+    return(Remainder);
+}
+
 inline b32
 IsNaN(r32 A)
 {

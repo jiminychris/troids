@@ -172,7 +172,8 @@ struct debug_state
     // only the events raised when drawing the debug display, but this would also ignore background
     // loading stuff.
     b32 Ignored;
-    volatile u32 EventCount;
+    volatile u32 EventWriteCount;
+    volatile u32 EventReadCount;
     u32 CollatingFrameIndex;
     u32 ViewingFrameIndex;
     debug_event NullEvent;
@@ -291,38 +292,59 @@ GetStringFromHash(char *String, debug_thread_storage *Thread = GlobalDebugState-
 #define DEBUG_GUID_(Name, File, Line) DEBUG_GUID__(Name, File, Line)
 #define DEBUG_GUID(Name) DEBUG_GUID_(Name, __FILE__, __LINE__)
 
-inline debug_event *
-NextDebugEvent(char *GUID = "")
+struct next_debug_event_result
 {
+    u32 EventCount;
+    debug_event *Event;
+};
+
+inline next_debug_event_result
+BeginNextDebugEvent(char *GUID = "")
+{
+    next_debug_event_result Result;
     u32 Mask = ArrayCount(GlobalDebugState->Events)-1;
-    u32 EventIndex = ((AtomicIncrement(&GlobalDebugState->EventCount) - 1) & Mask);
+    Result.EventCount = AtomicIncrement(&GlobalDebugState->EventWriteCount);
+    u32 EventIndex = ((Result.EventCount - 1) & Mask);
                       
     Assert(((EventIndex+1)&Mask) != GlobalDebugState->EventStart);
-    debug_event *Result = GlobalDebugState->Events + EventIndex;
-    Result->ThreadID = GetCurrentThreadID();
+    Result.Event = GlobalDebugState->Events + EventIndex;
+    Result.Event->ThreadID = GetCurrentThreadID();
     // TODO(chris): Does this impact the calling code too much?
-    Result->GUID = GetStringFromHash(GUID, GetThreadStorage(Result->ThreadID));
-    Result->Ignored = GlobalDebugState->Ignored;
+    Result.Event->GUID = GetStringFromHash(GUID, GetThreadStorage(Result.Event->ThreadID));
+    Result.Event->Ignored = GlobalDebugState->Ignored;
+
     return(Result);
+}
+
+inline void
+EndNextDebugEvent(u32 EventCount)
+{
+    b32 Exchanged;
+    do
+    {
+        Exchanged = AtomicCompareExchange(&GlobalDebugState->EventReadCount, EventCount, EventCount-1);
+    } while(!Exchanged);
 }
 
 inline char *
 BeginTimedBlock(char *GUID, u32 Iterations)
 {
-    debug_event *Event = NextDebugEvent(GUID);
-    Event->Type = DebugEventType_CodeBegin;
-    Event->Value_u64 = __rdtsc();
-    Event->Iterations = Iterations;
-    return(Event->GUID);
+    next_debug_event_result Next = BeginNextDebugEvent(GUID);
+    Next.Event->Type = DebugEventType_CodeBegin;
+    Next.Event->Value_u64 = __rdtsc();
+    Next.Event->Iterations = Iterations;
+    EndNextDebugEvent(Next.EventCount);
+    return(Next.Event->GUID);
 }
 #define BEGIN_TIMED_BLOCK(GUIDName, Name) char *GUIDName = BeginTimedBlock(DEBUG_GUID(Name), 1);
 
 inline void
 EndTimedBlock(char *GUID)
 {
-    debug_event *Event = NextDebugEvent(GUID);
-    Event->Type = DebugEventType_CodeEnd;
-    Event->Value_u64 = __rdtsc();
+    next_debug_event_result Next = BeginNextDebugEvent(GUID);
+    Next.Event->Type = DebugEventType_CodeEnd;
+    Next.Event->Value_u64 = __rdtsc();
+    EndNextDebugEvent(Next.EventCount);
 }
 #define END_TIMED_BLOCK(GUID) EndTimedBlock(GUID)
 
@@ -345,13 +367,17 @@ struct debug_group
     
     debug_group(char *GUID, debug_event_type Type = DebugEventType_GroupBegin)
     {
-        BeginEvent = NextDebugEvent(GUID);
+        next_debug_event_result Next = BeginNextDebugEvent(GUID);
+        BeginEvent = Next.Event;
         BeginEvent->Type = Type;
+        EndNextDebugEvent(Next.EventCount);
     }
     ~debug_group(void)
     {
-        debug_event *Event = NextDebugEvent();
-        Event->Type = DebugEventType_GroupEnd;
+        next_debug_event_result Next = BeginNextDebugEvent();
+        Next.Event->GUID = BeginEvent->GUID;
+        Next.Event->Type = DebugEventType_GroupEnd;
+        EndNextDebugEvent(Next.EventCount);
     }
 };
 
@@ -361,12 +387,13 @@ struct debug_group
 #define TIMED_LOOP(Name, Iterations) TIMED_BLOCK_(Name, Iterations, __COUNTER__)
 #define TIMED_LOOP_FUNCTION(Iterations) TIMED_LOOP(__FUNCTION__, Iterations)
 #define TIMED_FUNCTION() TIMED_BLOCK_(__FUNCTION__, 1, __COUNTER__)
-#define FRAME_MARKER(FrameSeconds)                  \
-    {                                               \
-        debug_event *Event = NextDebugEvent();      \
-        Event->Type = DebugEventType_FrameMarker;   \
-        Event->ElapsedSeconds = FrameSeconds;       \
-        Event->Value_u64 = __rdtsc();               \
+#define FRAME_MARKER(FrameSeconds)                              \
+    {                                                           \
+        next_debug_event_result Next = BeginNextDebugEvent();   \
+        Next.Event->Type = DebugEventType_FrameMarker;          \
+        Next.Event->ElapsedSeconds = FrameSeconds;              \
+        Next.Event->Value_u64 = __rdtsc();                      \
+        EndNextDebugEvent(Next.EventCount);                     \
     }
 
 #define DEBUG_GROUP__(Name, Type, Counter) debug_group Group_##Counter(DEBUG_GUID(Name), Type)
@@ -383,15 +410,17 @@ struct debug_group
 #define DEBUG_VALUE(Name, Value) LogDebugValue(DEBUG_GUID(Name), Value);
 #define DEBUG_FILL_BAR(NameInit, Used, Max)         \
     {                                               \
-        debug_event *Event = NextDebugEvent(DEBUG_GUID(NameInit));  \
-        Event->Type = DebugEventType_FillBar;       \
-        Event->Value_v2 = V2((r32)Used, (r32)Max);  \
+        next_debug_event_result Next = BeginNextDebugEvent(DEBUG_GUID(NameInit));  \
+        Next.Event->Type = DebugEventType_FillBar;       \
+        Next.Event->Value_v2 = V2((r32)Used, (r32)Max);  \
+        EndNextDebugEvent(Next.EventCount);                        \
     }
 
 #define LOG_DEBUG_FEATURE(TypeInit)             \
     {                                           \
-        debug_event *Event = NextDebugEvent(DEBUG_GUID(#TypeInit)); \
-        Event->Type = TypeInit;                 \
+        next_debug_event_result Next = BeginNextDebugEvent(DEBUG_GUID(#TypeInit)); \
+        Next.Event->Type = TypeInit;                 \
+        EndNextDebugEvent(Next.EventCount);                    \
     }
 #define DEBUG_PROFILER() LOG_DEBUG_FEATURE(DebugEventType_Profiler)
 #define DEBUG_FRAME_TIMELINE() LOG_DEBUG_FEATURE(DebugEventType_FrameTimeline)
@@ -419,10 +448,11 @@ struct debug_group
 #define LOG_DEBUG_TYPE(TypeInit)                                \
     inline void                                                 \
     LogDebugValue(char *GUID, TypeInit Value)                   \
-    {                                                           \
-        debug_event *Event = NextDebugEvent(GUID);              \
-        Event->Type = DebugEventType_##TypeInit;                \
-        Event->Value_##TypeInit = Value;                        \
+    {                                                               \
+        next_debug_event_result Next = BeginNextDebugEvent(GUID);   \
+        Next.Event->Type = DebugEventType_##TypeInit;               \
+        Next.Event->Value_##TypeInit = Value;                       \
+        EndNextDebugEvent(Next.EventCount);                         \
     }
 #define COLLATE_VALUE_TYPES(Frame, Event, Prev, GroupBeginStackCount, GroupBeginStack) \
     COLLATE_VALUE_TYPE(v2, Frame, Event, Prev, GroupBeginStackCount, GroupBeginStack) \

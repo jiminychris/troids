@@ -334,19 +334,14 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         {DEBUG_GROUP("Memory");
             DEBUG_VALUE("Permanent Arena", State->Arena);
             DEBUG_VALUE("Tran Arena", TranState->Arena);
-            for(u32 ThreadIndex = 0;
-                ThreadIndex < GlobalDebugState->ThreadCount;
-                ++ThreadIndex)
-            {
-                DEBUG_VALUE("Thread 0 String Arena", GlobalDebugState->ThreadStorage[0].StringArena);
-                DEBUG_VALUE("Thread 1 String Arena", GlobalDebugState->ThreadStorage[1].StringArena);
-                DEBUG_VALUE("Thread 2 String Arena", GlobalDebugState->ThreadStorage[2].StringArena);
-                DEBUG_VALUE("Thread 3 String Arena", GlobalDebugState->ThreadStorage[3].StringArena);
-                DEBUG_VALUE("Thread 4 String Arena", GlobalDebugState->ThreadStorage[4].StringArena);
-                DEBUG_VALUE("Thread 5 String Arena", GlobalDebugState->ThreadStorage[5].StringArena);
-                DEBUG_VALUE("Thread 6 String Arena", GlobalDebugState->ThreadStorage[6].StringArena);
-                DEBUG_VALUE("Thread 7 String Arena", GlobalDebugState->ThreadStorage[7].StringArena);
-            }
+            DEBUG_VALUE("Thread 0 String Arena", GlobalDebugState->ThreadStorage[0].StringArena);
+            DEBUG_VALUE("Thread 1 String Arena", GlobalDebugState->ThreadStorage[1].StringArena);
+            DEBUG_VALUE("Thread 2 String Arena", GlobalDebugState->ThreadStorage[2].StringArena);
+            DEBUG_VALUE("Thread 3 String Arena", GlobalDebugState->ThreadStorage[3].StringArena);
+            DEBUG_VALUE("Thread 4 String Arena", GlobalDebugState->ThreadStorage[4].StringArena);
+            DEBUG_VALUE("Thread 5 String Arena", GlobalDebugState->ThreadStorage[5].StringArena);
+            DEBUG_VALUE("Thread 6 String Arena", GlobalDebugState->ThreadStorage[6].StringArena);
+            DEBUG_VALUE("Thread 7 String Arena", GlobalDebugState->ThreadStorage[7].StringArena);
             DEBUG_VALUE("Render Arena", TranState->RenderBuffer.Arena);
         }
     }

@@ -386,18 +386,28 @@ internal b32
 ResolveCollision(entity *Entity, entity *OtherEntity)
 {
     b32 Result = false;
-    u32 Pair = (Entity->Type|OtherEntity->Type);
-    switch(Pair)
+    if(Entity->ColliderType == ColliderType_IndestructibleLaser)
     {
-        case EntityPair_AsteroidLaser:
-        case EntityPair_AsteroidShip:
+        Result = OtherEntity->Destroyed = OtherEntity->Disintegrated = true;
+    }
+    else if(OtherEntity->ColliderType == ColliderType_IndestructibleLaser)
+    {
+        Result = Entity->Destroyed = Entity->Disintegrated = true;
+    }
+    else
+    {
+        u32 Pair = (Entity->ColliderType|OtherEntity->ColliderType);
+        switch(Pair)
         {
-            Entity->Destroyed = OtherEntity->Destroyed = true;
-            Result = true;
-        } break;
+            case ColliderPair_AsteroidLaser:
+            case ColliderPair_AsteroidShip:
+            {
+                Result = Entity->Destroyed = OtherEntity->Destroyed = true;
+            } break;
 
-        default:
-        {
+            default:
+            {
+            }
         }
     }
 
