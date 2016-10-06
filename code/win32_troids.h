@@ -8,6 +8,7 @@
    ======================================================================== */
 
 #define THREAD_QUEUE_SIZE 256
+#define MAX_THREAD_COUNT 256
 
 #include <windows.h>
 #include <stdio.h>
@@ -50,11 +51,19 @@ enum recording_state
     RecordingState_PlayingRecord,
 };
 
+struct thread_context
+{
+    b32 Active;
+    DWORD ID;
+};
+
 global_variable v2 GlobalMousePosition;
 global_variable game_button GlobalLeftMouse;
 global_variable win32_backbuffer GlobalBackBuffer;
 global_variable b32 GlobalRunning;
 global_variable thread_work GlobalThreadQueue[THREAD_QUEUE_SIZE];
+global_variable u32 GlobalThreadCount;
+global_variable thread_context GlobalThreadContext[MAX_THREAD_COUNT];
 global_variable volatile u32 GlobalThreadQueueStartIndex = 0;
 global_variable u32 GlobalThreadQueueNextIndex = 0;
 global_variable HANDLE GlobalThreadQueueSemaphore;

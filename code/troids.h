@@ -21,6 +21,7 @@
 
 platform_read_file *PlatformReadFile;
 platform_push_thread_work *PlatformPushThreadWork;
+platform_wait_for_all_thread_work *PlatformWaitForAllThreadWork;
 
 enum game_mode
 {

@@ -401,7 +401,7 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
             if(Node->Type == DebugEventType_DebugEvents)
             {
                 u32 Mask = ArrayCount(GlobalDebugState->Events)-1;
-                u32 EventIndex = GlobalDebugState->EventReadCount & Mask;
+                u32 EventIndex = GlobalDebugState->EventCount & Mask;
                 if(GlobalDebugState->EventStart < EventIndex)
                 {
                     Used = (r32)(EventIndex - GlobalDebugState->EventStart);
@@ -581,8 +581,6 @@ GetThread(debug_frame *Frame, u32 ThreadID)
     return(Thread);
 }
 
-#define DEBUG_GROUP_STACK 0
-
 extern "C" DEBUG_COLLATE(DebugCollate)
 {
 #if TROIDS_INTERNAL
@@ -604,14 +602,13 @@ extern "C" DEBUG_COLLATE(DebugCollate)
     {
         TIMED_BLOCK("CollateEvents");
         u32 GroupBeginStackCount = 0;
-#if DEBUG_GROUP_STACK
-        OutputDebugStringA("==========\n");
-#endif
         debug_node *GroupBeginStack[MAX_DEBUG_EVENTS];
         debug_node *PrevNode = &GlobalDebugState->NodeSentinel;
 
         u32 Mask = ArrayCount(GlobalDebugState->Events)-1;
-        u32 EventEnd = GlobalDebugState->EventReadCount & Mask;
+        // NOTE(chris): IMPORTANT There must be no other threads working during this collation
+        PlatformWaitForAllThreadWork();
+        u32 EventEnd = GlobalDebugState->EventCount & Mask;
         for(;
             EventIndex != EventEnd;
             EventIndex = ((EventIndex+1) & Mask))
@@ -766,9 +763,6 @@ extern "C" DEBUG_COLLATE(DebugCollate)
                         Frame = NewFrame;
                     }
                     Assert(GroupBeginStackCount == 0);
-#if DEBUG_GROUP_STACK
-                    OutputDebugStringA("==========\n");
-#endif
                     PrevNode = &GlobalDebugState->NodeSentinel;
                 } break;
 
@@ -781,22 +775,12 @@ extern "C" DEBUG_COLLATE(DebugCollate)
 
                     Assert(GroupBeginStackCount < ArrayCount(GroupBeginStack));
                     GroupBeginStack[GroupBeginStackCount++] = Node;
-#if DEBUG_GROUP_STACK
-                    OutputDebugStringA("Pushed ");
-                    OutputDebugStringA(Event->GUID);
-                    OutputDebugStringA("\n");
-#endif
                 } break;
 
                 case(DebugEventType_GroupEnd):
                 {
                     Assert(GroupBeginStackCount);
                     PrevNode = GroupBeginStack[--GroupBeginStackCount];
-#if DEBUG_GROUP_STACK
-                    OutputDebugStringA("Popped ");
-                    OutputDebugStringA(Event->GUID);
-                    OutputDebugStringA("\n");
-#endif
                 } break;
 
                 case(DebugEventType_FillBar):

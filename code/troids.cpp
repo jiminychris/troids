@@ -262,6 +262,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     game_state *State = (game_state *)GameMemory->PermanentMemory;
     PlatformReadFile = GameMemory->PlatformReadFile;
     PlatformPushThreadWork = GameMemory->PlatformPushThreadWork;
+    PlatformWaitForAllThreadWork = GameMemory->PlatformWaitForAllThreadWork;
 
     if(!State->IsInitialized)
     {
@@ -296,7 +297,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         TranState->RenderBuffer.MetersToPixels = State->MetersToPixels;
         TranState->RenderBuffer.DefaultProjection = Projection_Perspective;
         TranState->RenderBuffer.Projection = TranState->RenderBuffer.DefaultProjection;
-        TranState->RenderBuffer.CameraP = V3(0.0f, 0.0f, 200.0f);
+        TranState->RenderBuffer.CameraP = {};
         
 //        State->HeadMesh = LoadObj("head.obj", &TranState->Arena);
 
@@ -377,7 +378,8 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         } break;
     }
 
-    ClearAllBuffers(RendererState);
+    // NOTE(chris): This now happens while rendering the samples.
+//    ClearAllBuffers(RendererState);
 }
 
 extern "C" GAME_GET_SOUND_SAMPLES(GameGetSoundSamples)

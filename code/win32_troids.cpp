@@ -328,6 +328,7 @@ inline void
 Win32PushThreadWork(thread_callback *Callback, void *Params,
                     thread_progress *Progress = 0)
 {
+    TIMED_FUNCTION();
     if(!Progress)
     {
         Progress = &GlobalNullProgress;
@@ -347,11 +348,14 @@ Win32PushThreadWork(thread_callback *Callback, void *Params,
 DWORD WINAPI
 ThreadProc(void *Parameter)
 {
+    thread_context *Context = (thread_context *)Parameter;
     DWORD Result = 0;
 
     while(!Result)
     {
+        Context->Active = false;
         WaitForSingleObject(GlobalThreadQueueSemaphore, INFINITE);
+        Context->Active = true;
         u32 WorkIndex = (InterlockedIncrement(&GlobalThreadQueueStartIndex) &
                          (ArrayCount(GlobalThreadQueue)-1));
         thread_work Work = GlobalThreadQueue[WorkIndex];
@@ -362,6 +366,41 @@ ThreadProc(void *Parameter)
     }
 
     return(Result);
+}
+
+inline void
+Win32WaitForAllThreadWork()
+{
+    TIMED_FUNCTION();
+    {
+        b32 AllWorkFreed;
+        do
+        {
+            AllWorkFreed = true;
+            for(u32 WorkIndex = 0;
+                WorkIndex < ArrayCount(GlobalThreadQueue);
+                ++WorkIndex)
+            {
+                thread_work *Work = GlobalThreadQueue + WorkIndex;
+                AllWorkFreed &= Work->Free;
+            }
+        } while(!AllWorkFreed);
+    }
+
+    {
+        b32 AllThreadsInactive;
+        do
+        {
+            AllThreadsInactive = true;
+            for(u32 ThreadIndex = 0;
+                ThreadIndex < GlobalThreadCount;
+                ++ThreadIndex)
+            {
+                thread_context *Context = GlobalThreadContext + ThreadIndex;
+                AllThreadsInactive &= !Context->Active;
+            }
+        } while(!AllThreadsInactive);
+    }
 }
 
 int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int Show)
@@ -509,15 +548,15 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
             GetThreadStorage(GetCurrentThreadID());
 #endif
 
-//    SystemInfo.dwNumberOfProcessors = 16;
+            GlobalThreadCount = Minimum(MAX_THREAD_COUNT, SystemInfo.dwNumberOfProcessors - 1);
             for(u32 ProcessorIndex = 0;
-                ProcessorIndex < SystemInfo.dwNumberOfProcessors - 1;
+                ProcessorIndex < GlobalThreadCount;
                 ++ProcessorIndex)
             {
-                DWORD ThreadID;
-                CreateThread(0, 0, ThreadProc, 0, 0, &ThreadID);
+                thread_context *Context = GlobalThreadContext + ProcessorIndex;
+                CreateThread(0, 0, ThreadProc, Context, 0, &Context->ID);
 #if TROIDS_INTERNAL
-                GetThreadStorage(ThreadID);
+                GetThreadStorage(Context->ID);
 #endif
             }
             
@@ -526,7 +565,6 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                 ++RenderChunkIndex)
             {
                 render_chunk *RenderChunk = RendererState.RenderChunks + RenderChunkIndex;
-                RenderChunk->Cleared = true;
                 RenderChunk->Used = false;
                 RenderChunk->BackBuffer.Pitch = RendererState.BackBuffer.Pitch;
                 RenderChunk->BackBuffer.Memory = RendererState.BackBuffer.Memory;
@@ -543,6 +581,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
 
             GameMemory.PlatformReadFile = Win32ReadFile;
             GameMemory.PlatformPushThreadWork = Win32PushThreadWork;
+            GameMemory.PlatformWaitForAllThreadWork = Win32WaitForAllThreadWork;
             
             // TODO(chris): Query monitor refresh rate
             r32 dtForFrame = 1.0f / 60.0f;
@@ -924,7 +963,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                                              (FileInfo.ftLastWriteTime.dwLowDateTime << 0));
                         if((LastWriteTime > CodeWriteTime) && !FileExists(PDBLockPath))
                         {
-                            // TODO(chris): Wait on all threads to finish here.
+                            Win32WaitForAllThreadWork();
                             if(GameCode)
                             {
                                 // TODO(chris): Is this necessary?

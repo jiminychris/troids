@@ -85,13 +85,13 @@ ProcessIntersection(arc_circle_intersection_result Intersection, r32 *tSpin, col
 }
 
 inline b32
-BoundingCirclesIntersect(entity *Entity, entity *OtherEntity, v3 NewP)
+BoundingCirclesIntersect(v3 OldPA, v3 NewPA, r32 RadiusA, v3 PB, r32 RadiusB)
 {
     b32 Result = false;
-    r32 HitRadius = Entity->BoundingRadius + OtherEntity->BoundingRadius;
-    v2 HitP = OtherEntity->P.xy;
-    v2 A = Entity->P.xy;
-    v2 B = NewP.xy;
+    r32 HitRadius = RadiusA + RadiusB;
+    v2 HitP = PB.xy;
+    v2 A = OldPA.xy;
+    v2 B = NewPA.xy;
     
     v2 RelativeA = A - HitP;
     v2 RelativeB = B - HitP;
@@ -388,21 +388,26 @@ ResolveCollision(entity *Entity, entity *OtherEntity)
     b32 Result = false;
     if(Entity->ColliderType == ColliderType_IndestructibleLaser)
     {
-        Result = OtherEntity->Destroyed = OtherEntity->Disintegrated = true;
+        Result = true;
+        OtherEntity->DestroyedBy = Entity->ColliderType;
     }
     else if(OtherEntity->ColliderType == ColliderType_IndestructibleLaser)
     {
-        Result = Entity->Destroyed = Entity->Disintegrated = true;
+        Result = true;
+        Entity->DestroyedBy = OtherEntity->ColliderType;
     }
     else
     {
         u32 Pair = (Entity->ColliderType|OtherEntity->ColliderType);
         switch(Pair)
         {
-            case ColliderPair_AsteroidLaser:
+            case ColliderPair_AsteroidWeakLaser:
+            case ColliderPair_AsteroidStrongLaser:
             case ColliderPair_AsteroidShip:
             {
-                Result = Entity->Destroyed = OtherEntity->Destroyed = true;
+                Result = true;
+                Entity->DestroyedBy = OtherEntity->ColliderType;
+                OtherEntity->DestroyedBy = Entity->ColliderType;
             } break;
 
             default:

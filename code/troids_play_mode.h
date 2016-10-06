@@ -29,10 +29,10 @@ struct entity
     r32 Pitch;
     r32 Roll;
     r32 Timer;
+    r32 Duration;
     v2 Dim;
 
-    b32 Disintegrated;
-    b32 Destroyed;
+    collider_type DestroyedBy;
     r32 BoundingRadius;
     // NOTE(chris): This is a linked list so this must be maintained.
     u32 CollisionShapeCount;
@@ -52,6 +52,12 @@ struct entity
     b32 AngularBoundingCircleCollided[COLLISION_ITERATIONS+1];
     u32 AngularCollidingShapeMask[COLLISION_ITERATIONS+1];
 #endif
+};
+
+struct virtual_entities
+{
+    u32 Count;
+    v3 P[4];
 };
 
 struct play_state
@@ -165,16 +171,29 @@ DestroyEntity(play_state *State, entity *Entity)
 }
 
 inline b32
+IsDestroyed(entity *Entity)
+{
+    b32 Result = Entity->DestroyedBy;
+    return(Result);
+}
+
+inline void
+SetNotDestroyed(entity *Entity)
+{
+    Entity->DestroyedBy = (collider_type)0;
+}
+
+inline b32
 CanCollide(entity *Entity)
 {
-    b32 Result = !Entity->Destroyed && (Entity->ColliderType != ColliderType_None);
+    b32 Result = !IsDestroyed(Entity) && (Entity->ColliderType != ColliderType_None);
     return(Result);
 }
 
 inline b32
 CanCollide(play_state *State, entity *A, entity *B)
 {
-    b32 Result = !A->Destroyed && !B->Destroyed &&
+    b32 Result = !IsDestroyed(A) && !IsDestroyed(B) &&
         CanCollide(&State->PhysicsState, A->ColliderType, B->ColliderType);
     return(Result);
 }

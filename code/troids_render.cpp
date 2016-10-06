@@ -1140,7 +1140,6 @@ ClearBuffers(render_chunk *RenderChunk)
             CoverageRow += CoverageBuffer->Pitch;
         }
     }
-    RenderChunk->Cleared = true;
     RenderChunk->Used = false;
 }
 
@@ -1152,19 +1151,39 @@ THREAD_CALLBACK(ClearRenderBuffersCallback)
 inline void
 ClearAllBuffers(renderer_state *RendererState, b32 Force = false)
 {
-    BEGIN_TIMED_BLOCK(GUID, "Buffer Clear Kickoff");
-    for(s32 RenderChunkIndex = 0;
-        RenderChunkIndex < RENDER_CHUNK_COUNT;
-        ++RenderChunkIndex)
+    TIMED_FUNCTION();
+    thread_progress ThreadProgress[RENDER_CHUNK_COUNT];
+    for(s32 RenderChunkIndex = RENDER_CHUNK_COUNT-1;
+        RenderChunkIndex >= 0;
+        --RenderChunkIndex)
     {
+        thread_progress *Progress = ThreadProgress + RenderChunkIndex;
         render_chunk *RenderChunk = RendererState->RenderChunks + RenderChunkIndex;
-        RenderChunk->Cleared = false;
         RenderChunk->Used |= Force;
         RenderChunk->ClearColor = RendererState->ClearColor;
-                    
-        PlatformPushThreadWork(ClearRenderBuffersCallback, RenderChunk, 0);
+        if(RenderChunkIndex == 0)
+        {
+            ClearRenderBuffersCallback(RenderChunk);
+            Progress->Finished = true;
+        }
+        else
+        {
+            PlatformPushThreadWork(ClearRenderBuffersCallback, RenderChunk, Progress);
+        }
     }
-    END_TIMED_BLOCK(GUID);
+
+    b32 Finished;
+    do
+    {
+        Finished = true;
+        for(s32 ProgressIndex = 0;
+            ProgressIndex < RENDER_CHUNK_COUNT;
+            ++ProgressIndex)
+        {
+            thread_progress *Progress = ThreadProgress + ProgressIndex;
+            Finished &= Progress->Finished;
+        }
+    } while(!Finished);
 }
 
 inline void
@@ -1200,6 +1219,7 @@ RenderSamples(render_chunk *RenderChunk)
     __m128 Four = _mm_set_ps1(4.0f);
     __m128 SampleFraction = _mm_set_ps1(1.0f / SAMPLE_COUNT);
     __m128 One255 = _mm_set_ps1(255.0f);
+    __m128i Zero = _mm_set1_epi32(0);
     __m128i ColorMask = _mm_set1_epi32(0x000000FF);
     __m128i ClearColor = _mm_set1_epi32((RoundU32(255.0f*RenderChunk->ClearColor.r) << 16) |
                                         (RoundU32(255.0f*RenderChunk->ClearColor.g) << 8) |
@@ -1268,6 +1288,14 @@ RenderSamples(render_chunk *RenderChunk)
 
             _mm_storeu_si128((__m128i *)Pixel, _mm_or_si128(_mm_and_si128(Mask, Result),
                                                             _mm_andnot_si128(Mask, ClearColor)));
+
+#if 1
+            _mm_storeu_si128((__m128i *)Coverage, Zero);
+            _mm_storeu_si128((__m128i *)(Sample), ClearColor);
+            _mm_storeu_si128((__m128i *)(Sample + 4), ClearColor);
+            _mm_storeu_si128((__m128i *)(Sample + 8), ClearColor);
+            _mm_storeu_si128((__m128i *)(Sample + 12), ClearColor);
+#endif
 
             Pixel += 4;
             Sample += SampleAdvance;
@@ -1790,19 +1818,23 @@ struct render_tree_data
 THREAD_CALLBACK(RenderTreeCallback)
 {
     TIMED_FUNCTION();
+    BEGIN_TIMED_BLOCK(Nothing, "Nothing");
     render_tree_data *Data = (render_tree_data *)Params;
     render_chunk *RenderChunk = Data->RenderChunk;
 
     // NOTE(chris): The worst that can happen here is just some tearing, right?
 //    if(RenderChunk->Cleared)
     {
+        BEGIN_TIMED_BLOCK(GUID, "Render Tree");
         RenderTree(Data->RenderBuffer, RenderChunk, Data->Node,
                    RenderChunk->OffsetX, RenderChunk->OffsetY, Data->Flags);
-        if(IsSet(Data->Flags, RenderFlags_UsePipeline) && RenderChunk->Used && RenderChunk->Cleared)
+        END_TIMED_BLOCK(GUID);
+        if(IsSet(Data->Flags, RenderFlags_UsePipeline) && RenderChunk->Used)
         {
             RenderSamples(RenderChunk);
         }
     }
+    END_TIMED_BLOCK(Nothing);
 }
 
 #define INSERT_RENDER_COMMAND(type, SortKey)                            \

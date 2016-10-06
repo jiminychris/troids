@@ -352,6 +352,9 @@ global_variable thread_progress GlobalNullProgress;
 #define PLATFORM_PUSH_THREAD_WORK(Name) void Name(thread_callback *Callback, void *Params, thread_progress *Progress)
 typedef PLATFORM_PUSH_THREAD_WORK(platform_push_thread_work);
 
+#define PLATFORM_WAIT_FOR_ALL_THREAD_WORK(Name) void Name()
+typedef PLATFORM_WAIT_FOR_ALL_THREAD_WORK(platform_wait_for_all_thread_work);
+
 struct game_memory
 {
     u64 PermanentMemorySize;
@@ -367,6 +370,7 @@ struct game_memory
 
     platform_read_file *PlatformReadFile;
     platform_push_thread_work *PlatformPushThreadWork;
+    platform_wait_for_all_thread_work *PlatformWaitForAllThreadWork;
     loaded_font Font;
 };
 
@@ -646,7 +650,6 @@ StringsMatch(char *A, char *B)
 
 struct render_chunk
 {
-    b32 Cleared;
     b32 Used;
     loaded_bitmap BackBuffer;
     loaded_bitmap CoverageBuffer;
