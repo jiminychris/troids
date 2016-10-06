@@ -1306,6 +1306,7 @@ RenderSamples(render_chunk *RenderChunk)
         SampleRow += SampleBuffer->Pitch;
         CoverageRow += CoverageBuffer->Pitch;
     }
+    RenderChunk->Used = false;
 }
 
 #if TROIDS_INTERNAL
@@ -1822,8 +1823,6 @@ THREAD_CALLBACK(RenderTreeCallback)
     render_tree_data *Data = (render_tree_data *)Params;
     render_chunk *RenderChunk = Data->RenderChunk;
 
-    // NOTE(chris): The worst that can happen here is just some tearing, right?
-//    if(RenderChunk->Cleared)
     {
         BEGIN_TIMED_BLOCK(GUID, "Render Tree");
         RenderTree(Data->RenderBuffer, RenderChunk, Data->Node,

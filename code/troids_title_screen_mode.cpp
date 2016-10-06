@@ -49,7 +49,7 @@ TitleScreenMode(game_memory *GameMemory, game_input *Input, renderer_state *Rend
     text_measurement TroidsMeasurement = DrawText(RenderBuffer, &Layout,
                                                   sizeof(TroidsText)-1, TroidsText,
                                                   DrawTextFlags_Measure);
-    Layout.P = V2(Center.x, 0.65f*RenderBuffer->Height) + GetTightCenteredOffset(TroidsMeasurement);
+    Layout.P = V2(Center.x, 0.65f*RenderBuffer->Height) + GetTightAlignmentOffset(TroidsMeasurement);
     DrawText(RenderBuffer, &Layout, sizeof(TroidsText)-1, TroidsText);
 
     if(FlickerOn)
@@ -60,7 +60,7 @@ TitleScreenMode(game_memory *GameMemory, game_input *Input, renderer_state *Rend
         text_measurement PushStartMeasurement = DrawText(RenderBuffer, &Layout,
                                                          sizeof(PushStartText)-1, PushStartText,
                                                          DrawTextFlags_Measure);
-        Layout.P = V2(Center.x, 0.55f*RenderBuffer->Height) + GetTightCenteredOffset(PushStartMeasurement);
+        Layout.P = V2(Center.x, 0.55f*RenderBuffer->Height) + GetTightAlignmentOffset(PushStartMeasurement);
         DrawText(RenderBuffer, &Layout, sizeof(PushStartText)-1, PushStartText);
     }
 

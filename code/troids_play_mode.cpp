@@ -78,7 +78,7 @@ CreateShip(play_state *State, v3 P, r32 Yaw)
 
     entity *Result = CreateEntity(State, ArrayCount(Shapes), Shapes);
     Result->Type = EntityType_Ship;
-    Result->ColliderType = ColliderType_Ship;
+    Result->ColliderType = ColliderType_IndestructibleLaser;
     Result->P = P;
     Result->Yaw = Yaw;
 
@@ -193,12 +193,42 @@ CreateAsteroid(play_state *State, r32 MaxRadius, rectangle2 Cell, v3 P = {NAN})
     return(Result);
 }
 
-inline void
+inline u32
 SplitAsteroid(play_state *State, entity *Asteroid)
 {
-    if((Asteroid->DestroyedBy != ColliderType_IndestructibleLaser) &&
-       (Asteroid->DestroyedBy != ColliderType_StrongLaser) &&
-       Asteroid->CollisionShapeCount > 3)
+    b32 CanSplit = Asteroid->CollisionShapeCount > 3;
+    
+    u32 Result = 0;
+    if(Asteroid->DestroyedBy == ColliderType_WeakLaser)
+    {
+        if(CanSplit)
+        {
+            Result += 10;
+        }
+        else
+        {
+            Result += 10*Asteroid->CollisionShapeCount;
+        }
+    }
+    if(Asteroid->DestroyedBy == ColliderType_StrongLaser)
+    {
+        if(CanSplit)
+        {
+            Result += 20*Asteroid->CollisionShapeCount;
+        }
+        else
+        {
+            Result += 10*Asteroid->CollisionShapeCount;
+        }
+    }
+
+    if((Asteroid->DestroyedBy == ColliderType_IndestructibleLaser) ||
+       (Asteroid->DestroyedBy == ColliderType_StrongLaser) ||
+       !CanSplit)
+    {
+        State->AsteroidCount -= 1;
+    }
+    else
     {
         u32 FirstSplitShapeIndex = RandomBetween(&State->AsteroidSeed,
                                                  2, Asteroid->CollisionShapeCount-2);
@@ -240,10 +270,8 @@ SplitAsteroid(play_state *State, entity *Asteroid)
         Split->P += 0.01f*AsteroidToSplit*InvAsteroidToSplitLength;
         State->AsteroidCount += 1;
     }
-    else
-    {
-        State->AsteroidCount -= 1;
-    }
+
+    return(Result);
 }
 
 inline entity *
@@ -461,7 +489,7 @@ GameOver(play_state *State, render_buffer *RenderBuffer, loaded_font *Font)
     text_measurement GameOverMeasurement = DrawText(0, &Layout,
                                                     sizeof(GameOverText)-1, GameOverText,
                                                     DrawTextFlags_Measure);
-    Layout.P = ScreenCenter + GetTightCenteredOffset(GameOverMeasurement);
+    Layout.P = ScreenCenter + GetTightAlignmentOffset(GameOverMeasurement);
 
     v3 P = Unproject(RenderBuffer, V3(Layout.P, 0.0f));
 
@@ -487,7 +515,7 @@ GameOver(play_state *State, render_buffer *RenderBuffer, loaded_font *Font)
 }
 
 internal void
-ResetGame(play_state *State, render_buffer *RenderBuffer, loaded_font *Font)
+ResetField(play_state *State, render_buffer *RenderBuffer, loaded_font *Font)
 {
     RenderBuffer->CameraRot = 0.0f;
 
@@ -503,15 +531,14 @@ ResetGame(play_state *State, render_buffer *RenderBuffer, loaded_font *Font)
     Ship_.BoundingRadius = 0.0f;
     Ship_.P = V3(0.0f, 0.0f, 0.0f);
     entity *Ship = &Ship_;
-    if(State->Lives)
+
+    if(State->SpawnTimer != State->SpawnDuration)
     {
-        Ship = CreateShip(State, State->ShipStartingP,
-                          State->ShipStartingYaw);
+        --State->Lives;
+        State->SpawnTimer = State->SpawnDuration;
     }
-    else
-    {
-        GameOver(State, RenderBuffer, Font);
-    }
+    Ship = CreateShip(State, State->ShipStartingP,
+                      State->ShipStartingYaw);
 
     v3 MinP = Unproject(RenderBuffer, V3(0, 0, 0));
     v3 MaxP = Unproject(RenderBuffer, V3i(RenderBuffer->Width, RenderBuffer->Height, 0));
@@ -562,11 +589,21 @@ ResetGame(play_state *State, render_buffer *RenderBuffer, loaded_font *Font)
         entity *Asteroid = CreateAsteroid(State, MaxRadius, Cell);
     }
 #else
-    State->AsteroidCount = 3;
-    CreateAsteroid(State, MaxRadius, Cells[0], MinP)->dP = {};
-    CreateAsteroid(State, MaxRadius, Cells[0], V3(MinP.x, 0, 0))->dP = {};
-    CreateAsteroid(State, MaxRadius, Cells[0], V3(0, MinP.y, 0))->dP = {};
+    State->AsteroidCount = 1;
+//    CreateAsteroid(State, MaxRadius, Cells[0], MinP)->dP = {};
+//    CreateAsteroid(State, MaxRadius, Cells[0], V3(MinP.x, 0, 0))->dP = {};
+//    CreateAsteroid(State, MaxRadius, Cells[0], V3(0, MinP.y, 0))->dP = {};
 #endif
+}
+
+inline void
+ResetGame(play_state *State, render_buffer *RenderBuffer, loaded_font *Font)
+{
+    State->Points = 0;
+    State->Lives = 3;
+    State->SpawnTimer = State->SpawnDuration = 1.0f;
+    State->Difficulty = 2;
+    ResetField(State, RenderBuffer, Font);
 }
 
 inline void
@@ -663,7 +700,6 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
     RenderBuffer->CameraP = V3(0.0f, 0.0f, 150.0f);
 
     s32 MaxDifficulty = 16;
-    s32 StartingDifficulty = 16;
     
     if(!State->IsInitialized)
     {
@@ -681,8 +717,6 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
         AllowCollision(&State->PhysicsState, ColliderType_Asteroid, ColliderType_StrongLaser);
         AllowCollision(&State->PhysicsState, ColliderType_Asteroid, ColliderType_IndestructibleLaser);
 
-        State->Lives = 3;
-        State->Difficulty = StartingDifficulty;
         ResetGame(State, RenderBuffer, &GameMemory->Font);
     }
     
@@ -712,7 +746,6 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
 
     game_controller *Keyboard = &Input->Keyboard;
     game_controller *ShipController = Input->GamePads + 0;
-    game_controller *AsteroidController = Input->GamePads + 1;
         
     rectangle2 FieldRect = MinMax(Unproject(RenderBuffer, V3(0, 0, 0)).xy,
                                   Unproject(RenderBuffer,
@@ -723,7 +756,10 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
 
     virtual_entities VirtualEntityTable[ArrayCount(State->Entities)];
 
+#if COLLISION_DEBUG
     b32 FirstAsteroid = true;
+    game_controller *AsteroidController = Input->GamePads + 1;
+#endif
     // NOTE(chris): Pre collision pass
     for(u32 EntityIndex = 1;
         EntityIndex < State->EntityCount;
@@ -756,25 +792,18 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
             {
                 case EntityType_Ship:
                 {
-                    if(Entity->ColliderType == ColliderType_None)
+                    if((Entity->ColliderType == ColliderType_IndestructibleLaser) &&
+                       (Entity->Timer == 0.0f))
                     {
-                        if(Entity->Timer > 0.0f)
-                        {
-                            Entity->Timer -= Input->dtForFrame;
-                        }
-                        else
-                        {
-                            --State->Lives;
-                            Entity->ColliderType = ColliderType_IndestructibleLaser;
-                            Entity->Timer = 0.0f;
-                        }
-                    }
-                    else if(Entity->ColliderType == ColliderType_IndestructibleLaser)
-                    {
-                        Entity->ColliderType = ColliderType_Ship;
+                        Entity->Timer += Input->dtForFrame;
                     }
                     else
                     {
+                        if(Entity->ColliderType == ColliderType_IndestructibleLaser)
+                        {
+                            Entity->Timer = 0.0f;
+                            Entity->ColliderType = ColliderType_Ship;
+                        }
 #if TROIDS_INTERNAL
                         if(Keyboard->Start.EndedDown || ShipController->Start.EndedDown)
                         {
@@ -832,6 +861,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
 #else
                         Acceleration += 50.0f*Facing*Thrust;
 #endif
+                        // TODO(chris): IMPORTANT clamp to max speed!
                         Entity->dP += Acceleration*Input->dtForFrame;
 
                         if(Entity->Timer > 0.0f)
@@ -848,14 +878,14 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
 
                 case EntityType_Asteroid:
                 {
+#if COLLISION_DEBUG
                     if(FirstAsteroid)
                     {
                         FirstAsteroid = false;
     
                         Entity->dP += 100.0f*V3(AsteroidController->LeftStick, 0)*Input->dtForFrame;
                     }
-
-                    // TODO(chris): Destroy if out of bounds
+#endif
                 } break;
 
                 case EntityType_Laser:
@@ -1960,13 +1990,7 @@ END_TIMED_BLOCK(Collision);
                 {
                     if(State->Lives > 1)
                     {
-                        Entity->P = State->ShipStartingP;
-                        Entity->dP = {};
-                        Entity->Yaw = State->ShipStartingYaw;
-                        Entity->dYaw = 0.0f;
-                        Entity->ColliderType = ColliderType_None;
-                        Entity->Timer = 2.0f;
-                        SetNotDestroyed(Entity);
+                        State->SpawnTimer -= Input->dtForFrame;
                     }
                     else
                     {
@@ -1977,7 +2001,7 @@ END_TIMED_BLOCK(Collision);
 
                 case EntityType_Asteroid:
                 {
-                    SplitAsteroid(State, Entity);
+                    State->Points += SplitAsteroid(State, Entity);
                 } break;
 
                 default:
@@ -2174,27 +2198,62 @@ END_TIMED_BLOCK(Collision);
 
     {
         RenderBuffer->Projection = Projection_None;
+        r32 HudMargin = 5.0f;
+        
+        v2 TopCenter = V2i(RenderBuffer->Width/2, RenderBuffer->Height) - V2(0.0f, HudMargin);
+        text_layout Layout = {};
+        Layout.Font = &GameMemory->Font;
+        Layout.Scale = 0.5f;
+        Layout.Color = V4(1, 1, 1, 1);
+        char PointsText[16];
+        u32 PointsTextLength = _snprintf_s(PointsText, sizeof(PointsText), "%010lu", State->Points);
+        text_measurement PointsMeasurement = DrawText(0, &Layout,
+                                                      PointsTextLength, PointsText,
+                                                      DrawTextFlags_Measure);
+        Layout.P = TopCenter + GetTightAlignmentOffset(PointsMeasurement, TextAlignFlags_TopCenter);
+        DrawText(RenderBuffer, &Layout, PointsTextLength, PointsText);
+
         v2 XAxis = V2(1, 0);
         v2 YAxis = Perp(XAxis);
-        v2 Dim = 32.0f*V2(1.0f, 1.0f);
+        v2 Dim = (PointsMeasurement.TextMaxY - PointsMeasurement.TextMinY)*V2(1.0f, 1.0f);
         v2 HalfDim = 0.5f*Dim;
-        v3 P = V3(V2i(RenderBuffer->Width, RenderBuffer->Height) - 1.2f*HalfDim, 0);
-        for(s32 LifeIndex = 0;
-            LifeIndex < State->Lives;
-            ++LifeIndex)
+        v3 P = V3(V2i(RenderBuffer->Width, RenderBuffer->Height) - HalfDim - V2(HudMargin, HudMargin), 0);
+        for(s32 LifeIndex = State->Lives - 1;
+            LifeIndex >= 1;
+            --LifeIndex)
         {
+            r32 Alpha = 1.0f;
+            if(LifeIndex == 1)
+            {
+                if(State->SpawnTimer <= 0.0f)
+                {
+                    Alpha = 0.0f;
+                    // NOTE(chris): This is okay because the last life should be the only one
+                    // that gets here
+                    --State->Lives;
+                    State->SpawnTimer = State->SpawnDuration;
+                    entity *Ship = CreateShip(State, State->ShipStartingP, State->ShipStartingYaw);
+                    Ship->Timer = 0.0f;
+                }
+                else if(State->SpawnTimer != State->SpawnDuration)
+                {
+                    Alpha = State->SpawnTimer / State->SpawnDuration;
+                    State->SpawnTimer -= Input->dtForFrame;
+                }
+            }
             PushTriangle(RenderBuffer,
                          P + 0.97f*V3(0, HalfDim.y, 0),
                          P + 0.96f*V3(-HalfDim.x, -HalfDim.y, 0),
                          P + 0.69f*V3(0, -HalfDim.y, 0),
-                         V4(1, 1, 1, 1));
+                         V4(1, 1, 1, Alpha));
             PushTriangle(RenderBuffer,
                          P + 0.97f*V3(0, HalfDim.y, 0),
                          P + 0.69f*V3(0, -HalfDim.y, 0),
                          P + 0.96f*V3(HalfDim.x, -HalfDim.y, 0),
-                         V4(1, 1, 1, 1));
-            P.x -= 1.2f*Dim.x;
+                         V4(1, 1, 1, Alpha));
+            P.x -= (Dim.x + HudMargin);
         }
+
         RenderBuffer->Projection = Projection_Perspective;
     }
 
@@ -2202,15 +2261,13 @@ END_TIMED_BLOCK(Collision);
     {
         if(WentDown(ShipController->Start))
         {
-            State->Lives = 3;
-            State->Difficulty = StartingDifficulty;
             ResetGame(State, RenderBuffer, &GameMemory->Font);
         }
     }
-    if(State->AsteroidCount <= 0)
+    else if(State->AsteroidCount <= 0)
     {
         State->Difficulty = Minimum(MaxDifficulty, State->Difficulty*2);
-        ResetGame(State, RenderBuffer, &GameMemory->Font);
+        ResetField(State, RenderBuffer, &GameMemory->Font);
     }
     if(WentDown(ShipController->Select))
     {

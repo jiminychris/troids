@@ -60,6 +60,7 @@ struct virtual_entities
     v3 P[4];
 };
 
+
 struct play_state
 {
     b32 IsInitialized;
@@ -72,6 +73,9 @@ struct play_state
 
     s32 Difficulty;
     s32 Lives;
+    r32 SpawnTimer;
+    r32 SpawnDuration;
+    u32 Points;
     s32 AsteroidCount;
     seed AsteroidSeed;
 

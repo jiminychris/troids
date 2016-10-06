@@ -604,13 +604,59 @@ GetLineRect(text_measurement TextMeasurement)
     return(Result);
 }
 
-inline v2
-GetTightCenteredOffset(text_measurement TextMeasurement)
+enum text_align_flags
 {
-    v2 AlignP = V2(TextMeasurement.MinX, TextMeasurement.BaseLine);
-    v2 Center = 0.5f*V2(TextMeasurement.MinX + TextMeasurement.MaxX,
-                        TextMeasurement.TextMinY + TextMeasurement.TextMaxY);
-    v2 Result = AlignP - Center;
+    TextAlignFlags_BottomLeft =   4|1,
+    TextAlignFlags_BottomCenter = 4,
+    TextAlignFlags_BottomRight =  4|2,
+    TextAlignFlags_CenterLeft =   1,
+    TextAlignFlags_Center =       0,
+    TextAlignFlags_CenterRight =  2,
+    TextAlignFlags_TopLeft =      8|1,
+    TextAlignFlags_TopCenter =    8,
+    TextAlignFlags_TopRight =     8|2,
+};
+
+inline v2
+GetTightAlignmentOffset(text_measurement TextMeasurement, u32 Flags = TextAlignFlags_Center)
+{
+    v2 TextOrigin = V2(TextMeasurement.MinX, TextMeasurement.BaseLine);
+    v2 AlignP;
+    switch(Flags & 3)
+    {
+        case 1:
+        {
+            AlignP.x = TextMeasurement.MinX;
+        } break;
+
+        case 2:
+        {
+            AlignP.x = TextMeasurement.MaxX;
+        } break;
+
+        default:
+        {
+            AlignP.x = 0.5f*(TextMeasurement.MinX + TextMeasurement.MaxX);
+        } break;
+    }
+    switch(Flags & 12)
+    {
+        case 4:
+        {
+            AlignP.y = TextMeasurement.TextMinY;
+        } break;
+
+        case 8:
+        {
+            AlignP.y = TextMeasurement.TextMaxY;
+        } break;
+
+        default:
+        {
+            AlignP.y = 0.5f*(TextMeasurement.TextMinY + TextMeasurement.TextMaxY);
+        } break;
+    }
+    v2 Result = TextOrigin - AlignP;
     return(Result);
 }
 
