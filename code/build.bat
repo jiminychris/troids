@@ -3,7 +3,7 @@
 if not exist w:\build mkdir w:\build
 pushd w:\build
 
-set Release=1
+set Release=0
 
 if %Release%==1 (
 set Internal=0

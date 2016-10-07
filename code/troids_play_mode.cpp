@@ -86,6 +86,18 @@ CreateShip(play_state *State, v3 P, r32 Yaw)
     return(Result);
 }
 
+// TODO(chris): Don't need to always allocate this same shape
+inline entity *
+CreateEnemyShip(play_state *State, v3 P, r32 Yaw, u32 ShipIndex)
+{
+    entity *Result = CreateShip(State, P, Yaw);
+    Result->Type = EntityType_EnemyShip;
+    Result->ColliderType = ColliderType_EnemyShip;
+    Result->Target = ShipIndex;
+
+    return(Result);
+}
+
 inline entity *
 CreateFloatingHead(play_state *State)
 {
@@ -377,7 +389,7 @@ CreateR(play_state *State, loaded_font *Font, v3 P, r32 Scale)
 
 // TODO(chris): Don't need to always allocate this same shape
 inline entity *
-CreateLaser(play_state *State, v3 P, v3 dP, r32 Yaw)
+CreateLaser(play_state *State, v3 P, v3 dP, r32 Yaw, r32 Duration)
 {
     v2 Dim = V2(1.5f, 3.0f);
     collision_shape Shapes[] =
@@ -392,8 +404,30 @@ CreateLaser(play_state *State, v3 P, v3 dP, r32 Yaw)
     Result->dP = dP;
     Result->Yaw = Yaw;
     Result->Dim = Dim;
-    Result->Duration = Result->Timer = 1.0f;
+    Result->Duration = Result->Timer = Duration;
     
+    return(Result);
+}
+
+inline entity *
+CreateEnemyLaser(play_state *State, v3 P, v3 dP, r32 Yaw, r32 Duration)
+{
+    entity *Result = CreateLaser(State, P, dP, Yaw, Duration);
+    Result->ColliderType = ColliderType_EnemyLaser;
+    Result->Type = EntityType_EnemyLaser;
+    
+    return(Result);
+}
+
+inline entity *
+CreateEnemySpawnTimer(play_state *State, u32 ShipIndex)
+{
+    entity *Result = CreateEntity(State);
+    Result->ColliderType = ColliderType_None;
+    Result->Type = EntityType_EnemySpawnTimer;
+    Result->Duration = Result->Timer = 3.0f;
+    Result->Target = ShipIndex;
+
     return(Result);
 }
 
@@ -409,7 +443,7 @@ CreateSpawnTimer(play_state *State)
 }
 
 inline entity *
-CreateShipExplosion(play_state *State, entity *Ship)
+CreateShipExplosion(play_state *State, entity *Ship, v4 Color)
 {
     entity *Result = CreateEntity(State);
     Result->ColliderType = ColliderType_None;
@@ -441,7 +475,7 @@ CreateShipExplosion(play_state *State, entity *Ship)
         Particle->dP = Ship->dP + RandomBetween(&State->ParticleSeed, 2.0f, 10.0f)*Normalize(RandomdP);
         Particle->dYaw = Ship->dYaw + RandomBetween(&State->ParticleSeed, -1.0f, 1.0f);
         Particle->Duration = Particle->Timer = Result->Timer;
-        Particle->Color = V4(1, 1, 1, 1);
+        Particle->Color = Color;
     }
 
     return(Result);
@@ -579,8 +613,31 @@ GameOver(play_state *State, render_buffer *RenderBuffer, loaded_font *Font)
 }
 
 internal void
-ResetField(play_state *State, render_buffer *RenderBuffer)
+ResetField(play_state *State, render_buffer *RenderBuffer, b32 NewGame = false)
 {
+    s32 MinDifficulty = 2;
+    s32 MaxDifficulty = 16;
+    if(NewGame)
+    {
+        State->Paused = false;
+        State->Points = 0;
+        State->Lives = 3;
+        State->Difficulty = MinDifficulty;
+        State->EnemyState = EnemyState_NotHere;
+    }
+    else
+    {
+        if(State->Difficulty == MaxDifficulty)
+        {
+            State->Difficulty = MinDifficulty;
+        }
+        State->Difficulty = Minimum(MaxDifficulty, State->Difficulty*2);
+        if(State->Difficulty == MaxDifficulty)
+        {
+            State->EnemyState = EnemyState_WaitingToSpawn;
+        }
+    }
+    
     RenderBuffer->CameraRot = 0.0f;
 
     // NOTE(chris): Null entity
@@ -654,16 +711,6 @@ ResetField(play_state *State, render_buffer *RenderBuffer)
 //    CreateAsteroid(State, MaxRadius, Cells[0], V3(MinP.x, 0, 0))->dP = {};
 //    CreateAsteroid(State, MaxRadius, Cells[0], V3(0, MinP.y, 0))->dP = {};
 #endif
-}
-
-inline void
-ResetGame(play_state *State, render_buffer *RenderBuffer)
-{
-    State->Paused = false;
-    State->Points = 0;
-    State->Lives = 3;
-    State->Difficulty = 2;
-    ResetField(State, RenderBuffer);
 }
 
 inline void
@@ -842,8 +889,6 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
     render_buffer *RenderBuffer = &TranState->RenderBuffer;
     RenderBuffer->Projection = RenderBuffer->DefaultProjection;
     RenderBuffer->CameraP = V3(0.0f, 0.0f, 150.0f);
-
-    s32 MaxDifficulty = 16;
     
     if(!State->IsInitialized)
     {
@@ -856,13 +901,16 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
         InitializePhysicsState(&State->PhysicsState, &GameState->Arena);
 
         AllowCollision(&State->PhysicsState, ColliderType_Ship, ColliderType_Asteroid);
+        AllowCollision(&State->PhysicsState, ColliderType_Ship, ColliderType_EnemyShip);
+        AllowCollision(&State->PhysicsState, ColliderType_Ship, ColliderType_EnemyLaser);
+        AllowCollision(&State->PhysicsState, ColliderType_Laser, ColliderType_EnemyShip);
+        AllowCollision(&State->PhysicsState, ColliderType_Laser, ColliderType_Asteroid);
         AllowCollision(&State->PhysicsState, ColliderType_Asteroid, ColliderType_Asteroid);
 //        AllowCollision(&State->PhysicsState, ColliderType_Ship, ColliderType_Wall);
         AllowCollision(&State->PhysicsState, ColliderType_Asteroid, ColliderType_Wall);
-        AllowCollision(&State->PhysicsState, ColliderType_Asteroid, ColliderType_Laser);
         AllowCollision(&State->PhysicsState, ColliderType_Asteroid, ColliderType_IndestructibleLaser);
 
-        ResetGame(State, RenderBuffer);
+        ResetField(State, RenderBuffer, true);
     }
     
     {DEBUG_GROUP("Play Mode");
@@ -914,271 +962,388 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
         u32 NextIndex = EntityIndex + 1;
         entity *Entity = State->Entities + EntityIndex;
 
-        if(!IsDestroyed(Entity))
+        if(Entity->P.x > FieldRect.Max.x)
         {
-            if(Entity->P.x > FieldRect.Max.x)
-            {
-                Entity->P.x -= FieldDim.x;
-            }
-            if(Entity->P.x < FieldRect.Min.x)
-            {
-                Entity->P.x += FieldDim.x;
-            }
-            if(Entity->P.y > FieldRect.Max.y)
-            {
-                Entity->P.y -= FieldDim.y;
-            }
-            if(Entity->P.y < FieldRect.Min.y)
-            {
-                Entity->P.y += FieldDim.y;
-            }
+            Entity->P.x -= FieldDim.x;
+        }
+        if(Entity->P.x < FieldRect.Min.x)
+        {
+            Entity->P.x += FieldDim.x;
+        }
+        if(Entity->P.y > FieldRect.Max.y)
+        {
+            Entity->P.y -= FieldDim.y;
+        }
+        if(Entity->P.y < FieldRect.Min.y)
+        {
+            Entity->P.y += FieldDim.y;
+        }
 
-            v3 Facing = V3(Cos(Entity->Yaw), Sin(Entity->Yaw), 0.0f);
-            switch(Entity->Type)
+        v3 Facing = V3(Cos(Entity->Yaw), Sin(Entity->Yaw), 0.0f);
+        switch(Entity->Type)
+        {
+            case EntityType_Ship:
             {
-                case EntityType_Ship:
+                if(State->AsteroidCount <= 0 && State->EnemyState == EnemyState_WaitingToSpawn)
                 {
-                    if((Entity->ColliderType == ColliderType_IndestructibleLaser) &&
-                       (Entity->Timer == 0.0f))
+                    State->EnemyState = EnemyState_Here;
+                    CreateEnemySpawnTimer(State, EntityIndex);
+                }
+                if((Entity->ColliderType == ColliderType_IndestructibleLaser) &&
+                   (Entity->Timer == 0.0f))
+                {
+                    Entity->Timer += Input->dtForFrame;
+                }
+                else
+                {
+                    if(Entity->ColliderType == ColliderType_IndestructibleLaser)
                     {
-                        Entity->Timer += Input->dtForFrame;
+                        Entity->Timer = 0.0f;
+                        Entity->ColliderType = ColliderType_Ship;
+                    }
+#if TROIDS_INTERNAL
+                    if(Keyboard->LeftClick.EndedDown || ShipController->LeftClick.EndedDown)
+                    {
+                        Entity->P = State->ShipStartingP;
+                    }
+#endif
+                    r32 LaserSpeed = 100.0f;
+                    r32 LaserDuration = 1.0f;
+                    
+                    r32 LeftStickX = (Keyboard->LeftStick.x ?
+                                      Keyboard->LeftStick.x :
+                                      ShipController->LeftStick.x);
+                    r32 Thrust;
+                    if(Keyboard->LeftStick.y)
+                    {
+                        Thrust = Clamp01(Keyboard->LeftStick.y);
                     }
                     else
                     {
-                        if(Entity->ColliderType == ColliderType_IndestructibleLaser)
-                        {
-                            Entity->Timer = 0.0f;
-                            Entity->ColliderType = ColliderType_Ship;
-                        }
-#if TROIDS_INTERNAL
-                        if(Keyboard->LeftClick.EndedDown || ShipController->LeftClick.EndedDown)
-                        {
-                            Entity->P = State->ShipStartingP;
-                        }
-#endif
-
-                        r32 LeftStickX = (Keyboard->LeftStick.x ?
-                                          Keyboard->LeftStick.x :
-                                          ShipController->LeftStick.x);
-                        r32 Thrust;
-                        if(Keyboard->LeftStick.y)
-                        {
-                            Thrust = Clamp01(Keyboard->LeftStick.y);
-                        }
-                        else
-                        {
-                            Thrust = Clamp01(ShipController->LeftStick.y);
-                            ShipController->LowFrequencyMotor = Thrust;
-                        }
+                        Thrust = Clamp01(ShipController->LeftStick.y);
+                        ShipController->LowFrequencyMotor = Thrust;
+                    }
 
 #if COLLISION_FINE_DEBUG
-                        r32 ddYaw = -100.0f*LeftStickX;
+                    r32 ddYaw = -100.0f*LeftStickX;
 #else
-                        r32 ddYaw = -2.0f*LeftStickX;
+                    r32 ddYaw = -2.0f*LeftStickX;
 #endif
-                        r32 dYaw = ddYaw*Input->dtForFrame;
-                        r32 MaxdYawPerFrame = 0.49f*Tau;
-                        r32 MaxdYawPerSecond = MaxdYawPerFrame/Input->dtForFrame;
-                        Entity->dYaw = Clamp(-MaxdYawPerSecond, Entity->dYaw + dYaw, MaxdYawPerSecond);
+                    r32 dYaw = ddYaw*Input->dtForFrame;
+                    r32 MaxdYawPerFrame = 0.49f*Tau;
+                    r32 MaxdYawPerSecond = MaxdYawPerFrame/Input->dtForFrame;
+                    Entity->dYaw = Clamp(-MaxdYawPerSecond, Entity->dYaw + dYaw, MaxdYawPerSecond);
     
-                        v3 Acceleration = {};
-                        if(ShipController->ActionDown.EndedDown || Keyboard->ActionDown.EndedDown)
+                    v3 Acceleration = {};
+                    if(ShipController->ActionDown.EndedDown || Keyboard->ActionDown.EndedDown)
+                    {
+                        if(Entity->Timer <= 0.0f)
                         {
-                            if(Entity->Timer <= 0.0f)
-                            {
-                                entity *Laser = CreateLaser(State, Entity->P, Entity->dP + Facing*100.0f,
-                                                            Entity->Yaw);
-                                r32 LaserOffset = 0.5f*(Entity->Dim.y + Laser->Dim.y);
-                                Laser->P += Facing*(LaserOffset);
-                                Entity->Timer = 0.1f;
-                                Acceleration += -Facing*100.0f;
-                            }
+                            entity *Laser = CreateLaser(State, Entity->P,
+                                                        Entity->dP + Facing*LaserSpeed,
+                                                        Entity->Yaw, LaserDuration);
+                            r32 LaserOffset = 0.5f*(Entity->Dim.y + Laser->Dim.y);
+                            Laser->P += Facing*(LaserOffset);
+                            Entity->Timer = 0.1f;
+                            Acceleration += -Facing*100.0f;
                         }
+                    }
 #if TROIDS_INTERNAL
-                        if(WentDown(ShipController->ActionRight) || WentDown(Keyboard->ActionRight))
-                        {
-                            Entity->DestroyedBy = ColliderType_Asteroid;
-                        }
-                        Acceleration += V3(1000.0f*ShipController->RightStick*Input->dtForFrame, 0);
+                    if(WentDown(ShipController->ActionRight) || WentDown(Keyboard->ActionRight))
+                    {
+                        Entity->DestroyedBy = ColliderType_Asteroid;
+                    }
+                    Acceleration += V3(1000.0f*ShipController->RightStick*Input->dtForFrame, 0);
 #endif
 
 #if COLLISION_FINE_DEBUG
-                        Acceleration += 5000.0f*Facing*Thrust;
+                    Acceleration += 5000.0f*Facing*Thrust;
 #else
-                        Acceleration += 50.0f*Facing*Thrust;
+                    Acceleration += 50.0f*Facing*Thrust;
 #endif
-                        Entity->Flicker = RandomBetween(&State->EngineSeed, 0.0f, Thrust);
-                        // TODO(chris): IMPORTANT clamp to max speed!
-                        Entity->dP += Acceleration*Input->dtForFrame;
+                    Entity->Flicker = RandomBetween(&State->EngineSeed, 0.0f, Thrust);
+                    // TODO(chris): IMPORTANT clamp to max speed!
+                    Entity->dP += Acceleration*Input->dtForFrame;
 
-                        if(Entity->Timer > 0.0f)
-                        {
-                            Entity->Timer -= Input->dtForFrame;
-                            ShipController->HighFrequencyMotor = 1.0f;
-                        }
-                        else
-                        {
-                            ShipController->HighFrequencyMotor = 0.0f;
-                        }
-                    }
-                } break;
-
-                case EntityType_Asteroid:
-                {
-#if COLLISION_DEBUG
-                    if(FirstAsteroid)
-                    {
-                        FirstAsteroid = false;
-    
-                        Entity->dP += 100.0f*V3(AsteroidController->LeftStick, 0)*Input->dtForFrame;
-                    }
-#endif
-                } break;
-
-                case EntityType_Laser:
-                {
-                    if(Entity->Timer <= 0.0f)
-                    {
-                        DestroyEntity(State, Entity);
-                        NextIndex = EntityIndex;
-                    }
-                    else
+                    if(Entity->Timer > 0.0f)
                     {
                         Entity->Timer -= Input->dtForFrame;
-                    }
-                } break;
-
-                case EntityType_FloatingHead:
-                {
-#if 0
-                    if(Keyboard->ActionUp.EndedDown || ShipController->ActionUp.EndedDown)
-                    {
-                        Entity->P.z += 100.0f*Input->dtForFrame;
-                    }
-                    if(Keyboard->ActionDown.EndedDown || ShipController->ActionDown.EndedDown)
-                    {
-                        Entity->P.z -= 100.0f*Input->dtForFrame;
-                    }
-#endif
-                    r32 YRotation = Input->dtForFrame*(Keyboard->RightStick.x ?
-                                                       Keyboard->RightStick.x :
-                                                       ShipController->RightStick.x);
-                    r32 XRotation = Input->dtForFrame*(Keyboard->RightStick.y ?
-                                                       Keyboard->RightStick.y :
-                                                       ShipController->RightStick.y);
-                    r32 ZRotation = Input->dtForFrame*((Keyboard->LeftTrigger ?
-                                                        Keyboard->LeftTrigger :
-                                                        ShipController->LeftTrigger) -
-                                                       (Keyboard->RightTrigger ?
-                                                        Keyboard->RightTrigger :
-                                                        ShipController->RightTrigger));
-
-                    r32 CosXRotation = Cos(XRotation);
-                    r32 SinXRotation = Sin(XRotation);
-                    r32 CosYRotation = Cos(YRotation);
-                    r32 SinYRotation = Sin(YRotation);
-                    r32 CosZRotation = Cos(ZRotation);
-                    r32 SinZRotation = Sin(ZRotation);
-
-                    m33 XRotationMatrix =
-                        {
-                            1, 0,             0,
-                            0, CosXRotation, -SinXRotation,
-                            0, SinXRotation,  CosXRotation,
-                        };
-                    m33 YRotationMatrix =
-                        {
-                            CosYRotation, 0, SinYRotation,
-                            0,            1, 0,
-                            -SinYRotation, 0, CosYRotation,
-                        };
-                    m33 ZRotationMatrix =
-                        {
-                            CosZRotation, -SinZRotation, 0,
-                            SinZRotation,  CosZRotation, 0,
-                            0,             0,            1,
-                        };
-
-                    Entity->RotationMatrix =
-                        ZRotationMatrix*YRotationMatrix*XRotationMatrix*Entity->RotationMatrix;
-                } break;
-
-                case EntityType_Letter:
-                {
-                    if(Entity->Timer == 0.0f)
-                    {
-                        Entity->Timer += Input->dtForFrame;
+                        ShipController->HighFrequencyMotor = 1.0f;
                     }
                     else
                     {
-                        Entity->ColliderType = ColliderType_Wall;
-                    }
-                } break;
-
-                case EntityType_SpawnTimer:
-                {
-                    if(Entity->Timer <= 0.0f)
-                    {
-                        if(State->AsteroidCount)
-                        {
-                            entity *Ship = CreateShip(State, State->ShipStartingP, State->ShipStartingYaw);
-                        }
-                        DestroyEntity(State, Entity);
-                        NextIndex = EntityIndex;
-                    }
-                    else
-                    {
-                        Entity->Timer -= Input->dtForFrame;
-                    }
-                } break;
-
-                case EntityType_ShipExplosionTimer:
-                {
-                    if(Entity->Timer <= 0.0f)
-                    {
-                        DestroyEntity(State, Entity);
-                        NextIndex = EntityIndex;
-                        ShipController->LowFrequencyMotor = 0.0f;
                         ShipController->HighFrequencyMotor = 0.0f;
                     }
+                }
+            } break;
+            
+            case EntityType_EnemyShip:
+            {
+                entity *Ship = State->Entities + Entity->Target;
+                if(Ship->Type == EntityType_Ship && !IsDestroyed(Ship))
+                {
+                    b32 Fire = false;
+
+                    r32 LaserSpeed = 100.0f;
+                    r32 LaserDuration = 1.0f;
+                    r32 LaserDistance = LaserSpeed*LaserDuration;
+                    v3 ToShip = Ship->P - Entity->P;
+                    v3 NormToShip = Normalize(ToShip);
+                    r32 FacingShip = Inner(Facing.xy, NormToShip.xy);
+                    r32 LeftStickX = 0.0f;
+                    r32 Thrust = 0.0f;
+                    if(FacingShip >= 0.0f)
+                    {
+                        v2 NormPerp = Normalize(-Perp(Facing.xy));
+                        r32 InnerShip = Inner(NormPerp, NormToShip.xy);
+                        LeftStickX = Sign(InnerShip)*Cube(AbsoluteValue(InnerShip));
+                        Thrust = Cube(FacingShip);
+                        Fire = Length(ToShip) <= LaserDistance;
+                    }
                     else
                     {
-                        ShipController->HighFrequencyMotor =
-                            ShipController->LowFrequencyMotor = Entity->Timer / Entity->Duration;
-                        Entity->Timer -= Input->dtForFrame;
+                        v2 NormPerp = Normalize(Perp(Facing.xy));
+                        r32 InnerShip = Inner(NormPerp, NormToShip.xy);
+                        LeftStickX = -Sign(InnerShip)*(1-0.5f*AbsoluteValue(InnerShip));
                     }
-                } break;
 
-                default:
+                    r32 ddYaw = -2.0f*LeftStickX;
+                
+                    r32 dYaw = ddYaw*Input->dtForFrame;
+                    r32 MaxdYawPerFrame = 0.49f*Tau;
+                    r32 MaxdYawPerSecond = MaxdYawPerFrame/Input->dtForFrame;
+                    Entity->dYaw = Clamp(-MaxdYawPerSecond, Entity->dYaw + dYaw, MaxdYawPerSecond);
+    
+                    v3 Acceleration = {};
+                    if(Fire && Entity->Timer <= 0.0f)
+                    {
+                        entity *Laser = CreateEnemyLaser(State, Entity->P, Entity->dP + Facing*LaserSpeed,
+                                                         Entity->Yaw, LaserDuration);
+                        r32 LaserOffset = 0.5f*(Entity->Dim.y + Laser->Dim.y);
+                        Laser->P += Facing*(LaserOffset);
+                        Entity->Timer = 0.1f;
+                        Acceleration += -Facing*100.0f;
+                    }
+
+                    Acceleration += 50.0f*Facing*Thrust;
+                    Entity->Flicker = RandomBetween(&State->EngineSeed, 0.0f, Thrust);
+                    // TODO(chris): IMPORTANT clamp to max speed!
+                    Entity->dP += Acceleration*Input->dtForFrame;
+
+                    if(Entity->Timer > 0.0f)
+                    {
+                        Entity->Timer -= Input->dtForFrame;
+                        ShipController->HighFrequencyMotor = 1.0f;
+                    }
+                    else
+                    {
+                        ShipController->HighFrequencyMotor = 0.0f;
+                    }
+                }
+                else
                 {
-                } break;
-            }
-            if(CanCollide(Entity))
+                    Entity->Flicker = 0.0f;
+                    State->EnemyState = EnemyState_NotHere;
+                }
+            } break;
+
+            case EntityType_Asteroid:
             {
 #if COLLISION_DEBUG
-
-                Entity->UsedLinearIterations = 0;
-                Entity->UsedAngularIterations = 0;
-
-                Entity->CollisionStepP[0] = Entity->P;
-                Entity->LinearBoundingCircleCollided[0] = false;
-                Entity->LinearCollidingShapeMask[0] = 0;
-                Entity->CollisionStepYaw[0] = Entity->Yaw;
-                Entity->AngularBoundingCircleCollided[0] = false;
-                Entity->AngularCollidingShapeMask[0] = 0;
-#if COLLISION_FINE_DEBUG
-                Entity->InitdP = Entity->dP;
-                Entity->InitdYaw = Entity->dYaw;
+                if(FirstAsteroid)
+                {
+                    FirstAsteroid = false;
+    
+                    Entity->dP += 100.0f*V3(AsteroidController->LeftStick, 0)*Input->dtForFrame;
+                }
 #endif
+            } break;
+
+            case EntityType_Laser:
+            case EntityType_EnemyLaser:
+            {
+                if(Entity->Timer <= 0.0f)
+                {
+                    DestroyEntity(State, Entity);
+                    NextIndex = EntityIndex;
+                }
+                else
+                {
+                    Entity->Timer -= Input->dtForFrame;
+                }
+            } break;
+
+            case EntityType_FloatingHead:
+            {
+#if 0
+                if(Keyboard->ActionUp.EndedDown || ShipController->ActionUp.EndedDown)
+                {
+                    Entity->P.z += 100.0f*Input->dtForFrame;
+                }
+                if(Keyboard->ActionDown.EndedDown || ShipController->ActionDown.EndedDown)
+                {
+                    Entity->P.z -= 100.0f*Input->dtForFrame;
+                }
 #endif
-            }
+                r32 YRotation = Input->dtForFrame*(Keyboard->RightStick.x ?
+                                                   Keyboard->RightStick.x :
+                                                   ShipController->RightStick.x);
+                r32 XRotation = Input->dtForFrame*(Keyboard->RightStick.y ?
+                                                   Keyboard->RightStick.y :
+                                                   ShipController->RightStick.y);
+                r32 ZRotation = Input->dtForFrame*((Keyboard->LeftTrigger ?
+                                                    Keyboard->LeftTrigger :
+                                                    ShipController->LeftTrigger) -
+                                                   (Keyboard->RightTrigger ?
+                                                    Keyboard->RightTrigger :
+                                                    ShipController->RightTrigger));
 
-            virtual_entities *VirtualEntities = VirtualEntityTable + EntityIndex;
+                r32 CosXRotation = Cos(XRotation);
+                r32 SinXRotation = Sin(XRotation);
+                r32 CosYRotation = Cos(YRotation);
+                r32 SinYRotation = Sin(YRotation);
+                r32 CosZRotation = Cos(ZRotation);
+                r32 SinZRotation = Sin(ZRotation);
 
-            CalculateVirtualEntities(Entity, Input->dtForFrame, FieldRect, VirtualEntities);
-            Entity->Yaw = RealMod(Entity->Yaw, Tau);
-            Assert(0 <= Entity->Yaw && Entity->Yaw <= Tau);
+                m33 XRotationMatrix =
+                    {
+                        1, 0,             0,
+                        0, CosXRotation, -SinXRotation,
+                        0, SinXRotation,  CosXRotation,
+                    };
+                m33 YRotationMatrix =
+                    {
+                        CosYRotation, 0, SinYRotation,
+                        0,            1, 0,
+                        -SinYRotation, 0, CosYRotation,
+                    };
+                m33 ZRotationMatrix =
+                    {
+                        CosZRotation, -SinZRotation, 0,
+                        SinZRotation,  CosZRotation, 0,
+                        0,             0,            1,
+                    };
+
+                Entity->RotationMatrix =
+                    ZRotationMatrix*YRotationMatrix*XRotationMatrix*Entity->RotationMatrix;
+            } break;
+
+            case EntityType_Letter:
+            {
+                if(Entity->Timer == 0.0f)
+                {
+                    Entity->Timer += Input->dtForFrame;
+                }
+                else
+                {
+                    Entity->ColliderType = ColliderType_Wall;
+                }
+            } break;
+
+            case EntityType_SpawnTimer:
+            {
+                if(Entity->Timer <= 0.0f)
+                {
+                    if(State->AsteroidCount || State->EnemyState == EnemyState_WaitingToSpawn)
+                    {
+                        entity *Ship = CreateShip(State, State->ShipStartingP, State->ShipStartingYaw);
+                    }
+                    DestroyEntity(State, Entity);
+                    NextIndex = EntityIndex;
+                }
+                else
+                {
+                    Entity->Timer -= Input->dtForFrame;
+                }
+            } break;
+
+            case EntityType_EnemySpawnTimer:
+            {
+                entity *Ship = State->Entities + Entity->Target;
+                Assert(Ship->Type == EntityType_Ship && !IsDestroyed(Ship));
+                Entity->Yaw = Ship->Yaw;
+                Entity->P = V3(Ship->P.xy + 0.5f*FieldDim, Ship->P.z);
+                if(Entity->P.x > FieldRect.Max.x)
+                {
+                    Entity->P.x -= FieldDim.x;
+                }
+                if(Entity->P.y > FieldRect.Max.y)
+                {
+                    Entity->P.y -= FieldDim.y;
+                }
+                
+                if(Entity->Timer <= 0.0f)
+                {
+                    entity *EnemyShip = CreateEnemyShip(State, Entity->P, Entity->Yaw, Entity->Target);
+                    EnemyShip->dP = Ship->dP;
+                    EnemyShip->dYaw = Ship->dYaw;
+                    DestroyEntity(State, Entity);
+                    NextIndex = EntityIndex;
+                }
+                else
+                {
+                    r32 Thrust;
+                    if(Keyboard->LeftStick.y)
+                    {
+                        Thrust = Clamp01(Keyboard->LeftStick.y);
+                    }
+                    else
+                    {
+                        Thrust = Clamp01(ShipController->LeftStick.y);
+                        ShipController->LowFrequencyMotor = Thrust;
+                    }
+                    Entity->Flicker = RandomBetween(&State->EngineSeed, 0.0f, Thrust);
+                    
+                    Entity->Timer -= Input->dtForFrame;
+                }
+            } break;
+
+            case EntityType_ShipExplosionTimer:
+            {
+                if(Entity->Timer <= 0.0f)
+                {
+                    DestroyEntity(State, Entity);
+                    NextIndex = EntityIndex;
+                    ShipController->LowFrequencyMotor = 0.0f;
+                    ShipController->HighFrequencyMotor = 0.0f;
+                }
+                else
+                {
+                    ShipController->HighFrequencyMotor =
+                        ShipController->LowFrequencyMotor = Entity->Timer / Entity->Duration;
+                    Entity->Timer -= Input->dtForFrame;
+                }
+            } break;
+
+            default:
+            {
+            } break;
         }
+        if(CanCollide(Entity))
+        {
+#if COLLISION_DEBUG
+
+            Entity->UsedLinearIterations = 0;
+            Entity->UsedAngularIterations = 0;
+
+            Entity->CollisionStepP[0] = Entity->P;
+            Entity->LinearBoundingCircleCollided[0] = false;
+            Entity->LinearCollidingShapeMask[0] = 0;
+            Entity->CollisionStepYaw[0] = Entity->Yaw;
+            Entity->AngularBoundingCircleCollided[0] = false;
+            Entity->AngularCollidingShapeMask[0] = 0;
+#if COLLISION_FINE_DEBUG
+            Entity->InitdP = Entity->dP;
+            Entity->InitdYaw = Entity->dYaw;
+#endif
+#endif
+        }
+
+        virtual_entities *VirtualEntities = VirtualEntityTable + EntityIndex;
+
+        CalculateVirtualEntities(Entity, Input->dtForFrame, FieldRect, VirtualEntities);
+        Entity->Yaw = RealMod(Entity->Yaw, Tau);
+        Assert(0 <= Entity->Yaw && Entity->Yaw <= Tau);
 
         EntityIndex = NextIndex;
     }
@@ -2205,7 +2370,7 @@ END_TIMED_BLOCK(Collision);
                 case EntityType_Ship:
                 {
                     --State->Lives;
-                    CreateShipExplosion(State, Entity);
+                    CreateShipExplosion(State, Entity, V4(1, 1, 1, 1));
                     if(State->Lives > 0)
                     {
                         CreateSpawnTimer(State);
@@ -2213,6 +2378,16 @@ END_TIMED_BLOCK(Collision);
                     else
                     {
                         GameOver(State, RenderBuffer, &GameMemory->Font);
+                    }
+                } break;
+
+                case EntityType_EnemyShip:
+                {
+                    State->EnemyState = EnemyState_NotHere;
+                    CreateShipExplosion(State, Entity, V4(1, 0, 0, 1));
+                    if(Entity->DestroyedBy == ColliderType_Laser)
+                    {
+                        State->Points += 1000;
                     }
                 } break;
 
@@ -2288,14 +2463,14 @@ END_TIMED_BLOCK(Collision);
             ++LifeIndex)
         {
             PushTriangle(RenderBuffer,
-                         P + 0.97f*V3(0, HalfDim.y, 0),
-                         P + 0.96f*V3(-HalfDim.x, -HalfDim.y, 0),
-                         P + 0.69f*V3(0, -HalfDim.y, 0),
+                         P + V3(0.97f*V2(0, HalfDim.y), HUD_Z),
+                         P + V3(0.96f*V2(-HalfDim.x, -HalfDim.y), HUD_Z),
+                         P + V3(0.69f*V2(0, -HalfDim.y), HUD_Z),
                          V4(1, 1, 1, 1));
             PushTriangle(RenderBuffer,
-                         P + 0.97f*V3(0, HalfDim.y, 0),
-                         P + 0.69f*V3(0, -HalfDim.y, 0),
-                         P + 0.96f*V3(HalfDim.x, -HalfDim.y, 0),
+                         P + V3(0.97f*V2(0, HalfDim.y), HUD_Z),
+                         P + V3(0.69f*V2(0, -HalfDim.y), HUD_Z),
+                         P + V3(0.96f*V2(HalfDim.x, -HalfDim.y), HUD_Z),
                          V4(1, 1, 1, 1));
             P.x -= (Dim.x + HudMargin);
         }
@@ -2319,27 +2494,43 @@ END_TIMED_BLOCK(Collision);
             v2 XAxis = -Perp(YAxis);
             switch(Entity->Type)
             {
+
+                case EntityType_EnemySpawnTimer:
                 case EntityType_Ship:
+                case EntityType_EnemyShip:
                 case EntityType_Asteroid:
                 {
 //                State->CameraP.xy += 0.2f*(Entity->P.xy - State->CameraP.xy);
 //                State->CameraRot += 0.05f*((Entity->Yaw - 0.25f*Tau) - State->CameraRot);
 
-                    if(Entity->Type == EntityType_Ship)
+                    v4 Color = V4(1, 1, 1, 1);
+                    collision_shape *Shapes = Entity->CollisionShapes;
+                    if(Entity->Type == EntityType_Ship ||
+                       Entity->Type == EntityType_EnemyShip ||
+                       Entity->Type == EntityType_EnemySpawnTimer)
                     {
-                        v4 Color = V4(1, 1, 1, Entity->Flicker);
-                        v2 EngineP = Entity->CollisionShapes[0].B;
+                        entity *Ship = Entity;
+                        if(Entity->Type == EntityType_EnemyShip)
+                        {
+                            Color = V4(1, 0, 0, 1);
+                        }
+                        else if(Entity->Type == EntityType_EnemySpawnTimer)
+                        {
+                            Color = V4(1, 0, 0, (Entity->Duration-Entity->Timer) / Entity->Duration);
+                            Ship = State->Entities + Entity->Target;
+                            Shapes = Ship->CollisionShapes;
+                        }
+                        v2 EngineP = Ship->CollisionShapes[0].B;
                         v3 EngineA = V3(EngineP.x, EngineP.y - 1.0f, -0.001f);
                         v3 EngineB = V3(EngineP.x, EngineP.y + 1.0f, -0.001f);
                         v3 EngineC = V3(EngineP.x - 2.0f, EngineP.y, -0.001f);
                         v3 A = Entity->P + V3(RotateZ(EngineA.xy, Entity->Yaw), EngineA.z);
                         v3 B = Entity->P + V3(RotateZ(EngineB.xy, Entity->Yaw), EngineB.z);
                         v3 C = Entity->P + V3(RotateZ(EngineC.xy, Entity->Yaw), EngineC.z);
-                        PushWraparoundTriangle(RenderBuffer, FieldRect, A, B, C, Color);
+                        PushWraparoundTriangle(RenderBuffer, FieldRect, A, B, C, V4(1, 1, 1, Entity->Flicker));
                     }
 
-                    v4 Color = V4(1, 1, 1, 1);
-                    for(collision_shape *Shape = Entity->CollisionShapes;
+                    for(collision_shape *Shape = Shapes;
                         Shape;
                         Shape = Shape->Next)
                     {
@@ -2372,8 +2563,14 @@ END_TIMED_BLOCK(Collision);
                 } break;
 
                 case EntityType_Laser:
+                case EntityType_EnemyLaser:
                 {
-                    v4 Color = V4(1.0f, 1.0f, 1.0f, Entity->Timer/Entity->Duration);
+                    v3 OpaqueColor = V3(1, 1, 1);
+                    if(Entity->Type == EntityType_EnemyLaser)
+                    {
+                        OpaqueColor.g = OpaqueColor.b = 0.0f;
+                    }
+                    v4 Color = V4(OpaqueColor, Entity->Timer/Entity->Duration);
                     for(s32 Y = -1;
                         Y <= 1;
                         ++Y)
@@ -2447,14 +2644,13 @@ END_TIMED_BLOCK(Collision);
     {
         if(WentDown(ShipController->Start))
         {
-            ResetGame(State, RenderBuffer);
+            ResetField(State, RenderBuffer, true);
         }
     }
-    else if(State->AsteroidCount <= 0)
+    else if(State->AsteroidCount <= 0 && State->EnemyState == EnemyState_NotHere)
     {
         if(State->ResetTimer <= 0.0f)
         {
-            State->Difficulty = Minimum(MaxDifficulty, State->Difficulty*2);
             ResetField(State, RenderBuffer);
         }
         else

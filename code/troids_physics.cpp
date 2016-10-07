@@ -403,6 +403,9 @@ ResolveCollision(entity *Entity, entity *OtherEntity)
         {
             case ColliderPair_AsteroidLaser:
             case ColliderPair_AsteroidShip:
+            case ColliderPair_ShipEnemyShip:
+            case ColliderPair_EnemyShipLaser:
+            case ColliderPair_ShipEnemyLaser:
             {
                 Result = true;
                 Entity->DestroyedBy = OtherEntity->ColliderType;

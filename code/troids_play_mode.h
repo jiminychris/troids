@@ -17,6 +17,9 @@ enum entity_type
     EntityType_Wall = 1<<5,
     EntityType_SpawnTimer = 1<<6,
     EntityType_ShipExplosionTimer = 1<<7,
+    EntityType_EnemySpawnTimer = 1<<8,
+    EntityType_EnemyShip = 1<<9,
+    EntityType_EnemyLaser = 1<<10,
 };
 
 struct entity
@@ -26,8 +29,10 @@ struct entity
     r32 Mass;
     v3 P;
     v3 dP;
+    u32 Target;
     r32 Yaw;
     r32 dYaw;
+    r32 Thrust;
     r32 Flicker;
     r32 Timer;
     r32 Duration;
@@ -75,6 +80,13 @@ struct particle
     v4 Color;
 };
 
+enum enemy_state
+{
+    EnemyState_NotHere,
+    EnemyState_Here,
+    EnemyState_WaitingToSpawn,
+};
+
 struct play_state
 {
     b32 IsInitialized;
@@ -90,6 +102,7 @@ struct play_state
     s32 Difficulty;
     s32 Lives;
     u32 Points;
+    enemy_state EnemyState;
     s32 AsteroidCount;
     seed AsteroidSeed;
     seed EngineSeed;

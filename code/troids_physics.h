@@ -25,10 +25,15 @@ enum collider_type
     ColliderType_Asteroid = 1<<3,
     ColliderType_Wall = 1<<4,
     ColliderType_IndestructibleLaser = 1<<5,
+    ColliderType_EnemyShip = 1<<6,
+    ColliderType_EnemyLaser = 1<<7,
 };
 
 global_variable const u32 ColliderPair_AsteroidLaser = ColliderType_Asteroid|ColliderType_Laser;
 global_variable const u32 ColliderPair_AsteroidShip = ColliderType_Asteroid|ColliderType_Ship;
+global_variable const u32 ColliderPair_ShipEnemyShip = ColliderType_Ship|ColliderType_EnemyShip;
+global_variable const u32 ColliderPair_EnemyShipLaser = ColliderType_EnemyShip|ColliderType_Laser;
+global_variable const u32 ColliderPair_ShipEnemyLaser = ColliderType_Ship|ColliderType_EnemyLaser;
 
 enum collision_shape_type
 {
