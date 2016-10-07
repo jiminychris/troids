@@ -11,6 +11,7 @@
 
 #define Tau 6.28318530717958647692528676655900576839433879875021f
 #define Pi 0.5f*Tau
+#define HalfPi 0.25f*Tau
 
 inline r32
 Sin(r32 A)
@@ -439,6 +440,13 @@ Hadamard(v3 A, v3 B)
     return(Result);
 }
 
+inline v3
+Normalize(v3 A)
+{
+    v3 Result = A/Length(A);
+    return(Result);
+}
+
 inline v4
 V4(r32 X, r32 Y, r32 Z, r32 W)
 {
@@ -446,6 +454,17 @@ V4(r32 X, r32 Y, r32 Z, r32 W)
     Result.x = X;
     Result.y = Y;
     Result.z = Z;
+    Result.w = W;
+    return(Result);
+}
+
+inline v4
+V4(v3 XYZ, r32 W)
+{
+    v4 Result;
+    Result.x = XYZ.x;
+    Result.y = XYZ.y;
+    Result.z = XYZ.z;
     Result.w = W;
     return(Result);
 }

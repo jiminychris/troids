@@ -836,7 +836,7 @@ RenderTriangle(render_chunk *RenderChunk,
     // NOTE(chris): sRGB to linear
     Color = sRGB1ToLinear1(Color);
 #endif
-    Color *= Color.a;
+    Color.rgb *= Color.a;
 
     v2 PerpAB = Perp(B - A);
     v2 PerpBC = Perp(C - B);
@@ -903,7 +903,6 @@ RenderTriangle(render_chunk *RenderChunk,
             X < AdjustedXMax;
             X += 4)
         {
-            // TODO(chris): IMPORTANT "top-left" rule
             __m128 Sample00InnerAB = _mm_add_ps(_mm_mul_ps(SampleX0RelA, PerpABX),
                                                    _mm_mul_ps(SampleY0RelA, PerpABY));
             __m128 Sample00InnerBC = _mm_add_ps(_mm_mul_ps(SampleX0RelB, PerpBCX),

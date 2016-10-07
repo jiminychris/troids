@@ -15,6 +15,8 @@ enum entity_type
     EntityType_Asteroid = 1<<3,
     EntityType_Letter = 1<<4,
     EntityType_Wall = 1<<5,
+    EntityType_SpawnTimer = 1<<6,
+    EntityType_ShipExplosionTimer = 1<<7,
 };
 
 struct entity
@@ -26,8 +28,7 @@ struct entity
     v3 dP;
     r32 Yaw;
     r32 dYaw;
-    r32 Pitch;
-    r32 Roll;
+    r32 Flicker;
     r32 Timer;
     r32 Duration;
     v2 Dim;
@@ -60,6 +61,19 @@ struct virtual_entities
     v3 P[4];
 };
 
+struct particle
+{
+    v3 P;
+    v3 dP;
+    r32 Yaw;
+    r32 dYaw;
+    v2 A;
+    v2 B;
+    v2 C;
+    r32 Timer;
+    r32 Duration;
+    v4 Color;
+};
 
 struct play_state
 {
@@ -71,16 +85,21 @@ struct play_state
 
     physics_state PhysicsState;
 
+    b32 Paused;
+    r32 ResetTimer;
     s32 Difficulty;
     s32 Lives;
-    r32 SpawnTimer;
-    r32 SpawnDuration;
     u32 Points;
     s32 AsteroidCount;
     seed AsteroidSeed;
+    seed EngineSeed;
+    seed ParticleSeed;
 
     u32 EntityCount;
     entity Entities[256];
+
+    u32 ParticleCount;
+    particle Particles[256];
 };
 
 internal r32
@@ -110,6 +129,27 @@ CalculateBoundingRadius(entity *Entity)
     }
     r32 Result = MaxRadius + 1.0f;
     return(Result);
+}
+
+inline particle *
+CreateParticle(play_state *State)
+{
+    particle *Result = State->Particles;
+    if(State->ParticleCount < ArrayCount(State->Particles))
+    {
+        Result = State->Particles + State->ParticleCount++;
+    }
+    else
+    {
+        Assert(!"Created too many particles");
+    }
+    return(Result);
+}
+
+inline void
+DestroyParticle(play_state *State, particle *Particle)
+{
+    *Particle = State->Particles[--State->ParticleCount];
 }
 
 inline entity *

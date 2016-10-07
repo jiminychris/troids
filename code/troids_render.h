@@ -439,7 +439,10 @@ PushTriangle(render_buffer *RenderBuffer, v3 A, v3 B, v3 C, v4 Color)
     Polygon.X[2] = C.x;
     Polygon.Y[2] = C.y;
     Polygon.Z[2] = C.z;
-    Clip(&Polygon, ClipCameraP.z-RenderBuffer->NearZ, ClipDimension_Z, ClipDirection_LessThan);
+    if(RenderBuffer->Projection != Projection_None)
+    {
+        Clip(&Polygon, ClipCameraP.z-RenderBuffer->NearZ, ClipDimension_Z, ClipDirection_LessThan);
+    }
     ProjectPolygon(RenderBuffer, &Polygon);
     Clip(&Polygon, MaxX, ClipDimension_X, ClipDirection_LessThan);
     Clip(&Polygon, MaxY, ClipDimension_Y, ClipDirection_LessThan);

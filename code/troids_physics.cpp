@@ -401,8 +401,7 @@ ResolveCollision(entity *Entity, entity *OtherEntity)
         u32 Pair = (Entity->ColliderType|OtherEntity->ColliderType);
         switch(Pair)
         {
-            case ColliderPair_AsteroidWeakLaser:
-            case ColliderPair_AsteroidStrongLaser:
+            case ColliderPair_AsteroidLaser:
             case ColliderPair_AsteroidShip:
             {
                 Result = true;
