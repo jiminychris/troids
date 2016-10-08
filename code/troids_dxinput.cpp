@@ -556,6 +556,19 @@ ProcessButton(game_button *OldButton, game_button *NewButton, u16 State)
     NewButton->HalfTransitionCount = (OldButton->EndedDown == NewButton->EndedDown) ? 0 : 1;
 }
 
+inline u32
+LatchedGamePadCount()
+{
+    u32 Result = 0;
+    for(input_device *ActiveGamePad = GlobalActiveGamePadsSentinel.Next;
+        ActiveGamePad != &GlobalActiveGamePadsSentinel;
+        ActiveGamePad = ActiveGamePad->Next)
+    {
+        ++Result;
+    }
+    return(Result);
+}
+
 internal void
 ProcessGamePadInput(game_input *OldInput, game_input *NewInput)
 {

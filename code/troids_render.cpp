@@ -1818,7 +1818,6 @@ struct render_tree_data
 THREAD_CALLBACK(RenderTreeCallback)
 {
     TIMED_FUNCTION();
-    BEGIN_TIMED_BLOCK(Nothing, "Nothing");
     render_tree_data *Data = (render_tree_data *)Params;
     render_chunk *RenderChunk = Data->RenderChunk;
 
@@ -1832,7 +1831,6 @@ THREAD_CALLBACK(RenderTreeCallback)
             RenderSamples(RenderChunk);
         }
     }
-    END_TIMED_BLOCK(Nothing);
 }
 
 #define INSERT_RENDER_COMMAND(type, SortKey)                            \

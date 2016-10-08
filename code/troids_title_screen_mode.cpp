@@ -16,8 +16,7 @@ TitleScreenMode(game_memory *GameMemory, game_input *Input, renderer_state *Rend
     temporary_memory RenderMemory = BeginTemporaryMemory(&RenderBuffer->Arena);
     PushClear(RendererState, RenderBuffer, V3(0.0f, 0.0f, 0.0f));
 
-    game_controller *Keyboard = &Input->Keyboard;
-    game_controller *ShipController = Input->GamePads + 0;
+    game_controller *ShipController = Input->Controllers + Input->MostRecentlyUsedController;
 
     RenderBuffer->Projection = Projection_None;
     v2 Center = 0.5f*V2i(RenderBuffer->Width, RenderBuffer->Height);
@@ -56,12 +55,25 @@ TitleScreenMode(game_memory *GameMemory, game_input *Input, renderer_state *Rend
     {
         Layout.Scale = 0.5f;
         // TODO(chris): Change this text for keyboard/controller?
-        char PushStartText[] = "PUSH START";
+        u32 PushStartTextLength;
+        char *PushStartText;
+        if(ShipController == &Input->Keyboard)
+        {
+            char Text[] = "PUSH ENTER";
+            PushStartText = Text;
+            PushStartTextLength = sizeof(Text)-1;
+        }
+        else
+        {
+            char Text[] = "PUSH START";
+            PushStartText = Text;
+            PushStartTextLength = sizeof(Text)-1;
+        }
         text_measurement PushStartMeasurement = DrawText(RenderBuffer, &Layout,
-                                                         sizeof(PushStartText)-1, PushStartText,
+                                                         PushStartTextLength, PushStartText,
                                                          DrawTextFlags_Measure);
         Layout.P = V2(Center.x, 0.55f*RenderBuffer->Height) + GetTightAlignmentOffset(PushStartMeasurement);
-        DrawText(RenderBuffer, &Layout, sizeof(PushStartText)-1, PushStartText);
+        DrawText(RenderBuffer, &Layout, PushStartTextLength, PushStartText);
     }
 
     if(WentDown(ShipController->Start))

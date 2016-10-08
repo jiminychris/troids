@@ -575,6 +575,7 @@ struct game_input
 
     v2 MousePosition;
     game_button LeftMouse;
+    u32 MostRecentlyUsedController;
     union
     {
         game_controller Controllers[5];

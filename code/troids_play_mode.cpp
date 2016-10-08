@@ -655,8 +655,8 @@ internal void
 ResetField(play_state *State, render_buffer *RenderBuffer, b32 NewGame = false)
 {
     State->ResetTimer = 3.0f;
-    s32 MinDifficulty = 1;
-    s32 MaxDifficulty = 1;
+    s32 MinDifficulty = 2;
+    s32 MaxDifficulty = 16;
     if(NewGame)
     {
         State->Paused = false;
@@ -672,9 +672,9 @@ ResetField(play_state *State, render_buffer *RenderBuffer, b32 NewGame = false)
         State->Difficulty *= 2;
     }
 
-    State->ShipColor.r = (r32)Floor(State->ShipColor.r);
-    State->ShipColor.g = (r32)Floor(State->ShipColor.g);
-    State->ShipColor.b = (r32)Floor(State->ShipColor.b);
+    State->ShipColor.r = (r32)RoundS32(State->ShipColor.r);
+    State->ShipColor.g = (r32)RoundS32(State->ShipColor.g);
+    State->ShipColor.b = (r32)RoundS32(State->ShipColor.b);
 
     if(State->Difficulty > MaxDifficulty)
     {
@@ -683,7 +683,6 @@ ResetField(play_state *State, render_buffer *RenderBuffer, b32 NewGame = false)
 
     if(State->Difficulty == MaxDifficulty)
     {
-        // TODO(chris): Randomize this
         u32 ColorCount = 0;
         v4 Colors[4];
         if(State->ShipColor.r == 1.0f)
@@ -704,11 +703,6 @@ ResetField(play_state *State, render_buffer *RenderBuffer, b32 NewGame = false)
             State->EnemyState = EnemyState_WaitingToSpawn;
         }
     }
-
-    if(State->ShipColor.rgb == V3(0, 0, 0))
-    {
-        State->Difficulty = MaxDifficulty;
-    }
     
     RenderBuffer->CameraRot = 0.0f;
 
@@ -726,8 +720,17 @@ ResetField(play_state *State, render_buffer *RenderBuffer, b32 NewGame = false)
     Ship_.P = V3(0.0f, 0.0f, 0.0f);
     entity *Ship = &Ship_;
 
-    Ship = CreateShip(State, State->ShipStartingP,
-                      State->ShipStartingYaw);
+    
+    if(State->ShipColor.rgb == V3(0, 0, 0))
+    {
+//        State->Difficulty = MaxDifficulty;
+        State->Difficulty = 16;
+    }
+    else
+    {
+        Ship = CreateShip(State, State->ShipStartingP,
+                          State->ShipStartingYaw);
+    }
 
     v3 MinP = Unproject(RenderBuffer, V3(0, 0, 0));
     v3 MaxP = Unproject(RenderBuffer, V3i(RenderBuffer->Width, RenderBuffer->Height, 0));
@@ -968,6 +971,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
         State->AsteroidSeed = Seed(Input->SeedValue);
         State->EngineSeed = Seed(Input->SeedValue);
         State->ParticleSeed = Seed(Input->SeedValue);
+        State->EnemySeed = Seed(Input->SeedValue);
 
         InitializePhysicsState(&State->PhysicsState, &GameState->Arena);
 
@@ -989,7 +993,14 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
 
     if(State->ShipColor.rgb == V3(0, 0, 0))
     {
-        RenderBuffer->CameraP.z *= 1.1f;
+        if(RenderBuffer->CameraP.z >= 25000.0f)
+        {
+            GameState->NextMode = GameMode_TitleScreen;
+        }
+        else
+        {
+            RenderBuffer->CameraP.z *= 1.002f;
+        }
     }
     
     {DEBUG_GROUP("Play Mode");
@@ -1017,8 +1028,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
                V4(1, 0, 0, 1));
 #endif
 
-    game_controller *Keyboard = &Input->Keyboard;
-    game_controller *ShipController = Input->GamePads + 0;
+    game_controller *ShipController = Input->Controllers + Input->MostRecentlyUsedController;
         
     rectangle2 FieldRect = MinMax(Unproject(RenderBuffer, V3(0, 0, 0)).xy,
                                   Unproject(RenderBuffer,
@@ -1080,85 +1090,67 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
                         Entity->Timer = 0.0f;
                         Entity->ColliderType = ColliderType_Ship;
                     }
-                    if(State->ShipColor.rgb == V3(0, 0, 0))
+#if TROIDS_INTERNAL
+                    if(ShipController->LeftClick.EndedDown)
                     {
-                        Entity->ColliderType = ColliderType_None;
+                        Entity->P = State->ShipStartingP;
+                    }
+#endif
+                    r32 LaserSpeed = 100.0f;
+                    r32 LaserDuration = 1.0f;
+                    
+                    r32 Thrust = Clamp01(ShipController->LeftStick.y);
+                    ShipController->LowFrequencyMotor = Thrust;
+
+#if COLLISION_FINE_DEBUG
+                    r32 ddYaw = -100.0f*ShipController->LeftStick.x;
+#else
+                    r32 ddYaw = -2.0f*ShipController->LeftStick.x;
+#endif
+                    r32 dYaw = ddYaw*Input->dtForFrame;
+                    r32 MaxdYawPerFrame = 0.49f*Tau;
+                    r32 MaxdYawPerSecond = MaxdYawPerFrame/Input->dtForFrame;
+                    Entity->dYaw = Clamp(-MaxdYawPerSecond, Entity->dYaw + dYaw, MaxdYawPerSecond);
+    
+                    v3 Acceleration = {};
+                    if(ShipController->ActionDown.EndedDown)
+                    {
+                        if(Entity->Timer <= 0.0f)
+                        {
+                            entity *Laser = CreateLaser(State, Entity->P,
+                                                        Entity->dP + Facing*LaserSpeed,
+                                                        Entity->Yaw, LaserDuration);
+                            r32 LaserOffset = 0.5f*(Entity->Dim.y + Laser->Dim.y);
+                            Laser->P += Facing*(LaserOffset);
+                            Entity->Timer = 0.1f;
+                            Acceleration += -Facing*100.0f;
+                        }
+                    }
+#if TROIDS_INTERNAL
+                    if(WentDown(ShipController->ActionRight))
+                    {
+                        Entity->DestroyedBy = ColliderType_Asteroid;
+                    }
+                    Acceleration += V3(1000.0f*ShipController->RightStick*Input->dtForFrame, 0);
+#endif
+
+#if COLLISION_FINE_DEBUG
+                    Acceleration += 5000.0f*Facing*Thrust;
+#else
+                    Acceleration += 50.0f*Facing*Thrust;
+#endif
+                    Entity->Flicker = RandomBetween(&State->EngineSeed, 0.0f, Thrust);
+                    // TODO(chris): IMPORTANT clamp to max speed!
+                    Entity->dP += Acceleration*Input->dtForFrame;
+
+                    if(Entity->Timer > 0.0f)
+                    {
+                        Entity->Timer -= Input->dtForFrame;
+                        ShipController->HighFrequencyMotor = 1.0f;
                     }
                     else
                     {
-#if TROIDS_INTERNAL
-                        if(Keyboard->LeftClick.EndedDown || ShipController->LeftClick.EndedDown)
-                        {
-                            Entity->P = State->ShipStartingP;
-                        }
-#endif
-                        r32 LaserSpeed = 100.0f;
-                        r32 LaserDuration = 1.0f;
-                    
-                        r32 LeftStickX = (Keyboard->LeftStick.x ?
-                                          Keyboard->LeftStick.x :
-                                          ShipController->LeftStick.x);
-                        r32 Thrust;
-                        if(Keyboard->LeftStick.y)
-                        {
-                            Thrust = Clamp01(Keyboard->LeftStick.y);
-                        }
-                        else
-                        {
-                            Thrust = Clamp01(ShipController->LeftStick.y);
-                            ShipController->LowFrequencyMotor = Thrust;
-                        }
-
-#if COLLISION_FINE_DEBUG
-                        r32 ddYaw = -100.0f*LeftStickX;
-#else
-                        r32 ddYaw = -2.0f*LeftStickX;
-#endif
-                        r32 dYaw = ddYaw*Input->dtForFrame;
-                        r32 MaxdYawPerFrame = 0.49f*Tau;
-                        r32 MaxdYawPerSecond = MaxdYawPerFrame/Input->dtForFrame;
-                        Entity->dYaw = Clamp(-MaxdYawPerSecond, Entity->dYaw + dYaw, MaxdYawPerSecond);
-    
-                        v3 Acceleration = {};
-                        if(ShipController->ActionDown.EndedDown || Keyboard->ActionDown.EndedDown)
-                        {
-                            if(Entity->Timer <= 0.0f)
-                            {
-                                entity *Laser = CreateLaser(State, Entity->P,
-                                                            Entity->dP + Facing*LaserSpeed,
-                                                            Entity->Yaw, LaserDuration);
-                                r32 LaserOffset = 0.5f*(Entity->Dim.y + Laser->Dim.y);
-                                Laser->P += Facing*(LaserOffset);
-                                Entity->Timer = 0.1f;
-                                Acceleration += -Facing*100.0f;
-                            }
-                        }
-#if TROIDS_INTERNAL
-                        if(WentDown(ShipController->ActionRight) || WentDown(Keyboard->ActionRight))
-                        {
-                            Entity->DestroyedBy = ColliderType_Asteroid;
-                        }
-                        Acceleration += V3(1000.0f*ShipController->RightStick*Input->dtForFrame, 0);
-#endif
-
-#if COLLISION_FINE_DEBUG
-                        Acceleration += 5000.0f*Facing*Thrust;
-#else
-                        Acceleration += 50.0f*Facing*Thrust;
-#endif
-                        Entity->Flicker = RandomBetween(&State->EngineSeed, 0.0f, Thrust);
-                        // TODO(chris): IMPORTANT clamp to max speed!
-                        Entity->dP += Acceleration*Input->dtForFrame;
-
-                        if(Entity->Timer > 0.0f)
-                        {
-                            Entity->Timer -= Input->dtForFrame;
-                            ShipController->HighFrequencyMotor = 1.0f;
-                        }
-                        else
-                        {
-                            ShipController->HighFrequencyMotor = 0.0f;
-                        }
+                        ShipController->HighFrequencyMotor = 0.0f;
                     }
                 }
             } break;
@@ -1225,6 +1217,13 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
                     {
                         ShipController->HighFrequencyMotor = 0.0f;
                     }
+
+#if TROIDS_INTERNAL
+                    if(WentDown(ShipController->ActionLeft))
+                    {
+                        Entity->DestroyedBy = ColliderType_Ship;
+                    }
+#endif
                 }
                 else
                 {
@@ -1261,61 +1260,6 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
                 {
                     Entity->Timer -= Input->dtForFrame;
                 }
-            } break;
-
-            case EntityType_FloatingHead:
-            {
-#if 0
-                if(Keyboard->ActionUp.EndedDown || ShipController->ActionUp.EndedDown)
-                {
-                    Entity->P.z += 100.0f*Input->dtForFrame;
-                }
-                if(Keyboard->ActionDown.EndedDown || ShipController->ActionDown.EndedDown)
-                {
-                    Entity->P.z -= 100.0f*Input->dtForFrame;
-                }
-#endif
-                r32 YRotation = Input->dtForFrame*(Keyboard->RightStick.x ?
-                                                   Keyboard->RightStick.x :
-                                                   ShipController->RightStick.x);
-                r32 XRotation = Input->dtForFrame*(Keyboard->RightStick.y ?
-                                                   Keyboard->RightStick.y :
-                                                   ShipController->RightStick.y);
-                r32 ZRotation = Input->dtForFrame*((Keyboard->LeftTrigger ?
-                                                    Keyboard->LeftTrigger :
-                                                    ShipController->LeftTrigger) -
-                                                   (Keyboard->RightTrigger ?
-                                                    Keyboard->RightTrigger :
-                                                    ShipController->RightTrigger));
-
-                r32 CosXRotation = Cos(XRotation);
-                r32 SinXRotation = Sin(XRotation);
-                r32 CosYRotation = Cos(YRotation);
-                r32 SinYRotation = Sin(YRotation);
-                r32 CosZRotation = Cos(ZRotation);
-                r32 SinZRotation = Sin(ZRotation);
-
-                m33 XRotationMatrix =
-                    {
-                        1, 0,             0,
-                        0, CosXRotation, -SinXRotation,
-                        0, SinXRotation,  CosXRotation,
-                    };
-                m33 YRotationMatrix =
-                    {
-                        CosYRotation, 0, SinYRotation,
-                        0,            1, 0,
-                        -SinYRotation, 0, CosYRotation,
-                    };
-                m33 ZRotationMatrix =
-                    {
-                        CosZRotation, -SinZRotation, 0,
-                        SinZRotation,  CosZRotation, 0,
-                        0,             0,            1,
-                    };
-
-                Entity->RotationMatrix =
-                    ZRotationMatrix*YRotationMatrix*XRotationMatrix*Entity->RotationMatrix;
             } break;
 
             case EntityType_Letter:
@@ -1357,6 +1301,9 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
                 else
                 {
                     State->ShipColor.rgb -= State->EnemyColor.rgb*Input->dtForFrame/Entity->Duration;
+                    State->ShipColor.r = Clamp01(State->ShipColor.r);
+                    State->ShipColor.g = Clamp01(State->ShipColor.g);
+                    State->ShipColor.b = Clamp01(State->ShipColor.b);
                     Entity->Timer -= Input->dtForFrame;
                 }
             } break;
@@ -1386,16 +1333,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
                 }
                 else
                 {
-                    r32 Thrust;
-                    if(Keyboard->LeftStick.y)
-                    {
-                        Thrust = Clamp01(Keyboard->LeftStick.y);
-                    }
-                    else
-                    {
-                        Thrust = Clamp01(ShipController->LeftStick.y);
-                        ShipController->LowFrequencyMotor = Thrust;
-                    }
+                    r32 Thrust = Clamp01(ShipController->LeftStick.y);
                     Entity->Flicker = RandomBetween(&State->EngineSeed, 0.0f, Thrust);
                     
                     Entity->Timer -= Input->dtForFrame;
@@ -1414,7 +1352,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
                 else
                 {
                     ShipController->HighFrequencyMotor =
-                        ShipController->LowFrequencyMotor = Entity->Timer / Entity->Duration;
+                        ShipController->LowFrequencyMotor = Clamp01(Entity->Timer / Entity->Duration);
                     Entity->Timer -= Input->dtForFrame;
                 }
             } break;
@@ -2622,7 +2560,7 @@ END_TIMED_BLOCK(Collision);
                     else if(Entity->Type == EntityType_EnemySpawnTimer)
                     {
                         Color = State->EnemyColor;
-                        Color.a *= (Entity->Duration-Entity->Timer) / Entity->Duration;
+                        Color.a *= Clamp01((Entity->Duration-Entity->Timer) / Entity->Duration);
                         Ship = State->Entities + Entity->Target;
                         Shapes = Ship->CollisionShapes;
                     }
@@ -2660,7 +2598,7 @@ END_TIMED_BLOCK(Collision);
                     RenderBuffer->Projection = Projection_None;
                     v3 P = LifeHUDP;
                     v2 HalfDim = LifeHUDHalfDim;
-                    r32 Alpha = Entity->Timer / Entity->Duration;
+                    r32 Alpha = Clamp01(Entity->Timer / Entity->Duration);
                     PushTriangle(RenderBuffer,
                                  P + V3(0.97f*V2(0, HalfDim.y), HUD_Z),
                                  P + V3(0.96f*V2(-HalfDim.x, -HalfDim.y), HUD_Z),
@@ -2742,7 +2680,7 @@ END_TIMED_BLOCK(Collision);
         ++ParticleIndex)
     {
         particle *Particle = State->Particles + ParticleIndex;
-        r32 Fade = Particle->Timer / Particle->Duration;
+        r32 Fade = Clamp01(Particle->Timer / Particle->Duration);
         v3 A = V3(Particle->P.xy + RotateZ(Particle->A, Particle->Yaw), Particle->P.z);
         v3 B = V3(Particle->P.xy + RotateZ(Particle->B, Particle->Yaw), Particle->P.z);
         v3 C = V3(Particle->P.xy + RotateZ(Particle->C, Particle->Yaw), Particle->P.z);
@@ -2786,7 +2724,7 @@ END_TIMED_BLOCK(Collision);
     }
     else
     {
-        if(WentDown(ShipController->Start))
+        if(WentDown(ShipController->Start) && State->ShipColor.rgb != V3(0, 0, 0))
         {
             State->Paused = !State->Paused;
         }

@@ -748,6 +748,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
             game_input *OldInput = GameInput;
             game_input *NewInput = GameInput + 1;
 
+            NewInput->MostRecentlyUsedController = LatchedGamePadCount() ? 1 : 0;
             ToggleFullscreen(GlobalWindow);
             QueryPerformanceCounter(&LastCounter);
             while(GlobalRunning)
@@ -762,6 +763,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                     *NewInput = {};
                     NewInput->dtForFrame = dtForFrame;
                     NewInput->SeedValue = LastCounter.QuadPart;
+                    NewInput->MostRecentlyUsedController = OldInput->MostRecentlyUsedController;
 
                     game_controller *NewKeyboard = &NewInput->Keyboard;
                     game_controller *OldKeyboard = &OldInput->Keyboard;
@@ -788,35 +790,26 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                             case WM_SYSKEYDOWN:
                             case WM_SYSKEYUP:
                             {
+                                NewInput->MostRecentlyUsedController = 0;
                                 b32 AlreadyDown = (Message.lParam & (1 << 30));
                                 b32 WentDown = !(Message.lParam & (1 << 31));
                                 if(!(AlreadyDown && WentDown))
                                 {
                                     switch(Message.wParam)
                                     {
-                                        case VK_UP:
-                                        {
-                                            ProcessButtonInput(&NewKeyboard->ActionUp);
-                                        } break;
-
-                                        case VK_LEFT:
-                                        {
-                                            ProcessButtonInput(&NewKeyboard->ActionLeft);
-                                        } break;
-
-                                        case VK_DOWN:
+                                        case VK_SPACE:
                                         {
                                             ProcessButtonInput(&NewKeyboard->ActionDown);
                                         } break;
 
-                                        case VK_RIGHT:
+                                        case VK_RETURN:
                                         {
-                                            ProcessButtonInput(&NewKeyboard->ActionRight);
+                                            ProcessButtonInput(&NewKeyboard->Start);
                                         } break;
 
-                                        case VK_SPACE:
+                                        case VK_ESCAPE:
                                         {
-                                            ProcessButtonInput(&NewKeyboard->RightShoulder1);
+                                            ProcessButtonInput(&NewKeyboard->Select);
                                         } break;
 
                                         case 'W':
@@ -914,6 +907,31 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                     }
 
                     ProcessGamePadInput(OldInput, NewInput);
+
+                    for(u32 ControllerIndex = 1;
+                        ControllerIndex < ArrayCount(NewInput->Controllers);
+                        ++ControllerIndex)
+                    {
+                        game_controller *Controller = NewInput->Controllers + ControllerIndex;
+                        b32 AnyButtonsActive = false;
+                        for(u32 ButtonIndex = 0;
+                            ButtonIndex < ArrayCount(Controller->Buttons);
+                            ++ButtonIndex)
+                        {
+                            game_button *Button = Controller->Buttons + ButtonIndex;
+                            AnyButtonsActive |= (Button->EndedDown || Button->HalfTransitionCount);
+                        }
+                        if(Controller->LeftStick.x != 0.0f ||
+                           Controller->LeftStick.y != 0.0f ||
+                           Controller->RightStick.x != 0.0f ||
+                           Controller->RightStick.y != 0.0f ||
+                           Controller->LeftTrigger != 0.0f ||
+                           Controller->RightTrigger != 0.0f ||
+                           AnyButtonsActive)
+                        {
+                            NewInput->MostRecentlyUsedController = ControllerIndex;
+                        }
+                    }
                     NewInput->MousePosition = {GlobalMousePosition.x,
                                                GlobalBackBuffer.Height - GlobalMousePosition.y};
                     NewInput->LeftMouse = GlobalLeftMouse;
