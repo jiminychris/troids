@@ -492,6 +492,17 @@ operator+(v4 A, v4 B)
 }
 
 inline v4
+operator-(v4 A, v4 B)
+{
+    v4 Result;
+    Result.x = A.x - B.x;
+    Result.y = A.y - B.y;
+    Result.z = A.z - B.z;
+    Result.w = A.w - B.w;
+    return(Result);
+}
+
+inline v4
 operator*(r32 C, v4 A)
 {
     v4 Result;
@@ -511,6 +522,13 @@ operator*(v4 A, r32 C)
     Result.z = C*A.z;
     Result.w = C*A.w;
     return(Result);
+}
+
+inline v4
+operator-=(v4 &A, v4 B)
+{
+    A = A - B;
+    return(A);
 }
 
 inline v4

@@ -20,6 +20,8 @@ enum entity_type
     EntityType_EnemySpawnTimer = 1<<8,
     EntityType_EnemyShip = 1<<9,
     EntityType_EnemyLaser = 1<<10,
+    EntityType_EnemyDespawnTimer = 1<<11,
+    EntityType_MetamorphosisTimer = 1<<12,
 };
 
 struct entity
@@ -87,6 +89,12 @@ enum enemy_state
     EnemyState_WaitingToSpawn,
 };
 
+enum play_type
+{
+    PlayType_Arcade,
+    PlayType_Story,
+};
+
 struct play_state
 {
     b32 IsInitialized;
@@ -97,6 +105,7 @@ struct play_state
 
     physics_state PhysicsState;
 
+    play_type PlayType;
     b32 Paused;
     r32 ResetTimer;
     s32 Difficulty;
@@ -107,6 +116,10 @@ struct play_state
     seed AsteroidSeed;
     seed EngineSeed;
     seed ParticleSeed;
+    seed EnemySeed;
+
+    v4 EnemyColor;
+    v4 ShipColor;
 
     u32 EntityCount;
     entity Entities[256];
