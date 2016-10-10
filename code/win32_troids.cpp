@@ -36,11 +36,19 @@ ToggleFullscreen(HWND Window)
     }
 }
 
+enum render_mode
+{
+    RenderMode_GDI,
+    RenderMode_OpenGL,
+};
+
+render_mode GlobalRenderMode;
+
 inline void
 CopyBackBufferToWindow(HDC DeviceContext, win32_backbuffer *BackBuffer)
 {
     TIMED_FUNCTION();
-#if 0
+    if(GlobalRenderMode == RenderMode_GDI)
     {
         TIMED_BLOCK("StretchDIBits");
         StretchDIBits(DeviceContext,
@@ -57,88 +65,78 @@ CopyBackBufferToWindow(HDC DeviceContext, win32_backbuffer *BackBuffer)
                       DIB_RGB_COLORS,
                       SRCCOPY);
     }
-#else
-
-#if 0
+    else
     {
-        TIMED_BLOCK("glDrawPixels");
-//    glClearColor(1.0f, 0.0f, 1.0f, 0.0f);
-//    glClear(GL_COLOR_BUFFER_BIT);
-        glDrawPixels(BackBuffer->Width, BackBuffer->Height, GL_BGRA_EXT, GL_UNSIGNED_BYTE,
-                     BackBuffer->Memory);
-    }
-#else
-    {
-        TIMED_BLOCK("GLCommands");
         {
-            TIMED_BLOCK("glViewport");
-            glViewport(0, 0, BackBuffer->Width, BackBuffer->Height);
-        }
+            TIMED_BLOCK("GLCommands");
+            {
+                TIMED_BLOCK("glViewport");
+                glViewport(0, 0, BackBuffer->Width, BackBuffer->Height);
+            }
 
-        {
-            TIMED_BLOCK("GL_TEXTURE_2D");
+            {
+                TIMED_BLOCK("GL_TEXTURE_2D");
+                {
+                    TIMED_BLOCK("glBindTexture");
+                    glBindTexture(GL_TEXTURE_2D, 1);
+                }
+                {
+                    TIMED_BLOCK("glTexImage2D");
+                    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, BackBuffer->Width, BackBuffer->Height,
+                                 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, BackBuffer->Memory);
+                }
+                {
+                    TIMED_BLOCK("glTexParameteri(MAG)");
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                }
+                {
+                    TIMED_BLOCK("glTexParameteri(MIN)");
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                }
+
+                {
+                    TIMED_BLOCK("glEnable");
+                    glEnable(GL_TEXTURE_2D);
+                }
+            }
+
+            {
+                TIMED_BLOCK("GL_TRIANGLES");
+                glBegin(GL_TRIANGLES);
+
+                // NOTE(chris): Lower triangle
+                glTexCoord2f(0.0f, 0.0f);
+                glVertex2f(-1.0f, -1.0f);
+
+                glTexCoord2f(1.0f, 0.0f);
+                glVertex2f(1.0f, -1.0f);
+
+                glTexCoord2f(0.0f, 1.0f);
+                glVertex2f(-1.0f, 1.0f);
+
+                // NOTE(chris): Upper triangle
+                glTexCoord2f(1.0f, 1.0f);
+                glVertex2f(1.0f, 1.0f);
+
+                glTexCoord2f(0.0f, 1.0f);
+                glVertex2f(-1.0f, 1.0f);
+
+                glTexCoord2f(1.0f, 0.0f);
+                glVertex2f(1.0f, -1.0f);
+
+                glEnd();
+            }
+
             {
                 TIMED_BLOCK("glBindTexture");
-                glBindTexture(GL_TEXTURE_2D, 1);
-            }
-            {
-                TIMED_BLOCK("glTexImage2D");
-                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, BackBuffer->Width, BackBuffer->Height,
-                             0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, BackBuffer->Memory);
-            }
-            {
-                TIMED_BLOCK("glTexParameteri(MAG)");
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-            }
-            {
-                TIMED_BLOCK("glTexParameteri(MIN)");
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            }
-
-            {
-                TIMED_BLOCK("glEnable");
-                glEnable(GL_TEXTURE_2D);
+                glBindTexture(GL_TEXTURE_2D, 0);
             }
         }
-
         {
-            TIMED_BLOCK("GL_TRIANGLES");
-            glBegin(GL_TRIANGLES);
-
-            // NOTE(chris): Lower triangle
-            glTexCoord2f(0.0f, 0.0f);
-            glVertex2f(-1.0f, -1.0f);
-
-            glTexCoord2f(1.0f, 0.0f);
-            glVertex2f(1.0f, -1.0f);
-
-            glTexCoord2f(0.0f, 1.0f);
-            glVertex2f(-1.0f, 1.0f);
-
-            // NOTE(chris): Upper triangle
-            glTexCoord2f(1.0f, 1.0f);
-            glVertex2f(1.0f, 1.0f);
-
-            glTexCoord2f(0.0f, 1.0f);
-            glVertex2f(-1.0f, 1.0f);
-
-            glTexCoord2f(1.0f, 0.0f);
-            glVertex2f(1.0f, -1.0f);
-
-            glEnd();
-        }
-
-        {
-            TIMED_BLOCK("glBindTexture");
-            glBindTexture(GL_TEXTURE_2D, 0);
+            TIMED_BLOCK("SwapBuffers");
+            SwapBuffers(DeviceContext);
         }
     }
-#endif
-    {
-        TIMED_BLOCK("SwapBuffers");
-        SwapBuffers(DeviceContext);
-    }
-#endif
 }
 
 inline void
@@ -292,28 +290,29 @@ Win32ReadFile(char *FileName)
     return(Result);
 }
 
-internal void
+internal b32
 InitializeOpenGL(HDC DeviceContext)
 {
+    b32 Result = false;
     HGLRC OpenGLRC = wglCreateContext(DeviceContext);
     if(wglMakeCurrent(DeviceContext, OpenGLRC))
     {
+        GlobalRenderMode = RenderMode_OpenGL;
         char *Version = (char *)glGetString(GL_VERSION);
         wgl_swap_interval_ext *wglSwapIntervalEXT = (wgl_swap_interval_ext *)wglGetProcAddress("wglSwapIntervalEXT");
         if(wglSwapIntervalEXT)
         {
             if(wglSwapIntervalEXT(1))
             {
-                int A = 0;
-                // NOTE(chris): VSYNC!
+                Result = true;
             }
         }
     }
     else
     {
-        InvalidCodePath;
-        // TODO(chris): Diagnostic
+        GlobalRenderMode = RenderMode_GDI;
     }
+    return(Result);
 }
 
 internal b32
@@ -502,7 +501,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                                 sizeof(SuggestedPixelFormat), &SuggestedPixelFormat);
             SetPixelFormat(DeviceContext, SuggestedPixelFormatIndex, &SuggestedPixelFormat);
 
-            InitializeOpenGL(DeviceContext);
+            b32 VSYNC = InitializeOpenGL(DeviceContext);
 
             renderer_state RendererState;            
             RendererState.BackBuffer.Width = GlobalBackBuffer.Width;
@@ -520,8 +519,8 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
             memory_size SampleBufferMemorySize = RendererState.SampleBuffer.Height*RendererState.SampleBuffer.Pitch;
 
             game_memory GameMemory;
-            GameMemory.PermanentMemorySize = Megabytes(256);
-            GameMemory.TemporaryMemorySize = Gigabytes(2);
+            GameMemory.PermanentMemorySize = Megabytes(2);
+            GameMemory.TemporaryMemorySize = Megabytes(2);
 #if TROIDS_INTERNAL
             GameMemory.DebugMemorySize = Gigabytes(2);
 #endif
@@ -734,7 +733,8 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
             }
 
             // TODO(chris): Allocate some memory for the game state.
-            
+
+#if TROIDS_INTERNAL
             recording_state RecordingState = RecordingState_None;
             // TODO(chris): Memory-map file? What happens when game state gets huge?
             HANDLE RecordFile = CreateFile("record.trc",
@@ -742,6 +742,8 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                                            0, 0,
                                            CREATE_ALWAYS,
                                            FILE_ATTRIBUTE_NORMAL, 0);
+#endif
+            
             DWORD ByteToLock = 0;
             // TODO(chris): Maybe initialize this with starting controller state?
             game_input GameInput[3] = {};
@@ -779,6 +781,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                     NewKeyboard->LeftStick.y = OldKeyboard->LeftStick.y;
                     NewKeyboard->RightStick.x = OldKeyboard->RightStick.x;
                     NewKeyboard->RightStick.y = OldKeyboard->RightStick.y;
+                    NewKeyboard->Type = ControllerType_Keyboard;
                     GlobalLeftMouse.HalfTransitionCount = 0;
 
                     while(PeekMessageA(&Message, GlobalWindow, 0, 0, PM_REMOVE))
@@ -853,6 +856,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                                                 }
                                             } break;
 
+#if TROIDS_INTERNAL
                                             case 'R':
                                             {
                                                 switch(RecordingState)
@@ -893,6 +897,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                                                     } break;
                                                 }
                                             }
+#endif
                                         }
                                     }
                                 }
@@ -937,6 +942,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                     NewInput->LeftMouse = GlobalLeftMouse;
                 }
 
+#if TROIDS_INTERNAL
                 {
                     TIMED_BLOCK("Recording");
                     switch(RecordingState)
@@ -971,6 +977,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                         } break;
                     }
                 }
+#endif
 
                 {
                     TIMED_BLOCK("DLL Reload");
@@ -1043,9 +1050,11 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                     }
                 }
 
-                loaded_bitmap *GameBackBuffer = &RendererState.BackBuffer;
+
+#if TROIDS_INTERNAL
                 {
                     TIMED_BLOCK("Draw Recording");
+                    loaded_bitmap *GameBackBuffer = &RendererState.BackBuffer;
                     u32 RecordIconMargin = 10;
                     u32 RecordIconRadius = 10;
                     switch(RecordingState)
@@ -1107,6 +1116,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                         } break;
                     }
                 }
+#endif
 
 #if TROIDS_INTERNAL
                 if(DebugCollate)
@@ -1115,36 +1125,33 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                 }
 #endif
 
-#if 0
-                QueryPerformanceCounter(&Counter);
-                r32 FrameSeconds = (Counter.QuadPart - LastCounter.QuadPart)*ClocksToSeconds;
-                FRAME_MARKER(FrameSeconds);
-
-                // TODO(chris): Use as backup if VSYNC fails.
-                char Text[256];
-                r32 ElapsedSeconds = FrameSeconds;
-                if(ElapsedSeconds < dtForFrame)
-                {
-                    s32 MSToSleep  = (u32)((dtForFrame - ElapsedSeconds)*1000.0f) - 1;
-                    if(MSToSleep > 0)
-                    {
-                        Sleep(MSToSleep);
-                    }
-                    do
-                    {
-                        QueryPerformanceCounter(&Counter);
-                        ElapsedSeconds = (Counter.QuadPart - LastCounter.QuadPart)*ClocksToSeconds;
-                    } while (ElapsedSeconds < dtForFrame);
-                }
-                else if (ElapsedSeconds > dtForFrame)
-                {
-#if TROIDS_DEBUG_DISPLAY
-                    OutputDebugStringA("Missed framerate!\n");
-#endif
-                }
-#endif
-
                 CopyBackBufferToWindow(DeviceContext, &GlobalBackBuffer);
+                if(!VSYNC)
+                {
+                    QueryPerformanceCounter(&Counter);
+                    r32 ElapsedSeconds = (Counter.QuadPart - LastCounter.QuadPart)*ClocksToSeconds;
+
+                    // TODO(chris): Use as backup if VSYNC fails.
+                    if(ElapsedSeconds < dtForFrame)
+                    {
+                        s32 MSToSleep  = (u32)((dtForFrame - ElapsedSeconds)*1000.0f) - 1;
+                        if(MSToSleep > 0)
+                        {
+                            Sleep(MSToSleep);
+                        }
+                        do
+                        {
+                            QueryPerformanceCounter(&Counter);
+                            ElapsedSeconds = (Counter.QuadPart - LastCounter.QuadPart)*ClocksToSeconds;
+                        } while (ElapsedSeconds < dtForFrame);
+                    }
+                    else if (ElapsedSeconds > dtForFrame)
+                    {
+#if TROIDS_DEBUG_DISPLAY
+                        OutputDebugStringA("Missed framerate!\n");
+#endif
+                    }
+                }
 
                 QueryPerformanceCounter(&Counter);
                 r32 FrameSeconds = (Counter.QuadPart - LastCounter.QuadPart)*ClocksToSeconds;

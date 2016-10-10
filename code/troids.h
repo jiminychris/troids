@@ -16,8 +16,6 @@
 #include "troids_render.h"
 #include "troids_random.h"
 #include "troids_physics.h"
-#include "troids_play_mode.h"
-#include "troids_title_screen_mode.h"
 
 platform_read_file *PlatformReadFile;
 platform_push_thread_work *PlatformPushThreadWork;
@@ -28,6 +26,17 @@ enum game_mode
     GameMode_TitleScreen,
     GameMode_Play,
 };
+
+enum play_type
+{
+    PlayType_Journey,
+    PlayType_Arcade,
+
+    PlayType_Terminator,
+};
+
+#include "troids_play_mode.h"
+#include "troids_title_screen_mode.h"
 
 struct game_state
 {
@@ -45,7 +54,6 @@ struct game_state
     };
 
     loaded_bitmap LaserBitmap;
-//    loaded_obj HeadMesh;
 
     memory_arena Arena;
 };

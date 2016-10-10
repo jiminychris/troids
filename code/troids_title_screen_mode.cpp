@@ -24,7 +24,7 @@ TitleScreenMode(game_memory *GameMemory, game_input *Input, renderer_state *Rend
     r32 FlickerPeriod = 0.5f;
 
     r32 tTitle = (State->FadeInTicks*Input->dtForFrame) / FadeInDuration;
-    r32 TitleAlpha = Cube(tTitle);
+    r32 TitleAlpha = State->PressedStart ? 1.0f : Cube(tTitle);
     r32 tFlicker = (State->FlickerTicks*Input->dtForFrame) / (2*FlickerPeriod);
     b32 FlickerOn = (tFlicker >= 0.5f);
     if(tTitle >= 1.0f)
@@ -51,39 +51,123 @@ TitleScreenMode(game_memory *GameMemory, game_input *Input, renderer_state *Rend
     Layout.P = V2(Center.x, 0.65f*RenderBuffer->Height) + GetTightAlignmentOffset(TroidsMeasurement);
     DrawText(RenderBuffer, &Layout, sizeof(TroidsText)-1, TroidsText);
 
-    if(FlickerOn)
+    if(State->PressedStart)
     {
         Layout.Scale = 0.5f;
-        // TODO(chris): Change this text for keyboard/controller?
-        u32 PushStartTextLength;
-        char *PushStartText;
-        if(ShipController == &Input->Keyboard)
-        {
-            char Text[] = "PUSH ENTER";
-            PushStartText = Text;
-            PushStartTextLength = sizeof(Text)-1;
-        }
-        else
-        {
-            char Text[] = "PUSH START";
-            PushStartText = Text;
-            PushStartTextLength = sizeof(Text)-1;
-        }
-        text_measurement PushStartMeasurement = DrawText(RenderBuffer, &Layout,
-                                                         PushStartTextLength, PushStartText,
-                                                         DrawTextFlags_Measure);
-        Layout.P = V2(Center.x, 0.55f*RenderBuffer->Height) + GetTightAlignmentOffset(PushStartMeasurement);
-        DrawText(RenderBuffer, &Layout, PushStartTextLength, PushStartText);
-    }
 
-    if(WentDown(ShipController->Start))
+        v4 SelectedColor = V4(1, 1, 1, 1);
+        v4 NotSelectedColor = V4(0.2f, 0.2f, 0.2f, 1.0f);
+
+        char JourneyText[] = "JOURNEY";
+        u32 JourneyTextLength = sizeof(JourneyText) - 1;
+        text_measurement JourneyMeasurement = DrawText(RenderBuffer, &Layout,
+                                                         JourneyTextLength, JourneyText,
+                                                         DrawTextFlags_Measure);
+        Layout.P = V2(Center.x, 0.52f*RenderBuffer->Height) + GetTightAlignmentOffset(JourneyMeasurement);
+        Layout.Color = State->SelectedPlayType == PlayType_Journey ? SelectedColor : NotSelectedColor;
+        DrawText(RenderBuffer, &Layout, JourneyTextLength, JourneyText);
+        
+        char ArcadeText[] = "ARCADE";
+        u32 ArcadeTextLength = sizeof(ArcadeText) - 1;
+        
+        text_measurement ArcadeMeasurement = DrawText(RenderBuffer, &Layout,
+                                                         ArcadeTextLength, ArcadeText,
+                                                         DrawTextFlags_Measure);
+        Layout.P = V2(Center.x, 0.45f*RenderBuffer->Height) + GetTightAlignmentOffset(ArcadeMeasurement);
+        Layout.Color = State->SelectedPlayType == PlayType_Arcade ? SelectedColor : NotSelectedColor;
+        DrawText(RenderBuffer, &Layout, ArcadeTextLength, ArcadeText);
+
+        if(!State->Debounce)
+        {
+            if(ShipController->LeftStick.y <= -0.5f)
+            {
+                State->SelectedPlayType = (play_type)(State->SelectedPlayType + 1);
+                if(State->SelectedPlayType == PlayType_Terminator)
+                {
+                    State->SelectedPlayType = (play_type)0;
+                }
+                State->Debounce = true;
+            }
+            else if(ShipController->LeftStick.y >= 0.5f)
+            {
+                if(State->SelectedPlayType == (play_type)0)
+                {
+                    State->SelectedPlayType = (play_type)(PlayType_Terminator - 1);
+                }
+                else
+                {
+                    State->SelectedPlayType = (play_type)(State->SelectedPlayType - 1);
+                }
+                State->Debounce = true;
+            }
+        }
+        else if(-0.5f < ShipController->LeftStick.y && ShipController->LeftStick.y < 0.5f)
+        {
+            State->Debounce = false;
+        }
+        
+        if(WentDown(ShipController->ActionDown) || WentDown(ShipController->Start))
+        {
+            GameState->NextMode = GameMode_Play;
+        }
+    }
+    else
     {
-        GameState->NextMode = GameMode_Play;
+        if(FlickerOn)
+        {
+            Layout.Scale = 0.5f;
+            // TODO(chris): Change this text for keyboard/controller?
+            u32 PushStartTextLength;
+            char *PushStartText;
+            switch(ShipController->Type)
+            {
+                case ControllerType_Keyboard:
+                {
+                    char Text[] = "PRESS ENTER";
+                    PushStartText = Text;
+                    PushStartTextLength = sizeof(Text)-1;
+                } break;
+
+                case ControllerType_Dualshock4:
+                {
+                    char Text[] = "PRESS OPTIONS";
+                    PushStartText = Text;
+                    PushStartTextLength = sizeof(Text)-1;
+                } break;
+
+                case ControllerType_XboxOne:
+                {
+                    char Text[] = "PRESS MENU";
+                    PushStartText = Text;
+                    PushStartTextLength = sizeof(Text)-1;
+                } break;
+
+                case ControllerType_Xbox360:
+                case ControllerType_N64:
+                default:
+                {
+                    char Text[] = "PRESS START";
+                    PushStartText = Text;
+                    PushStartTextLength = sizeof(Text)-1;
+                } break;
+            }
+
+            text_measurement PushStartMeasurement = DrawText(RenderBuffer, &Layout,
+                                                             PushStartTextLength, PushStartText,
+                                                             DrawTextFlags_Measure);
+            Layout.P = V2(Center.x, 0.52f*RenderBuffer->Height) + GetTightAlignmentOffset(PushStartMeasurement);
+            DrawText(RenderBuffer, &Layout, PushStartTextLength, PushStartText);
+        }
+        if(WentDown(ShipController->Start))
+        {
+            State->PressedStart = true;
+        }
     }
     
     {
         TIMED_BLOCK("Render Game");
         RenderBufferToBackBuffer(RendererState, RenderBuffer, RenderFlags_UsePipeline);
     }
+    DEBUG_VALUE("Render Arena", TranState->RenderBuffer.Arena);
     EndTemporaryMemory(RenderMemory);
 }

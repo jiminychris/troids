@@ -291,7 +291,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                         GameMemory->TemporaryMemorySize - sizeof(transient_state),
                         (u8 *)GameMemory->TemporaryMemory + sizeof(transient_state));
 
-        TranState->RenderBuffer.Arena = SubArena(&TranState->Arena, Megabytes(256));
+        TranState->RenderBuffer.Arena = SubArena(&TranState->Arena, Megabytes(1));
         TranState->RenderBuffer.Width = BackBuffer->Width;
         TranState->RenderBuffer.Height = BackBuffer->Height;
         TranState->RenderBuffer.MetersToPixels = State->MetersToPixels;
@@ -343,7 +343,6 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             DEBUG_VALUE("Thread 5 String Arena", GlobalDebugState->ThreadStorage[5].StringArena);
             DEBUG_VALUE("Thread 6 String Arena", GlobalDebugState->ThreadStorage[6].StringArena);
             DEBUG_VALUE("Thread 7 String Arena", GlobalDebugState->ThreadStorage[7].StringArena);
-            DEBUG_VALUE("Render Arena", TranState->RenderBuffer.Arena);
         }
     }
 
@@ -358,7 +357,13 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
             case GameMode_Play:
             {
+                play_type PlayType = PlayType_Arcade;
+                if(State->Mode == GameMode_TitleScreen)
+                {
+                    PlayType = State->TitleScreenState.SelectedPlayType;
+                }
                 State->PlayState = {};
+                State->PlayState.PlayType = PlayType;
             } break;
         }
         State->Mode = State->NextMode;

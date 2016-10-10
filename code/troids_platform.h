@@ -535,8 +535,22 @@ introspect struct game_button
     u32 HalfTransitionCount;
 };
 
+enum controller_type
+{
+    ControllerType_None,
+    
+    ControllerType_Keyboard,
+    
+    ControllerType_Dualshock4,
+    ControllerType_XboxOne,
+    ControllerType_Xbox360,
+    ControllerType_N64,
+};
+
 struct game_controller
 {
+    controller_type Type;
+    
     v2 LeftStick;
     v2 RightStick;
     r32 LeftTrigger;

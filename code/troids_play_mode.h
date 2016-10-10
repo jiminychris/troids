@@ -89,12 +89,6 @@ enum enemy_state
     EnemyState_WaitingToSpawn,
 };
 
-enum play_type
-{
-    PlayType_Arcade,
-    PlayType_Story,
-};
-
 struct play_state
 {
     b32 IsInitialized;

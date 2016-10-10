@@ -98,23 +98,6 @@ CreateEnemyShip(play_state *State, v3 P, r32 Yaw, u32 ShipIndex)
     return(Result);
 }
 
-inline entity *
-CreateFloatingHead(play_state *State)
-{
-    entity *Result = CreateEntity(State);
-    Result->Type = EntityType_FloatingHead;
-    Result->ColliderType = ColliderType_None;
-    Result->P = V3(0.0f, 0.0f, 0.0f);
-    Result->Dim = V2(100.0f, 100.0f);
-    Result->RotationMatrix =
-        {
-            1, 0, 0,
-            0, 1, 0,
-            0, 0, 1,
-        };
-    return(Result);
-}
-
 inline void
 RecenterShapes(entity *Entity)
 {
@@ -985,8 +968,6 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
         AllowCollision(&State->PhysicsState, ColliderType_Asteroid, ColliderType_Wall);
         AllowCollision(&State->PhysicsState, ColliderType_Asteroid, ColliderType_IndestructibleLaser);
 
-        State->PlayType = PlayType_Story;
-
         RenderBuffer->CameraP = V3(0.0f, 0.0f, 150.0f);
         ResetField(State, RenderBuffer, true);
     }
@@ -1227,10 +1208,17 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
                 }
                 else
                 {
+                    if(State->PlayType == PlayType_Journey)
+                    {
+                        State->EnemyState = EnemyState_WaitingToSpawn;
+                    }
+                    else
+                    {
+                        State->EnemyState = EnemyState_NotHere;
+                    }
                     CreateEnemyDespawnTimer(State, Entity, State->EnemyColor);
                     DestroyEntity(State, Entity);
                     NextIndex = EntityIndex;
-                    State->EnemyState = EnemyState_WaitingToSpawn;
                 }
             } break;
 
@@ -2429,7 +2417,10 @@ END_TIMED_BLOCK(Collision);
                 case EntityType_EnemyShip:
                 {
                     State->EnemyState = EnemyState_NotHere;
-                    CreateMetamorphosisTimer(State);
+                    if(State->PlayType == PlayType_Journey)
+                    {
+                        CreateMetamorphosisTimer(State);
+                    }
                     CreateShipExplosion(State, Entity, State->EnemyColor);
                     if(Entity->DestroyedBy == ColliderType_Laser)
                     {
@@ -2640,29 +2631,6 @@ END_TIMED_BLOCK(Collision);
 //            DrawLine(BackBuffer, State->P, Laser->P, V4(0.0f, 0.0f, 1.0f, 1.0f));
             } break;
 
-            case EntityType_FloatingHead:
-            {
-#if 0
-                for(u32 FaceIndex = 1;
-                    FaceIndex < State->HeadMesh.FaceCount;
-                    ++FaceIndex)
-                {
-                    obj_face *Face = State->HeadMesh.Faces + FaceIndex;
-                    v3 VertexA = (State->HeadMesh.Vertices + Face->VertexIndexA)->xyz;
-                    v3 VertexB = (State->HeadMesh.Vertices + Face->VertexIndexB)->xyz;
-                    v3 VertexC = (State->HeadMesh.Vertices + Face->VertexIndexC)->xyz;
-
-                    v4 White = V4(1.0f, 1.0f, 1.0f, 1.0f);
-                    PushLine(RenderBuffer, Entity->P, Entity->RotationMatrix,
-                             VertexA, VertexB, Entity->Dim, White);
-                    PushLine(RenderBuffer, Entity->P, Entity->RotationMatrix,
-                             VertexB, VertexC, Entity->Dim, White);
-                    PushLine(RenderBuffer, Entity->P, Entity->RotationMatrix,
-                             VertexC, VertexA, Entity->Dim, White);
-                }
-#endif
-            } break;
-
             case EntityType_Letter:
             {
                 XAxis = V2(1, 0);
@@ -2694,7 +2662,7 @@ END_TIMED_BLOCK(Collision);
     {
         if(WentDown(ShipController->Start))
         {
-            ResetField(State, RenderBuffer, true);
+            GameState->NextMode = GameMode_TitleScreen;
         }
     }
     else if(State->AsteroidCount <= 0 && State->EnemyState == EnemyState_NotHere)
@@ -2739,5 +2707,6 @@ END_TIMED_BLOCK(Collision);
         TIMED_BLOCK("Render Game");
         RenderBufferToBackBuffer(RendererState, RenderBuffer, RenderFlags_UsePipeline);
     }
+    DEBUG_VALUE("Render Arena", TranState->RenderBuffer.Arena);
     EndTemporaryMemory(RenderMemory);
 }

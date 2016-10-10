@@ -131,20 +131,10 @@ struct n64_input
     u8 Padding[2];
 };
 
-enum input_device_type
-{
-    InputDeviceType_None,
-    
-    InputDeviceType_Dualshock4,
-    InputDeviceType_XboxOne,
-    InputDeviceType_Xbox360,
-    InputDeviceType_N64,
-};
-
 struct input_device
 {
     u32 Index;
-    input_device_type Type;
+    controller_type Type;
     GUID GUID;
     u32 XInputIndex;
     LPDIRECTINPUTDEVICE8A Device;
@@ -278,7 +268,7 @@ UnlatchGamePads()
                 )
             {
                 input_device *ActiveGamePad = *ActiveGamePadPtr;
-                Assert(ActiveGamePad->Type != InputDeviceType_None);
+                Assert(ActiveGamePad->Type != ControllerType_None);
                 b32 StillAttached = false;
                 for(u32 DeviceGUIDIndex = 0;
                     DeviceGUIDIndex < GamePadGUIDs.Count;
@@ -336,7 +326,7 @@ LatchGamePads(HWND Window)
                     ActiveGamePad != &GlobalActiveGamePadsSentinel;
                     ActiveGamePad = ActiveGamePad->Next)
                 {
-                    Assert(ActiveGamePad->Type != InputDeviceType_None);
+                    Assert(ActiveGamePad->Type != ControllerType_None);
                     if(IsEqualGUID(ActiveGamePad->GUID, *GamePadGUID))
                     {
                         AlreadyLatched = true;
@@ -347,7 +337,7 @@ LatchGamePads(HWND Window)
                 if(!AlreadyLatched)
                 {
                     input_device *NewGamePad = GlobalFreeGamePads;
-                    NewGamePad->Type = InputDeviceType_None;
+                    NewGamePad->Type = ControllerType_None;
                     NewGamePad->Device = 0;
                     NewGamePad->XInputIndex = INVALID_XINPUT_INDEX;
 
@@ -361,24 +351,24 @@ LatchGamePads(HWND Window)
                         {
                             if(IsEqualGUID(Dualshock4GUID, DeviceInfo.guidProduct))
                             {
-                                NewGamePad->Type = InputDeviceType_Dualshock4;
+                                NewGamePad->Type = ControllerType_Dualshock4;
                             }
                             else if(IsEqualGUID(XboxOneGUID, DeviceInfo.guidProduct))
                             {
-                                NewGamePad->Type = InputDeviceType_XboxOne;
+                                NewGamePad->Type = ControllerType_XboxOne;
                             }
                             else if(IsEqualGUID(Xbox360GUID, DeviceInfo.guidProduct))
                             {
-                                NewGamePad->Type = InputDeviceType_Xbox360;
+                                NewGamePad->Type = ControllerType_Xbox360;
                             }
                             else if(IsEqualGUID(N64GUID, DeviceInfo.guidProduct))
                             {
-                                NewGamePad->Type = InputDeviceType_N64;
+                                NewGamePad->Type = ControllerType_N64;
                             }
 
                             switch(NewGamePad->Type)
                             {
-                                case InputDeviceType_Dualshock4:
+                                case ControllerType_Dualshock4:
                                 {
                                     DIOBJECTDATAFORMAT Dualshock4ObjectDataFormat[] =
                                     {
@@ -422,8 +412,8 @@ LatchGamePads(HWND Window)
                                     }
                                 } break;
 
-                                case InputDeviceType_XboxOne:
-                                case InputDeviceType_Xbox360:
+                                case ControllerType_XboxOne:
+                                case ControllerType_Xbox360:
                                 {
                                     for(u32 XInputIndex = 0;
                                         (XInputIndex < XUSER_MAX_COUNT) && XInputGetState_;
@@ -496,7 +486,7 @@ LatchGamePads(HWND Window)
                                     }
                                 } break;
 
-                                case InputDeviceType_N64:
+                                case ControllerType_N64:
                                 {
                                     DIOBJECTDATAFORMAT N64ObjectDataFormat[] =
                                     {
@@ -578,10 +568,11 @@ ProcessGamePadInput(game_input *OldInput, game_input *NewInput)
     {
         game_controller *OldGamePad = OldInput->GamePads + ActiveGamePad->Index;
         game_controller *NewGamePad = NewInput->GamePads + ActiveGamePad->Index;
+        NewGamePad->Type = ActiveGamePad->Type;
         LPDIRECTINPUTDEVICE8A Device = ActiveGamePad->Device;
         switch(ActiveGamePad->Type)
         {
-            case InputDeviceType_Dualshock4:
+            case ControllerType_Dualshock4:
             {
                 if(Device)
                 {
@@ -738,8 +729,8 @@ ProcessGamePadInput(game_input *OldInput, game_input *NewInput)
                 }
             } break;
 
-            case InputDeviceType_XboxOne:
-            case InputDeviceType_Xbox360:
+            case ControllerType_XboxOne:
+            case ControllerType_Xbox360:
             {
                 if(IsXInputGamePad(ActiveGamePad))
                 {
@@ -1060,7 +1051,7 @@ ProcessGamePadInput(game_input *OldInput, game_input *NewInput)
                 }
             } break;
 
-            case InputDeviceType_N64:
+            case ControllerType_N64:
             {
                 if(Device)
                 {
