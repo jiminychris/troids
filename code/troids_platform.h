@@ -304,7 +304,7 @@ struct read_file_result
     u64 ContentsSize;
     void *Contents;
 };
-#define PLATFORM_READ_FILE(Name) read_file_result Name(char *FileName)
+#define PLATFORM_READ_FILE(Name) read_file_result Name(char *FileName, u32 Offset)
 typedef PLATFORM_READ_FILE(platform_read_file);
 
 struct thread_progress
@@ -372,6 +372,8 @@ struct game_memory
     platform_push_thread_work *PlatformPushThreadWork;
     platform_wait_for_all_thread_work *PlatformWaitForAllThreadWork;
     loaded_font Font;
+    u32 AssetOffset;
+    char *EXEFileName;
 };
 
 struct memory_arena

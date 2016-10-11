@@ -21,6 +21,10 @@
 #include "troids_debug.h"
 #include "troids_opengl.h"
 
+#if ONE_FILE
+#include "troids.cpp"
+#endif
+
 typedef BOOL WINAPI wgl_swap_interval_ext(int);
     
 #include <dsound.h>
@@ -69,6 +73,7 @@ global_variable u32 GlobalThreadQueueNextIndex = 0;
 global_variable HANDLE GlobalThreadQueueSemaphore;
 global_variable WINDOWPLACEMENT PreviousWindowPlacement = { sizeof(PreviousWindowPlacement) };
 global_variable HWND GlobalWindow;
+global_variable HANDLE GlobalEXEFile;
 
 #include "win32_troids_font.h"
 

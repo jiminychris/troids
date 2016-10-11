@@ -48,7 +48,7 @@ enum render_mode
     RenderMode_OpenGL,
 };
 
-render_mode GlobalRenderMode;
+global_variable render_mode GlobalRenderMode;
 
 inline void
 CopyBackBufferToWindow(HDC DeviceContext, win32_backbuffer *BackBuffer)
@@ -266,29 +266,36 @@ LRESULT WindowProc(HWND Window,
 }
 
 internal read_file_result
-Win32ReadFile(char *FileName)
+Win32ReadFile(char *FileName, u32 Offset)
 {
     read_file_result Result = {};
+
+    HANDLE File = GlobalEXEFile;
+    if(FileName)
+    {
+        HANDLE File = CreateFile(FileName,
+                                 GENERIC_READ,
+                                 0, 0,
+                                 OPEN_EXISTING,
+                                 FILE_ATTRIBUTE_NORMAL, 0);
+    }
     
-    HANDLE File = CreateFile(FileName,
-                             GENERIC_READ,
-                             0, 0,
-                             OPEN_EXISTING,
-                             FILE_ATTRIBUTE_NORMAL, 0);
     if(INVALID_HANDLE_VALUE == File)
     {
         // TODO(chris): Logging
     }
     else
     {
-        Result.ContentsSize = GetFileSize(File, 0);
+        Result.ContentsSize = GetFileSize(File, 0) - Offset;
         Result.Contents = VirtualAlloc(0, Result.ContentsSize,
                                        MEM_COMMIT|MEM_RESERVE,
                                        PAGE_READWRITE);
         DWORD BytesRead;
+        OVERLAPPED Overlapped = {};
+        Overlapped.Offset = Offset;
         BOOL ReadFileResult = ReadFile(File, Result.Contents,
                                        (u32)Result.ContentsSize,
-                                       &BytesRead, 0);
+                                       &BytesRead, &Overlapped);
 
         Assert(ReadFileResult);
     }
@@ -682,7 +689,27 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
 //            Filter->dbcc_name[1]
             HDEVNOTIFY DeviceNotification = RegisterDeviceNotificationA(GlobalWindow, &Filter,
                                                                        DEVICE_NOTIFY_WINDOW_HANDLE);
+            char EXEFileName[MAX_PATH];
+            u32 EXEFileNameLength = GetModuleFileName(0, EXEFileName, sizeof(EXEFileName));
+            GameMemory.EXEFileName = EXEFileName;
+            GlobalEXEFile = CreateFile(EXEFileName,
+                                       GENERIC_READ,
+                                       0, 0,
+                                       OPEN_EXISTING,
+                                       FILE_ATTRIBUTE_NORMAL, 0);
+            u32 EXEFileSize = GetFileSize(GlobalEXEFile, 0);
+            u32 AssetSize;
+            u32 FooterSize = sizeof(AssetSize);
+            u32 FooterOffset = EXEFileSize - FooterSize;
 
+            OVERLAPPED Overlapped = {};
+            Overlapped.Offset = FooterOffset;
+            BOOL ReadFileResult = ReadFile(GlobalEXEFile, &AssetSize,
+                                           FooterSize,
+                                           0, &Overlapped);
+
+            GameMemory.AssetOffset = EXEFileSize-FooterSize-AssetSize;
+#if !ONE_FILE
             game_update_and_render *GameUpdateAndRender = 0;
             game_get_sound_samples *GameGetSoundSamples = 0;
 #if TROIDS_INTERNAL
@@ -726,6 +753,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
             {
                 // TODO(chris): Logging
             }
+#endif
 
             TIMECAPS TimeCaps;
             timeGetDevCaps(&TimeCaps, sizeof(TimeCaps));
@@ -998,6 +1026,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                 }
 #endif
 
+#if !ONE_FILE
                 {
                     TIMED_BLOCK("DLL Reload");
                     WIN32_FILE_ATTRIBUTE_DATA FileInfo;
@@ -1029,14 +1058,19 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                         }
                     }
                 }
+#endif
                 END_TIMED_BLOCK(FrameIndex);
 
+#if !ONE_FILE
                 if(GameUpdateAndRender)
+#endif
                 {
                     GameUpdateAndRender(&GameMemory, NewInput, &RendererState);
                     GlobalRunning &= !NewInput->Quit;
                 }
+#if !ONE_FILE
                 if(GameGetSoundSamples && SecondarySoundBuffer)
+#endif
                 {
                     TIMED_BLOCK("Platform Sound");
                     DWORD PlayCursor;
@@ -1139,7 +1173,9 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
 #endif
 
 #if TROIDS_INTERNAL
+#if !ONE_FILE
                 if(DebugCollate)
+#endif
                 {
                     DebugCollate(&GameMemory, NewInput, &RendererState);
                 }

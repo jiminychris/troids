@@ -16,15 +16,15 @@
 #include "troids_title_screen_mode.cpp"
 
 internal loaded_bitmap
-LoadBitmap(char *FileName)
+LoadBitmap(char *FileName, u32 Offset)
 {
     loaded_bitmap Result = {};
     // TODO(chris): Allocate memory from arena instead of dynamic platform alloc
-    read_file_result ReadResult = PlatformReadFile(FileName);
+    read_file_result ReadResult = PlatformReadFile(FileName, Offset);
     bitmap_header *BMPHeader = (bitmap_header *)ReadResult.Contents;
 
     Assert(BMPHeader->FileType == (('B' << 0) | ('M' << 8)));
-    Assert(BMPHeader->FileSize == ReadResult.ContentsSize);
+//    Assert(BMPHeader->FileSize == ReadResult.ContentsSize);
     Assert(BMPHeader->Reserved1 == 0);
     Assert(BMPHeader->Reserved2 == 0);
     Assert(BMPHeader->Planes == 1);
@@ -123,7 +123,7 @@ LoadObj(char *FileName, memory_arena *Arena)
     Result.VertexCount = 1;
     Result.FaceCount = 1;
     // TODO(chris): Allocate memory from arena instead of dynamic platform alloc
-    read_file_result ReadResult = PlatformReadFile(FileName);
+    read_file_result ReadResult = PlatformReadFile(FileName, 0);
 
     char *At = (char *)ReadResult.Contents;
     // NOTE(chris): Just do two passes over the file for now.
@@ -281,7 +281,11 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 //        State->ShipBitmap = LoadBitmap("ship_opaque.bmp");
 //        State->AsteroidBitmap = LoadBitmap("asteroid_opaque.bmp");
 #endif
-        State->LaserBitmap = LoadBitmap("laser.bmp");
+#if ONE_FILE
+        State->LaserBitmap = LoadBitmap(0, GameMemory->AssetOffset);
+#else
+        State->LaserBitmap = LoadBitmap("laser.bmp", 0);
+#endif
     }
 
     transient_state *TranState = (transient_state *)GameMemory->TemporaryMemory;
