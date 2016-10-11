@@ -40,6 +40,7 @@ Win32LoadFont(loaded_font *Font, HDC DeviceContext, char *FontName, DWORD FontHe
                                               &FontBuffer.Memory, 0, 0);
         SelectObject(FontDC, FontBitmap);
 
+        int MapModePrevious = SetMapMode(DeviceContext, MM_TEXT);
         HFONT Win32Font = CreateFont(FontHeight, 0, // NOTE(chris): Height, Width
                                      0, // NOTE(chris): Escapement
                                      0, // NOTE(chris): Orientation
@@ -53,6 +54,7 @@ Win32LoadFont(loaded_font *Font, HDC DeviceContext, char *FontName, DWORD FontHe
                                      ANTIALIASED_QUALITY,
                                      DEFAULT_PITCH|FF_DONTCARE,
                                      FontName);
+        SetMapMode(DeviceContext, MapModePrevious);
         SelectObject(FontDC, Win32Font);
         SetBkColor(FontDC, RGB(0, 0, 0));
         SetTextColor(FontDC, RGB(255, 255, 255));

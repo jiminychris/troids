@@ -695,7 +695,7 @@ SplitWorkIntoSquares(render_chunk *RenderChunks, u32 CoreCount, s32 Width, s32 H
         {
             s32 HalfHeight = Height/2;
             SplitWorkIntoSquares(RenderChunks, HalfCores, Width, HalfHeight, OffsetX, OffsetY);
-            SplitWorkIntoSquares(RenderChunks+HalfCores, HalfCores, Width, HalfHeight, OffsetX, OffsetY+HalfHeight);
+            SplitWorkIntoSquares(RenderChunks+HalfCores, HalfCores, Width, Height-HalfHeight, OffsetX, OffsetY+HalfHeight);
         }
     }
 }

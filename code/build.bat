@@ -3,7 +3,7 @@
 if not exist w:\build mkdir w:\build
 pushd w:\build
 
-set Release=1
+set Release=0
 set OneFile=1
 
 if %Release%==1 (
@@ -17,7 +17,7 @@ set Internal=1
 set DebugDisplay=1
 set Slow=1
 set Rumble=0
-set Optimize=/O2
+set Optimize=/Od
 )
 
 set DataPath=\"..\\troids\\data\"

@@ -461,7 +461,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
             MonitorRect.Max.x = MonitorInfo.rcMonitor.right;
             MonitorRect.Max.y = MonitorInfo.rcMonitor.bottom;
         }
-//        MonitorRect = {0, 0, 1920*2, 1080*2};
+//        MonitorRect = {0, 0, 4096, 2160};
         s32 MonitorWidth = MonitorRect.Max.x - MonitorRect.Min.x;
         s32 MonitorHeight = MonitorRect.Max.y - MonitorRect.Min.y;
 
@@ -609,9 +609,11 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
             }
 
 #if TROIDS_INTERNAL
-            Win32LoadFont(&GlobalDebugState->Font, DeviceContext, "Courier New", 42, FW_BOLD);
+            Win32LoadFont(&GlobalDebugState->Font, DeviceContext, "Courier New",
+                          RoundU32((r32)BackBufferHeight*42.0f/1080.0f), FW_BOLD);
 #endif
-            Win32LoadFont(&GameMemory.Font, DeviceContext, "Arial", 128, FW_NORMAL);
+            Win32LoadFont(&GameMemory.Font, DeviceContext, "Arial",
+                          RoundU32((r32)BackBufferHeight*128.0f/1080.0f), FW_NORMAL);
 
             GameMemory.PlatformReadFile = Win32ReadFile;
             GameMemory.PlatformPushThreadWork = Win32PushThreadWork;
