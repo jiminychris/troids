@@ -616,7 +616,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
             GameMemory.PlatformReadFile = Win32ReadFile;
             GameMemory.PlatformPushThreadWork = Win32PushThreadWork;
             GameMemory.PlatformWaitForAllThreadWork = Win32WaitForAllThreadWork;
-            
+
             // TODO(chris): Query monitor refresh rate
             r32 dtForFrame = 1.0f / 60.0f;
 
@@ -805,6 +805,15 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
             game_input GameInput[3] = {};
             game_input *OldInput = GameInput;
             game_input *NewInput = GameInput + 1;
+
+            u32 FrameSecondsIndex = 0;
+            r32 FrameSecondsBuffer[4] =
+            {
+                dtForFrame,
+                dtForFrame,
+                dtForFrame,
+                dtForFrame,
+            };
 
             NewInput->MostRecentlyUsedController = LatchedGamePadCount() ? 1 : 0;
             ToggleFullscreen(GlobalWindow, MonitorRect);
@@ -1224,8 +1233,36 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
 
                 QueryPerformanceCounter(&Counter);
                 r32 FrameSeconds = (Counter.QuadPart - LastCounter.QuadPart)*ClocksToSeconds;
+
+                FrameSecondsBuffer[FrameSecondsIndex] = FrameSeconds;
+                FrameSecondsIndex = ((FrameSecondsIndex + 1) & 3);
                 // NOTE(chris): Because querying the VSYNC rate is impossible on Windows?
-                dtForFrame = FrameSeconds;
+                r32 AverageFrameHz = 4.0f/(FrameSecondsBuffer[0] + FrameSecondsBuffer[1] +
+                                           FrameSecondsBuffer[2] + FrameSecondsBuffer[3]);
+                if(AverageFrameHz > 45.0f)
+                {
+                    dtForFrame = 1.0f / 60.0f;
+                }
+                else if(AverageFrameHz > 25.0f)
+                {
+                    dtForFrame = 1.0f / 30.0f;
+                }
+                else if(AverageFrameHz > 17.5f)
+                {
+                    dtForFrame = 1.0f / 20.0f;
+                }
+                else if(AverageFrameHz > 13.5f)
+                {
+                    dtForFrame = 1.0f / 15.0f;
+                }
+                else if(AverageFrameHz > 11.0f)
+                {
+                    dtForFrame = 1.0f / 12.0f;
+                }
+                else
+                {
+                    dtForFrame = 1.0f / 10.0f;
+                }
                 FRAME_MARKER(FrameSeconds);
                 LastCounter = Counter;
             }
