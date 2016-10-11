@@ -726,8 +726,8 @@ ResetField(play_state *State, render_buffer *RenderBuffer, b32 NewGame = false)
     v2 CellDim = V2(GridDimInMeters.x/GridDimInCells.x,
                     GridDimInMeters.y/GridDimInCells.y);
 
-    Assert(CellDim.x*GridDimInCells.x == GridDimInMeters.x);
-    Assert(CellDim.y*GridDimInCells.y == GridDimInMeters.y);
+//    Assert(CellDim.x*GridDimInCells.x == GridDimInMeters.x);
+//    Assert(CellDim.y*GridDimInCells.y == GridDimInMeters.y);
 
     s32 CellCount = 0;
     rectangle2 Cells[1024];

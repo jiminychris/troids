@@ -60,8 +60,8 @@ CopyBackBufferToWindow(HDC DeviceContext, win32_backbuffer *BackBuffer)
         StretchDIBits(DeviceContext,
                       0,
                       0,
-                      GlobalBackBuffer.Width,
-                      GlobalBackBuffer.Height,
+                      GlobalBackBuffer.MonitorWidth,
+                      GlobalBackBuffer.MonitorHeight,
                       0,
                       0,
                       GlobalBackBuffer.Width,
@@ -77,7 +77,7 @@ CopyBackBufferToWindow(HDC DeviceContext, win32_backbuffer *BackBuffer)
             TIMED_BLOCK("GLCommands");
             {
                 TIMED_BLOCK("glViewport");
-                glViewport(0, 0, BackBuffer->Width, BackBuffer->Height);
+                glViewport(0, 0, BackBuffer->MonitorWidth, BackBuffer->MonitorHeight);
             }
 
             {
@@ -461,12 +461,19 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
             MonitorRect.Max.x = MonitorInfo.rcMonitor.right;
             MonitorRect.Max.y = MonitorInfo.rcMonitor.bottom;
         }
-//        MonitorRect = {0, 0, 1366, 768};
+//        MonitorRect = {0, 0, 1920*2, 1080*2};
+        s32 MonitorWidth = MonitorRect.Max.x - MonitorRect.Min.x;
+        s32 MonitorHeight = MonitorRect.Max.y - MonitorRect.Min.y;
 
-        s32 BackBufferWidth = MonitorRect.Max.x - MonitorRect.Min.x;
-        s32 BackBufferHeight = MonitorRect.Max.y - MonitorRect.Min.y;
-        s32 WindowWidth = BackBufferWidth/2;
-        s32 WindowHeight = BackBufferHeight/2;
+        s32 BackBufferWidth = MonitorWidth;
+        s32 BackBufferHeight = MonitorHeight;
+        while(BackBufferWidth*BackBufferHeight > 1920*1080)
+        {
+            BackBufferWidth /= 2;
+            BackBufferHeight /= 2;
+        }
+        s32 WindowWidth = MonitorWidth/2;
+        s32 WindowHeight = MonitorHeight/2;
         GlobalWindow = CreateWindowExA(0,
                                        WindowClass.lpszClassName,
                                        "TROIDS",
@@ -496,6 +503,8 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
             
             GlobalBackBuffer.Width = BackBufferWidth;
             GlobalBackBuffer.Height = BackBufferHeight;
+            GlobalBackBuffer.MonitorWidth = MonitorWidth;
+            GlobalBackBuffer.MonitorHeight = MonitorHeight;
             GlobalBackBuffer.Info.bmiHeader.biSize = sizeof(GlobalBackBuffer.Info.bmiHeader);
             GlobalBackBuffer.Info.bmiHeader.biWidth = ((GlobalBackBuffer.Width+3)/4)*4;
             GlobalBackBuffer.Info.bmiHeader.biHeight = GlobalBackBuffer.Height;
@@ -985,7 +994,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                         }
                     }
                     NewInput->MousePosition = {GlobalMousePosition.x,
-                                               GlobalBackBuffer.Height - GlobalMousePosition.y};
+                                               MonitorHeight - GlobalMousePosition.y};
                     NewInput->LeftMouse = GlobalLeftMouse;
                 }
 
@@ -1181,6 +1190,10 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                 }
 #endif
 
+#if 0
+                GlobalRenderMode = RenderMode_GDI;
+                VSYNC = false;
+#endif
                 CopyBackBufferToWindow(DeviceContext, &GlobalBackBuffer);
                 if(!VSYNC)
                 {
@@ -1211,6 +1224,8 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
 
                 QueryPerformanceCounter(&Counter);
                 r32 FrameSeconds = (Counter.QuadPart - LastCounter.QuadPart)*ClocksToSeconds;
+                // NOTE(chris): Because querying the VSYNC rate is impossible on Windows?
+                dtForFrame = FrameSeconds;
                 FRAME_MARKER(FrameSeconds);
                 LastCounter = Counter;
             }

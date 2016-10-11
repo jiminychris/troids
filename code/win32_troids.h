@@ -43,6 +43,8 @@ struct win32_backbuffer
 {
     s32 Width;
     s32 Height;
+    s32 MonitorWidth;
+    s32 MonitorHeight;
     s32 Pitch;
     BITMAPINFO Info;
     void *Memory;
