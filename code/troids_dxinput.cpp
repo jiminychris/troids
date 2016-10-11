@@ -1111,11 +1111,13 @@ ProcessGamePadInput(game_input *OldInput, game_input *NewInput)
                             ProcessButton(&OldGamePad->ActionLeft, &NewGamePad->ActionLeft,
                                           N64Data.B);
                             ProcessButton(&OldGamePad->ActionDown, &NewGamePad->ActionDown,
-                                          N64Data.A);
+                                          N64Data.A|N64Data.Z);
                             ProcessButton(&OldGamePad->LeftShoulder1, &NewGamePad->LeftShoulder1,
-                                          N64Data.L|N64Data.Z);
+                                          N64Data.L);
                             ProcessButton(&OldGamePad->RightShoulder1, &NewGamePad->RightShoulder1,
                                           N64Data.R);
+                            ProcessButton(&OldGamePad->Select, &NewGamePad->Select,
+                                          N64Data.B);
                             ProcessButton(&OldGamePad->Start, &NewGamePad->Start, N64Data.Start);
                         }
 

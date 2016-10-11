@@ -27,12 +27,19 @@ enum game_mode
     GameMode_Play,
 };
 
+enum title_screen_selection
+{
+    TitleScreenSelection_Journey,
+    TitleScreenSelection_Arcade,
+    TitleScreenSelection_Quit,
+
+    PlayType_Terminator,
+};
+
 enum play_type
 {
     PlayType_Journey,
     PlayType_Arcade,
-
-    PlayType_Terminator,
 };
 
 #include "troids_play_mode.h"

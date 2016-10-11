@@ -8,22 +8,28 @@
 
 #include "win32_troids.h"
 
+inline HMONITOR
+GetPrimaryMonitor()
+{
+    POINT Zero = {0, 0};
+    HMONITOR Result = MonitorFromPoint(Zero, MONITOR_DEFAULTTOPRIMARY);
+    return(Result);
+}
+
 inline void
-ToggleFullscreen(HWND Window)
+ToggleFullscreen(HWND Window, rectangle2i MonitorRect)
 {
     // NOTE(chris): Taken from Raymond Chen's blog.
     DWORD WindowStyle = GetWindowLong(Window, GWL_STYLE);
     if(WindowStyle & WS_OVERLAPPEDWINDOW)
     {
-        MONITORINFO MonitorInfo = { sizeof(MonitorInfo) };
-        if(GetWindowPlacement(Window, &PreviousWindowPlacement) &&
-            GetMonitorInfo(MonitorFromWindow(Window, MONITOR_DEFAULTTOPRIMARY), &MonitorInfo))
+        if(GetWindowPlacement(Window, &PreviousWindowPlacement))
         {
             SetWindowLong(Window, GWL_STYLE, WindowStyle & ~WS_OVERLAPPEDWINDOW);
             SetWindowPos(Window, HWND_TOP,
-                         MonitorInfo.rcMonitor.left, MonitorInfo.rcMonitor.top,
-                         MonitorInfo.rcMonitor.right - MonitorInfo.rcMonitor.left,
-                         MonitorInfo.rcMonitor.bottom - MonitorInfo.rcMonitor.top,
+                         MonitorRect.Min.x, MonitorRect.Min.y,
+                         MonitorRect.Max.x - MonitorRect.Min.x,
+                         MonitorRect.Max.y - MonitorRect.Min.y,
                          SWP_NOOWNERZORDER|SWP_FRAMECHANGED);
         }
     }
@@ -82,7 +88,7 @@ CopyBackBufferToWindow(HDC DeviceContext, win32_backbuffer *BackBuffer)
                 }
                 {
                     TIMED_BLOCK("glTexImage2D");
-                    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, BackBuffer->Width, BackBuffer->Height,
+                    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, BackBuffer->Pitch/sizeof(u32), BackBuffer->Height,
                                  0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, BackBuffer->Memory);
                 }
                 {
@@ -437,10 +443,23 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
 
     if(RegisterClassA(&WindowClass))
     {
-        s32 BackBufferWidth = 1920;
-        s32 BackBufferHeight = 1080;
-        s32 WindowWidth = 1920/2;
-        s32 WindowHeight = 1080/2;
+        HMONITOR Monitor = GetPrimaryMonitor();
+        MONITORINFO MonitorInfo = { sizeof(MonitorInfo) };
+
+        rectangle2i MonitorRect = {0, 0, 1920, 1080};
+        if(GetMonitorInfo(Monitor, &MonitorInfo))
+        {
+            MonitorRect.Min.x = MonitorInfo.rcMonitor.left;
+            MonitorRect.Min.y = MonitorInfo.rcMonitor.top;
+            MonitorRect.Max.x = MonitorInfo.rcMonitor.right;
+            MonitorRect.Max.y = MonitorInfo.rcMonitor.bottom;
+        }
+//        MonitorRect = {0, 0, 1366, 768};
+
+        s32 BackBufferWidth = MonitorRect.Max.x - MonitorRect.Min.x;
+        s32 BackBufferHeight = MonitorRect.Max.y - MonitorRect.Min.y;
+        s32 WindowWidth = BackBufferWidth/2;
+        s32 WindowHeight = BackBufferHeight/2;
         GlobalWindow = CreateWindowExA(0,
                                        WindowClass.lpszClassName,
                                        "TROIDS",
@@ -470,9 +489,8 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
             
             GlobalBackBuffer.Width = BackBufferWidth;
             GlobalBackBuffer.Height = BackBufferHeight;
-            GlobalBackBuffer.Pitch = GlobalBackBuffer.Width*sizeof(u32);
             GlobalBackBuffer.Info.bmiHeader.biSize = sizeof(GlobalBackBuffer.Info.bmiHeader);
-            GlobalBackBuffer.Info.bmiHeader.biWidth = GlobalBackBuffer.Width;
+            GlobalBackBuffer.Info.bmiHeader.biWidth = ((GlobalBackBuffer.Width+3)/4)*4;
             GlobalBackBuffer.Info.bmiHeader.biHeight = GlobalBackBuffer.Height;
             GlobalBackBuffer.Info.bmiHeader.biPlanes = 1;
             GlobalBackBuffer.Info.bmiHeader.biBitCount = 32;
@@ -482,6 +500,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
             GlobalBackBuffer.Info.bmiHeader.biYPelsPerMeter = 1;
             GlobalBackBuffer.Info.bmiHeader.biClrUsed = 0;
             GlobalBackBuffer.Info.bmiHeader.biClrImportant = 0;
+            GlobalBackBuffer.Pitch = GlobalBackBuffer.Info.bmiHeader.biWidth*sizeof(u32);
 
             HDC DeviceContext = GetDC(GlobalWindow);
             CreateDIBSection(DeviceContext, &GlobalBackBuffer.Info, DIB_RGB_COLORS,
@@ -513,7 +532,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
             RendererState.CoverageBuffer.Pitch = GlobalBackBuffer.Pitch;
             RendererState.SampleBuffer.Width = SAMPLE_COUNT*GlobalBackBuffer.Width;
             RendererState.SampleBuffer.Height = GlobalBackBuffer.Height;
-            RendererState.SampleBuffer.Pitch = SAMPLE_COUNT*GlobalBackBuffer.Pitch;
+            RendererState.SampleBuffer.Pitch = SAMPLE_COUNT*sizeof(u32)*RendererState.SampleBuffer.Width;
 
             memory_size CoverageBufferMemorySize = RendererState.CoverageBuffer.Height*RendererState.CoverageBuffer.Pitch;
             memory_size SampleBufferMemorySize = RendererState.SampleBuffer.Height*RendererState.SampleBuffer.Pitch;
@@ -751,7 +770,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
             game_input *NewInput = GameInput + 1;
 
             NewInput->MostRecentlyUsedController = LatchedGamePadCount() ? 1 : 0;
-            ToggleFullscreen(GlobalWindow);
+            ToggleFullscreen(GlobalWindow, MonitorRect);
             QueryPerformanceCounter(&LastCounter);
             while(GlobalRunning)
             {
@@ -844,7 +863,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                                             {
                                                 if(AltIsDown)
                                                 {
-                                                    ToggleFullscreen(GlobalWindow);
+                                                    ToggleFullscreen(GlobalWindow, MonitorRect);
                                                 }
                                             } break;
 
@@ -1015,6 +1034,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                 if(GameUpdateAndRender)
                 {
                     GameUpdateAndRender(&GameMemory, NewInput, &RendererState);
+                    GlobalRunning &= !NewInput->Quit;
                 }
                 if(GameGetSoundSamples && SecondarySoundBuffer)
                 {

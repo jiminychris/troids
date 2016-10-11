@@ -685,7 +685,7 @@ SplitWorkIntoSquares(render_chunk *RenderChunks, u32 CoreCount, s32 Width, s32 H
     else
     {
         u32 HalfCores = CoreCount/2;
-        if(Width >= Height)
+        if(Width >= Height && (Width&7) == 0)
         {
             s32 HalfWidth = Width/2;
             SplitWorkIntoSquares(RenderChunks, HalfCores, HalfWidth, Height, OffsetX, OffsetY);

@@ -12,7 +12,7 @@ struct title_screen_state
     u32 FadeInTicks;
     r32 FlickerTicks;
     b32 PressedStart;
-    play_type SelectedPlayType;
+    title_screen_selection Selection;
     b32 Debounce;
 };
 

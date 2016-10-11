@@ -360,7 +360,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                 play_type PlayType = PlayType_Arcade;
                 if(State->Mode == GameMode_TitleScreen)
                 {
-                    PlayType = State->TitleScreenState.SelectedPlayType;
+                    PlayType = (play_type)State->TitleScreenState.Selection;
                 }
                 State->PlayState = {};
                 State->PlayState.PlayType = PlayType;

@@ -984,13 +984,6 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
         }
     }
     
-    {DEBUG_GROUP("Play Mode");
-        DEBUG_FILL_BAR("Entities", State->EntityCount, ArrayCount(State->Entities));
-        DEBUG_FILL_BAR("Particles", State->ParticleCount, ArrayCount(State->Particles));
-        DEBUG_VALUE("Shape Arena", State->PhysicsState.ShapeArena);
-        DEBUG_VALUE("Shape Freelist", (b32)State->PhysicsState.FirstFreeShape);
-    }
-    
     temporary_memory RenderMemory = BeginTemporaryMemory(&RenderBuffer->Arena);
     PushClear(RendererState, RenderBuffer, V3(0.0f, 0.0f, 0.0f));
     v2 ScreenCenter = 0.5f*V2i(RenderBuffer->Width, RenderBuffer->Height); 
@@ -2707,6 +2700,13 @@ END_TIMED_BLOCK(Collision);
         TIMED_BLOCK("Render Game");
         RenderBufferToBackBuffer(RendererState, RenderBuffer, RenderFlags_UsePipeline);
     }
-    DEBUG_VALUE("Render Arena", TranState->RenderBuffer.Arena);
+    
+    {DEBUG_GROUP("Play Mode");
+        DEBUG_FILL_BAR("Entities", State->EntityCount, ArrayCount(State->Entities));
+        DEBUG_FILL_BAR("Particles", State->ParticleCount, ArrayCount(State->Particles));
+        DEBUG_VALUE("Shape Arena", State->PhysicsState.ShapeArena);
+        DEBUG_VALUE("Shape Freelist", (b32)State->PhysicsState.FirstFreeShape);
+        DEBUG_VALUE("Render Arena", TranState->RenderBuffer.Arena);
+    }
     EndTemporaryMemory(RenderMemory);
 }

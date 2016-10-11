@@ -64,7 +64,7 @@ TitleScreenMode(game_memory *GameMemory, game_input *Input, renderer_state *Rend
                                                          JourneyTextLength, JourneyText,
                                                          DrawTextFlags_Measure);
         Layout.P = V2(Center.x, 0.52f*RenderBuffer->Height) + GetTightAlignmentOffset(JourneyMeasurement);
-        Layout.Color = State->SelectedPlayType == PlayType_Journey ? SelectedColor : NotSelectedColor;
+        Layout.Color = State->Selection == TitleScreenSelection_Journey ? SelectedColor : NotSelectedColor;
         DrawText(RenderBuffer, &Layout, JourneyTextLength, JourneyText);
         
         char ArcadeText[] = "ARCADE";
@@ -74,29 +74,39 @@ TitleScreenMode(game_memory *GameMemory, game_input *Input, renderer_state *Rend
                                                          ArcadeTextLength, ArcadeText,
                                                          DrawTextFlags_Measure);
         Layout.P = V2(Center.x, 0.45f*RenderBuffer->Height) + GetTightAlignmentOffset(ArcadeMeasurement);
-        Layout.Color = State->SelectedPlayType == PlayType_Arcade ? SelectedColor : NotSelectedColor;
+        Layout.Color = State->Selection == TitleScreenSelection_Arcade ? SelectedColor : NotSelectedColor;
         DrawText(RenderBuffer, &Layout, ArcadeTextLength, ArcadeText);
+        
+        char QuitText[] = "QUIT";
+        u32 QuitTextLength = sizeof(QuitText) - 1;
+        
+        text_measurement QuitMeasurement = DrawText(RenderBuffer, &Layout,
+                                                    QuitTextLength, QuitText,
+                                                    DrawTextFlags_Measure);
+        Layout.P = V2(Center.x, 0.38f*RenderBuffer->Height) + GetTightAlignmentOffset(QuitMeasurement);
+        Layout.Color = State->Selection == TitleScreenSelection_Quit ? SelectedColor : NotSelectedColor;
+        DrawText(RenderBuffer, &Layout, QuitTextLength, QuitText);
 
         if(!State->Debounce)
         {
             if(ShipController->LeftStick.y <= -0.5f)
             {
-                State->SelectedPlayType = (play_type)(State->SelectedPlayType + 1);
-                if(State->SelectedPlayType == PlayType_Terminator)
+                State->Selection = (title_screen_selection)(State->Selection + 1);
+                if(State->Selection == PlayType_Terminator)
                 {
-                    State->SelectedPlayType = (play_type)0;
+                    State->Selection = (title_screen_selection)0;
                 }
                 State->Debounce = true;
             }
             else if(ShipController->LeftStick.y >= 0.5f)
             {
-                if(State->SelectedPlayType == (play_type)0)
+                if(State->Selection == (title_screen_selection)0)
                 {
-                    State->SelectedPlayType = (play_type)(PlayType_Terminator - 1);
+                    State->Selection = (title_screen_selection)(PlayType_Terminator - 1);
                 }
                 else
                 {
-                    State->SelectedPlayType = (play_type)(State->SelectedPlayType - 1);
+                    State->Selection = (title_screen_selection)(State->Selection - 1);
                 }
                 State->Debounce = true;
             }
@@ -108,7 +118,14 @@ TitleScreenMode(game_memory *GameMemory, game_input *Input, renderer_state *Rend
         
         if(WentDown(ShipController->ActionDown) || WentDown(ShipController->Start))
         {
-            GameState->NextMode = GameMode_Play;
+            if(State->Selection == TitleScreenSelection_Quit)
+            {
+                Input->Quit = true;
+            }
+            else
+            {
+                GameState->NextMode = GameMode_Play;
+            }
         }
     }
     else
@@ -168,6 +185,9 @@ TitleScreenMode(game_memory *GameMemory, game_input *Input, renderer_state *Rend
         TIMED_BLOCK("Render Game");
         RenderBufferToBackBuffer(RendererState, RenderBuffer, RenderFlags_UsePipeline);
     }
-    DEBUG_VALUE("Render Arena", TranState->RenderBuffer.Arena);
+    
+    {DEBUG_GROUP("Title Screen Mode");
+        DEBUG_VALUE("Render Arena", TranState->RenderBuffer.Arena);
+    }
     EndTemporaryMemory(RenderMemory);
 }

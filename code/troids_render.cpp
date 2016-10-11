@@ -1209,8 +1209,10 @@ RenderSamples(render_chunk *RenderChunk)
 
     s32 XMin = OffsetX;
     s32 YMin = OffsetY;
-    s32 XMax = OffsetX + BackBuffer->Width;
+    s32 XMax = ((OffsetX + BackBuffer->Width + 3)/4)*4;
     s32 YMax = OffsetY + BackBuffer->Height;
+
+    Assert(((XMax-XMin)&3) == 0);
     
     u8 *PixelRow = (u8 *)BackBuffer->Memory + BackBuffer->Pitch*OffsetY;
     u8 *SampleRow = (u8 *)SampleBuffer->Memory + YMin*SampleBuffer->Pitch;
