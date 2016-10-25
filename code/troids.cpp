@@ -285,6 +285,10 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         State->LaserBitmap = LoadBitmap(0, GameMemory->AssetOffset);
 #else
         State->LaserBitmap = LoadBitmap("laser.bmp", 0);
+#if 0
+        State->StructuredArt = LoadBitmap("structured_art.bmp", 0);
+        State->StructuredArt.Align = V2(0, 0);
+#endif
 #endif
     }
 

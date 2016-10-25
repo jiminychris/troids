@@ -678,7 +678,7 @@ struct render_chunk
 };
 
 // TODO(chris): Optimize this for the number of logical cores.
-#define RENDER_CHUNK_COUNT 64
+#define MAX_RENDER_CHUNKS 64
 struct renderer_state
 {
     v3 ClearColor;
@@ -686,7 +686,8 @@ struct renderer_state
     loaded_bitmap CoverageBuffer;
     loaded_bitmap SampleBuffer;
 
-    render_chunk RenderChunks[64];
+    u32 RenderChunkCount;
+    render_chunk RenderChunks[MAX_RENDER_CHUNKS];
 };
 
 #define GAME_UPDATE_AND_RENDER(Name) void Name(game_memory *GameMemory, game_input *Input, renderer_state *RendererState)

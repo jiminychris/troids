@@ -17,7 +17,7 @@ set Internal=1
 set DebugDisplay=1
 set Slow=1
 set Rumble=0
-set Optimize=/Od
+set Optimize=/O2
 )
 
 set DataPath=\"..\\troids\\data\"

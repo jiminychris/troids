@@ -62,6 +62,10 @@ struct game_state
 
     loaded_bitmap LaserBitmap;
 
+#if 0
+    loaded_bitmap StructuredArt;
+#endif
+
     memory_arena Arena;
 };
 

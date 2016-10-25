@@ -273,11 +273,11 @@ Win32ReadFile(char *FileName, u32 Offset)
     HANDLE File = GlobalEXEFile;
     if(FileName)
     {
-        HANDLE File = CreateFile(FileName,
-                                 GENERIC_READ,
-                                 0, 0,
-                                 OPEN_EXISTING,
-                                 FILE_ATTRIBUTE_NORMAL, 0);
+        File = CreateFile(FileName,
+                          GENERIC_READ,
+                          0, 0,
+                          OPEN_EXISTING,
+                          FILE_ATTRIBUTE_NORMAL, 0);
     }
     
     if(INVALID_HANDLE_VALUE == File)
@@ -538,7 +538,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
 
             b32 VSYNC = InitializeOpenGL(DeviceContext);
 
-            renderer_state RendererState;            
+            renderer_state RendererState;
             RendererState.BackBuffer.Width = GlobalBackBuffer.Width;
             RendererState.BackBuffer.Height = GlobalBackBuffer.Height;
             RendererState.BackBuffer.Pitch = GlobalBackBuffer.Pitch;
@@ -594,8 +594,9 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
 #endif
             }
             
-            for(s32 RenderChunkIndex = 0;
-                RenderChunkIndex < ArrayCount(RendererState.RenderChunks);
+            RendererState.RenderChunkCount = GlobalThreadCount + 1;
+            for(u32 RenderChunkIndex = 0;
+                RenderChunkIndex < RendererState.RenderChunkCount;
                 ++RenderChunkIndex)
             {
                 render_chunk *RenderChunk = RendererState.RenderChunks + RenderChunkIndex;
@@ -610,10 +611,10 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
 
 #if TROIDS_INTERNAL
             Win32LoadFont(&GlobalDebugState->Font, DeviceContext, "Courier New",
-                          RoundU32((r32)BackBufferHeight*42.0f/1080.0f), FW_BOLD);
+                          RoundU32((r32)BackBufferHeight*42.0f/1080.0f), FW_BOLD, true);
 #endif
             Win32LoadFont(&GameMemory.Font, DeviceContext, "Arial",
-                          RoundU32((r32)BackBufferHeight*128.0f/1080.0f), FW_NORMAL);
+                          RoundU32((r32)BackBufferHeight*128.0f/1080.0f), FW_NORMAL, false);
 
             GameMemory.PlatformReadFile = Win32ReadFile;
             GameMemory.PlatformPushThreadWork = Win32PushThreadWork;

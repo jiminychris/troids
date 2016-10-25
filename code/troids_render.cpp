@@ -222,15 +222,14 @@ RenderBitmap(loaded_bitmap *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAx
         ++Y)
     {
         u32 *Pixel = (u32 *)PixelRow + AdjustedXMin;
-        __m128 X4 = _mm_set_ps((r32)AdjustedXMin + 3, (r32)AdjustedXMin + 2,
-                                   (r32)AdjustedXMin + 1, (r32)AdjustedXMin + 0);
-        __m128 Y4 = _mm_set_ps1((r32)Y);
+        __m128 X4 = _mm_set_ps((r32)AdjustedXMin + 3.5f, (r32)AdjustedXMin + 2.5f,
+                                   (r32)AdjustedXMin + 1.5f, (r32)AdjustedXMin + 0.5f);
+        __m128 Y4 = _mm_set_ps1((r32)Y + 0.5f);
         for(s32 X = AdjustedXMin;
             X < AdjustedXMax;
             X += 4)
         {
 #if DEBUG_BITMAPS
-            // TODO(chris): Ship bounding rectangle seems too big when rotating?
             _mm_storeu_si128((__m128i *)Pixel, Pink);
 #endif
             __m128 TestPointX = _mm_sub_ps(X4, OriginX);
@@ -450,9 +449,9 @@ RenderBitmap(render_chunk *RenderChunk, loaded_bitmap *Bitmap, v2 Origin, v2 XAx
     {
         u32 *Coverage = (u32 *)CoverageRow + AdjustedXMin;
         u32 *Sample = (u32 *)SampleRow + SAMPLE_COUNT*AdjustedXMin;
-        __m128 X4 = _mm_set_ps((r32)AdjustedXMin + 3, (r32)AdjustedXMin + 2,
-                                   (r32)AdjustedXMin + 1, (r32)AdjustedXMin + 0);
-        __m128 Y4 = _mm_set_ps1((r32)Y);
+        __m128 X4 = _mm_set_ps((r32)AdjustedXMin + 3.5f, (r32)AdjustedXMin + 2.5f,
+                                   (r32)AdjustedXMin + 1.5f, (r32)AdjustedXMin + 0.5f);
+        __m128 Y4 = _mm_set_ps1((r32)Y + 0.5f);
         for(s32 X = AdjustedXMin;
             X < AdjustedXMax;
             X += 4)
@@ -1151,8 +1150,8 @@ inline void
 ClearAllBuffers(renderer_state *RendererState, b32 Force = false)
 {
     TIMED_FUNCTION();
-    thread_progress ThreadProgress[RENDER_CHUNK_COUNT];
-    for(s32 RenderChunkIndex = RENDER_CHUNK_COUNT-1;
+    thread_progress ThreadProgress[MAX_RENDER_CHUNKS];
+    for(s32 RenderChunkIndex = RendererState->RenderChunkCount-1;
         RenderChunkIndex >= 0;
         --RenderChunkIndex)
     {
@@ -1175,8 +1174,8 @@ ClearAllBuffers(renderer_state *RendererState, b32 Force = false)
     do
     {
         Finished = true;
-        for(s32 ProgressIndex = 0;
-            ProgressIndex < RENDER_CHUNK_COUNT;
+        for(u32 ProgressIndex = 0;
+            ProgressIndex < RendererState->RenderChunkCount;
             ++ProgressIndex)
         {
             thread_progress *Progress = ThreadProgress + ProgressIndex;
@@ -1871,15 +1870,15 @@ RenderBufferToBackBuffer(renderer_state *RendererState, render_buffer *RenderBuf
     }
     if(SortTree)
     {
-        render_tree_data RenderTreeData[RENDER_CHUNK_COUNT];
-        thread_progress ThreadProgress[RENDER_CHUNK_COUNT];
+        render_tree_data RenderTreeData[MAX_RENDER_CHUNKS];
+        thread_progress ThreadProgress[MAX_RENDER_CHUNKS];
 
-        SplitWorkIntoSquares(RendererState->RenderChunks, RENDER_CHUNK_COUNT,
+        SplitWorkIntoSquares(RendererState->RenderChunks, RendererState->RenderChunkCount,
                              RendererState->BackBuffer.Width,
                              RendererState->BackBuffer.Height,
                              0, 0);
         
-        for(s32 RenderChunkIndex = RENDER_CHUNK_COUNT-1;
+        for(s32 RenderChunkIndex = RendererState->RenderChunkCount-1;
             RenderChunkIndex >= 0;
             --RenderChunkIndex)
         {
@@ -1905,8 +1904,8 @@ RenderBufferToBackBuffer(renderer_state *RendererState, render_buffer *RenderBuf
         do
         {
             Finished = true;
-            for(s32 ProgressIndex = 0;
-                ProgressIndex < RENDER_CHUNK_COUNT;
+            for(u32 ProgressIndex = 0;
+                ProgressIndex < RendererState->RenderChunkCount;
                 ++ProgressIndex)
             {
                 thread_progress *Progress = ThreadProgress + ProgressIndex;

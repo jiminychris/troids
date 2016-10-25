@@ -8,7 +8,8 @@
    ======================================================================== */
 
 internal void
-Win32LoadFont(loaded_font *Font, HDC DeviceContext, char *FontName, DWORD FontHeight, DWORD FontWeight)
+Win32LoadFont(loaded_font *Font, HDC DeviceContext, char *FontName, DWORD FontHeight, DWORD FontWeight,
+              b32 Monospace)
 {
     for(u32 GlyphIndex = 0;
         GlyphIndex < ArrayCount(Font->Glyphs);
@@ -63,8 +64,7 @@ Win32LoadFont(loaded_font *Font, HDC DeviceContext, char *FontName, DWORD FontHe
         GetTextMetrics(FontDC, &Metrics);
         Font->Height = (r32)Metrics.tmHeight;
         Font->Ascent = (r32)Metrics.tmAscent;
-        Font->LineAdvance = (Font->Height +
-                                              (r32)Metrics.tmExternalLeading);
+        Font->LineAdvance = (Font->Height + (r32)Metrics.tmExternalLeading);
 
         char FirstChar = ' ';
         char LastChar = '~';
@@ -72,6 +72,9 @@ Win32LoadFont(loaded_font *Font, HDC DeviceContext, char *FontName, DWORD FontHe
         ABCFLOAT ABCWidths[128];
         b32 GetWidthsResult = GetCharABCWidthsFloat(FontDC, FirstChar, LastChar, ABCWidths);
         Assert(GetWidthsResult);
+
+        ABCFLOAT *MABCWidth = ABCWidths + 'm' - FirstChar;
+        r32 MaxCharWidth = MABCWidth->abcfB;
 
         r32 Inv255 = 1.0f / 255.0f;
         for(char GlyphIndex = FirstChar;
@@ -86,9 +89,19 @@ Win32LoadFont(loaded_font *Font, HDC DeviceContext, char *FontName, DWORD FontHe
                 ++SecondGlyphIndex)
             {
                 ABCFLOAT *SecondABCWidth = ABCWidths + SecondGlyphIndex - FirstChar;
-                            
-                Font->KerningTable[GlyphIndex][SecondGlyphIndex] =
-                    FirstGlyphAdvance + SecondABCWidth->abcfA;
+
+                if(Monospace)
+                {
+                    r32 FirstDiff = Maximum(0.0f, MaxCharWidth - FirstABCWidth->abcfB);
+                    r32 SecondDiff = Maximum(0.0f, MaxCharWidth - SecondABCWidth->abcfB);
+                    Font->KerningTable[GlyphIndex][SecondGlyphIndex] =
+                        FirstDiff/2 + FirstABCWidth->abcfB + SecondDiff/2;
+                }
+                else
+                {
+                    Font->KerningTable[GlyphIndex][SecondGlyphIndex] =
+                        FirstGlyphAdvance + SecondABCWidth->abcfA;
+                }
             }
             if(GlyphIndex == ' ') continue;
 

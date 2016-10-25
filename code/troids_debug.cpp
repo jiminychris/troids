@@ -586,6 +586,7 @@ extern "C" DEBUG_COLLATE(DebugCollate)
 #if TROIDS_INTERNAL
     TIMED_FUNCTION();
 
+    game_state *State = (game_state *)GameMemory->PermanentMemory;
     transient_state *TranState = (transient_state *)GameMemory->TemporaryMemory;
     if(!GlobalDebugState->IsInitialized)
     {
@@ -812,6 +813,10 @@ extern "C" DEBUG_COLLATE(DebugCollate)
     }
 
     GlobalDebugState->EventStart = EventIndex;
+
+#if 0
+    PushBitmap(RenderBuffer, &State->StructuredArt, V3(0, 0, 0), V2(1, 0), V2(0, 1), V2(14, 14));
+#endif
 
     BEGIN_TIMED_BLOCK(GUID, "DEBUGRender");
     RenderBufferToBackBuffer(RendererState, RenderBuffer);

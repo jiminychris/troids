@@ -180,7 +180,7 @@ TitleScreenMode(game_memory *GameMemory, game_input *Input, renderer_state *Rend
             State->PressedStart = true;
         }
     }
-    
+
     {
         TIMED_BLOCK("Render Game");
         RenderBufferToBackBuffer(RendererState, RenderBuffer, RenderFlags_UsePipeline);
