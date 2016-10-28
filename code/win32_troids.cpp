@@ -303,29 +303,42 @@ Win32ReadFile(char *FileName, u32 Offset)
     return(Result);
 }
 
+global_variable u32 GlobalSwapInterval;
+global_variable r32 GlobalDtForFrame;
+global_variable u32 GlobalMonitorRefreshRate;
+global_variable wgl_swap_interval_ext *wglSwapIntervalEXT = 0;
+
 internal b32
+ChangeSwapInterval(u32 Interval)
+{
+    TIMED_FUNCTION();
+    b32 Result = false;
+    GlobalSwapInterval = Interval;
+    GlobalDtForFrame = (r32)GlobalSwapInterval / (r32)GlobalMonitorRefreshRate;
+    if(wglSwapIntervalEXT)
+    {
+        if(wglSwapIntervalEXT(Interval))
+        {
+            Result = true;
+        }
+    }
+    return(Result);
+}
+
+internal void
 InitializeOpenGL(HDC DeviceContext)
 {
-    b32 Result = false;
     HGLRC OpenGLRC = wglCreateContext(DeviceContext);
     if(wglMakeCurrent(DeviceContext, OpenGLRC))
     {
         GlobalRenderMode = RenderMode_OpenGL;
         char *Version = (char *)glGetString(GL_VERSION);
-        wgl_swap_interval_ext *wglSwapIntervalEXT = (wgl_swap_interval_ext *)wglGetProcAddress("wglSwapIntervalEXT");
-        if(wglSwapIntervalEXT)
-        {
-            if(wglSwapIntervalEXT(1))
-            {
-                Result = true;
-            }
-        }
+        wglSwapIntervalEXT = (wgl_swap_interval_ext *)wglGetProcAddress("wglSwapIntervalEXT");
     }
     else
     {
         GlobalRenderMode = RenderMode_GDI;
     }
-    return(Result);
 }
 
 internal b32
@@ -536,8 +549,6 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                                 sizeof(SuggestedPixelFormat), &SuggestedPixelFormat);
             SetPixelFormat(DeviceContext, SuggestedPixelFormatIndex, &SuggestedPixelFormat);
 
-            b32 VSYNC = InitializeOpenGL(DeviceContext);
-
             renderer_state RendererState;
             RendererState.BackBuffer.Width = GlobalBackBuffer.Width;
             RendererState.BackBuffer.Height = GlobalBackBuffer.Height;
@@ -619,9 +630,6 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
             GameMemory.PlatformReadFile = Win32ReadFile;
             GameMemory.PlatformPushThreadWork = Win32PushThreadWork;
             GameMemory.PlatformWaitForAllThreadWork = Win32WaitForAllThreadWork;
-
-            // TODO(chris): Query monitor refresh rate
-            r32 dtForFrame = 1.0f / 60.0f;
 
             LPDIRECTSOUND DirectSound;
             LPDIRECTSOUNDBUFFER PrimarySoundBuffer = 0;
@@ -809,14 +817,15 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
             game_input *OldInput = GameInput;
             game_input *NewInput = GameInput + 1;
 
-            u32 FrameSecondsIndex = 0;
-            r32 FrameSecondsBuffer[4] =
+            GlobalMonitorRefreshRate = GetDeviceCaps(DeviceContext, VREFRESH);
+            // TODO(chris): What to actually do here?
+            if(GlobalMonitorRefreshRate == 0 || GlobalMonitorRefreshRate == 1)
             {
-                dtForFrame,
-                dtForFrame,
-                dtForFrame,
-                dtForFrame,
-            };
+                GlobalMonitorRefreshRate = 60;
+            }
+
+            InitializeOpenGL(DeviceContext);
+            b32 VSYNC = ChangeSwapInterval(1);
 
             NewInput->MostRecentlyUsedController = LatchedGamePadCount() ? 1 : 0;
             ToggleFullscreen(GlobalWindow, MonitorRect);
@@ -831,7 +840,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                     NewInput = OldInput;
                     OldInput = Temp;
                     *NewInput = {};
-                    NewInput->dtForFrame = dtForFrame;
+                    NewInput->dtForFrame = GlobalDtForFrame;
                     NewInput->SeedValue = LastCounter.QuadPart;
                     NewInput->MostRecentlyUsedController = OldInput->MostRecentlyUsedController;
 
@@ -1202,6 +1211,9 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                 }
 #endif
 
+                QueryPerformanceCounter(&Counter);
+                r32 PreWaitFrameSeconds = (Counter.QuadPart - LastCounter.QuadPart)*ClocksToSeconds;
+
 #if 0
                 GlobalRenderMode = RenderMode_GDI;
                 VSYNC = false;
@@ -1209,13 +1221,13 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                 CopyBackBufferToWindow(DeviceContext, &GlobalBackBuffer);
                 if(!VSYNC)
                 {
+                    TIMED_BLOCK("Manual Frame Wait");
                     QueryPerformanceCounter(&Counter);
                     r32 ElapsedSeconds = (Counter.QuadPart - LastCounter.QuadPart)*ClocksToSeconds;
 
-                    // TODO(chris): Use as backup if VSYNC fails.
-                    if(ElapsedSeconds < dtForFrame)
+                    if(ElapsedSeconds < GlobalDtForFrame)
                     {
-                        s32 MSToSleep  = (u32)((dtForFrame - ElapsedSeconds)*1000.0f) - 1;
+                        s32 MSToSleep  = (u32)((GlobalDtForFrame - ElapsedSeconds)*1000.0f) - 1;
                         if(MSToSleep > 0)
                         {
                             Sleep(MSToSleep);
@@ -1224,9 +1236,9 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                         {
                             QueryPerformanceCounter(&Counter);
                             ElapsedSeconds = (Counter.QuadPart - LastCounter.QuadPart)*ClocksToSeconds;
-                        } while (ElapsedSeconds < dtForFrame);
+                        } while (ElapsedSeconds < GlobalDtForFrame);
                     }
-                    else if (ElapsedSeconds > dtForFrame)
+                    else if (ElapsedSeconds > GlobalDtForFrame)
                     {
 #if TROIDS_DEBUG_DISPLAY
                         OutputDebugStringA("Missed framerate!\n");
@@ -1234,38 +1246,25 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                     }
                 }
 
+                r32 PreWaitFrameHz = 1.0f / PreWaitFrameSeconds;
+                r32 TargetHz = ((r32)GlobalMonitorRefreshRate / (r32)GlobalSwapInterval);
+
+                if(PreWaitFrameHz < TargetHz)
+                {
+                    ChangeSwapInterval(GlobalSwapInterval + 1);
+                }
+                else if(GlobalSwapInterval > 1)
+                {
+                    r32 NextHighestHz = ((r32)GlobalMonitorRefreshRate / (r32)(GlobalSwapInterval - 1));
+                    if(PreWaitFrameHz > NextHighestHz)
+                    {
+                        ChangeSwapInterval(GlobalSwapInterval - 1);
+                    }
+                }
+
                 QueryPerformanceCounter(&Counter);
                 r32 FrameSeconds = (Counter.QuadPart - LastCounter.QuadPart)*ClocksToSeconds;
-
-                FrameSecondsBuffer[FrameSecondsIndex] = FrameSeconds;
-                FrameSecondsIndex = ((FrameSecondsIndex + 1) & 3);
-                // NOTE(chris): Because querying the VSYNC rate is impossible on Windows?
-                r32 AverageFrameHz = 4.0f/(FrameSecondsBuffer[0] + FrameSecondsBuffer[1] +
-                                           FrameSecondsBuffer[2] + FrameSecondsBuffer[3]);
-                if(AverageFrameHz > 45.0f)
-                {
-                    dtForFrame = 1.0f / 60.0f;
-                }
-                else if(AverageFrameHz > 25.0f)
-                {
-                    dtForFrame = 1.0f / 30.0f;
-                }
-                else if(AverageFrameHz > 17.5f)
-                {
-                    dtForFrame = 1.0f / 20.0f;
-                }
-                else if(AverageFrameHz > 13.5f)
-                {
-                    dtForFrame = 1.0f / 15.0f;
-                }
-                else if(AverageFrameHz > 11.0f)
-                {
-                    dtForFrame = 1.0f / 12.0f;
-                }
-                else
-                {
-                    dtForFrame = 1.0f / 10.0f;
-                }
+                
                 FRAME_MARKER(FrameSeconds);
                 LastCounter = Counter;
             }

@@ -31,9 +31,11 @@ struct entity
     r32 Mass;
     v3 P;
     v3 dP;
+    v3 ddP;
     u32 Target;
     r32 Yaw;
     r32 dYaw;
+    r32 ddYaw;
     r32 Thrust;
     r32 Flicker;
     r32 Timer;
