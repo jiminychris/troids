@@ -146,10 +146,15 @@ CopyBackBufferToWindow(HDC DeviceContext, win32_backbuffer *BackBuffer)
 }
 
 inline void
-ProcessButtonInput(game_button *Button)
+ProcessButtonInput(game_button *Button, b32 WentDown)
 {
-    Button->EndedDown = !Button->EndedDown;
-    ++Button->HalfTransitionCount;
+    Assert(WentDown == 0 || WentDown == 1);
+    Assert(Button->EndedDown == 0 || Button->EndedDown == 1);
+    if(WentDown != Button->EndedDown)
+    {
+        Button->EndedDown = !Button->EndedDown;
+        ++Button->HalfTransitionCount;
+    }
 }
 
 inline void
@@ -160,6 +165,66 @@ ProcessAnalogInput(r32 *AnalogInput, b32 WentDown, r32 Value)
         Value = -Value;
     }
     *AnalogInput += Value;
+}
+
+union win32_keyboard_state
+{
+    
+    game_button Buttons[8];
+    struct
+    {
+        game_button W;
+        game_button A;
+        game_button S;
+        game_button D;
+        game_button Up;
+        game_button Left;
+        game_button Down;
+        game_button Right;
+    };
+};
+
+global_variable game_controller *GlobalNewKeyboard;
+global_variable win32_keyboard_state *GlobalNewWin32Keyboard;
+global_variable b32 GlobalFocus = true;
+
+inline b32
+IsKeyDown(int Key)
+{
+    b32 Result = (GetKeyState(Key) >> 15) & 1;
+    return(Result);
+}
+
+inline void
+ClearKeyboardInput(game_controller *Keyboard, win32_keyboard_state *Win32Keyboard)
+{
+    Keyboard->ActionDown = {};
+    Keyboard->Start = {};
+    Keyboard->Select = {};
+    Win32Keyboard->W = {};
+    Win32Keyboard->A = {};
+    Win32Keyboard->S = {};
+    Win32Keyboard->D = {};
+    Win32Keyboard->Up = {};
+    Win32Keyboard->Left = {};
+    Win32Keyboard->Down = {};
+    Win32Keyboard->Right = {};
+}
+
+inline void
+SyncKeyboardInput(game_controller *Keyboard, win32_keyboard_state *Win32Keyboard)
+{
+    Keyboard->ActionDown.EndedDown = IsKeyDown(VK_SPACE);
+    Keyboard->Start.EndedDown = IsKeyDown(VK_RETURN);
+    Keyboard->Select.EndedDown = IsKeyDown(VK_ESCAPE);
+    Win32Keyboard->W.EndedDown = IsKeyDown('W');
+    Win32Keyboard->A.EndedDown = IsKeyDown('A');
+    Win32Keyboard->S.EndedDown = IsKeyDown('S');
+    Win32Keyboard->D.EndedDown = IsKeyDown('D');
+    Win32Keyboard->Up.EndedDown = IsKeyDown(VK_UP);
+    Win32Keyboard->Left.EndedDown = IsKeyDown(VK_LEFT);
+    Win32Keyboard->Down.EndedDown = IsKeyDown(VK_DOWN);
+    Win32Keyboard->Right.EndedDown = IsKeyDown(VK_RIGHT);
 }
 
 LRESULT WindowProc(HWND Window,
@@ -174,6 +239,24 @@ LRESULT WindowProc(HWND Window,
         {
         } break;
 
+        case WM_KILLFOCUS:
+        {
+            GlobalFocus = false;
+            if(GlobalNewWin32Keyboard && GlobalNewKeyboard)
+            {
+                ClearKeyboardInput(GlobalNewKeyboard, GlobalNewWin32Keyboard);
+            }
+        } break;
+
+        case WM_SETFOCUS:
+        {
+            GlobalFocus = true;
+            if(GlobalNewWin32Keyboard && GlobalNewKeyboard)
+            {
+                SyncKeyboardInput(GlobalNewKeyboard, GlobalNewWin32Keyboard);
+            }
+        } break;
+                            
         case WM_CLOSE:
         case WM_QUIT:
         case WM_DESTROY:
@@ -252,9 +335,13 @@ LRESULT WindowProc(HWND Window,
         } break;
 
         case WM_LBUTTONUP:
+        {
+            ProcessButtonInput(&GlobalLeftMouse, false);
+        } break;
+        
         case WM_LBUTTONDOWN:
         {
-            ProcessButtonInput(&GlobalLeftMouse);
+            ProcessButtonInput(&GlobalLeftMouse, true);
         } break;
 
         default:
@@ -813,9 +900,13 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
             
             DWORD ByteToLock = 0;
             // TODO(chris): Maybe initialize this with starting controller state?
-            game_input GameInput[3] = {};
+            game_input GameInput[2] = {};
             game_input *OldInput = GameInput;
             game_input *NewInput = GameInput + 1;
+
+            win32_keyboard_state Win32Keyboard[2] = {};
+            win32_keyboard_state *OldWin32Keyboard = Win32Keyboard;
+            win32_keyboard_state *NewWin32Keyboard = Win32Keyboard + 1;
 
             GlobalMonitorRefreshRate = GetDeviceCaps(DeviceContext, VREFRESH);
             // TODO(chris): What to actually do here?
@@ -827,6 +918,8 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
             InitializeOpenGL(DeviceContext);
             b32 VSYNC = ChangeSwapInterval(1);
 
+            SyncKeyboardInput(&NewInput->Keyboard, NewWin32Keyboard);
+
             NewInput->MostRecentlyUsedController = LatchedGamePadCount() ? 1 : 0;
             ToggleFullscreen(GlobalWindow, MonitorRect);
             QueryPerformanceCounter(&LastCounter);
@@ -836,15 +929,17 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                 {
                     TIMED_BLOCK("Input");
 
-                    game_input *Temp = NewInput;
+                    game_input *TempInput = NewInput;
                     NewInput = OldInput;
-                    OldInput = Temp;
+                    OldInput = TempInput;
                     *NewInput = {};
                     NewInput->dtForFrame = GlobalDtForFrame;
                     NewInput->SeedValue = LastCounter.QuadPart;
                     NewInput->MostRecentlyUsedController = OldInput->MostRecentlyUsedController;
 
                     game_controller *NewKeyboard = &NewInput->Keyboard;
+                    GlobalNewKeyboard = NewKeyboard;
+                    
                     game_controller *OldKeyboard = &OldInput->Keyboard;
                     for(u32 ButtonIndex = 0;
                         ButtonIndex < ArrayCount(NewKeyboard->Buttons);
@@ -854,62 +949,97 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                         game_button *OldButton = OldKeyboard->Buttons + ButtonIndex;
                         NewButton->EndedDown = OldButton->EndedDown;
                     }
-                    NewKeyboard->LeftStick.x = OldKeyboard->LeftStick.x;
-                    NewKeyboard->LeftStick.y = OldKeyboard->LeftStick.y;
-                    NewKeyboard->RightStick.x = OldKeyboard->RightStick.x;
-                    NewKeyboard->RightStick.y = OldKeyboard->RightStick.y;
+
+                    win32_keyboard_state *TempWin32Keyboard = NewWin32Keyboard;
+                    NewWin32Keyboard = OldWin32Keyboard;
+                    OldWin32Keyboard = TempWin32Keyboard;
+                    *NewWin32Keyboard = {};
+                    GlobalNewWin32Keyboard = NewWin32Keyboard;
+                    
+                    for(u32 ButtonIndex = 0;
+                        ButtonIndex < ArrayCount(NewWin32Keyboard->Buttons);
+                        ++ButtonIndex)
+                    {
+                        game_button *NewButton = NewWin32Keyboard->Buttons + ButtonIndex;
+                        game_button *OldButton = OldWin32Keyboard->Buttons + ButtonIndex;
+                        NewButton->EndedDown = OldButton->EndedDown;
+                    }
+                    
+                    NewKeyboard->RightStick = OldKeyboard->RightStick;
                     NewKeyboard->Type = ControllerType_Keyboard;
                     GlobalLeftMouse.HalfTransitionCount = 0;
+
+                    b32 WasFocused = GlobalFocus;
 
                     while(PeekMessageA(&Message, GlobalWindow, 0, 0, PM_REMOVE))
                     {
                         switch(Message.message)
-                        {                            
+                        {
                             case WM_KEYDOWN:
                             case WM_KEYUP:
                             case WM_SYSKEYDOWN:
                             case WM_SYSKEYUP:
                             {
                                 NewInput->MostRecentlyUsedController = 0;
-                                b32 AlreadyDown = (Message.lParam & (1 << 30));
-                                b32 WentDown = !(Message.lParam & (1 << 31));
+                                b32 AlreadyDown = ((Message.lParam >> 30) & 1);
+                                b32 WentDown = !((Message.lParam >> 31) & 1);
                                 if(!(AlreadyDown && WentDown))
                                 {
                                     switch(Message.wParam)
                                     {
                                         case VK_SPACE:
                                         {
-                                            ProcessButtonInput(&NewKeyboard->ActionDown);
+                                            ProcessButtonInput(&NewKeyboard->ActionDown, WentDown);
                                         } break;
 
                                         case VK_RETURN:
                                         {
-                                            ProcessButtonInput(&NewKeyboard->Start);
+                                            ProcessButtonInput(&NewKeyboard->Start, WentDown);
                                         } break;
 
                                         case VK_ESCAPE:
                                         {
-                                            ProcessButtonInput(&NewKeyboard->Select);
+                                            ProcessButtonInput(&NewKeyboard->Select, WentDown);
                                         } break;
 
                                         case 'W':
                                         {
-                                            ProcessAnalogInput(&NewKeyboard->LeftStick.y, WentDown, 1.0f);
+                                            ProcessButtonInput(&NewWin32Keyboard->W, WentDown);
                                         } break;
 
                                         case 'A':
                                         {
-                                            ProcessAnalogInput(&NewKeyboard->LeftStick.x, WentDown, -1.0f);
+                                            ProcessButtonInput(&NewWin32Keyboard->A, WentDown);
                                         } break;
 
                                         case 'S':
                                         {
-                                            ProcessAnalogInput(&NewKeyboard->LeftStick.y, WentDown, -1.0f);
+                                            ProcessButtonInput(&NewWin32Keyboard->S, WentDown);
                                         } break;
-
+                                        
                                         case 'D':
                                         {
-                                            ProcessAnalogInput(&NewKeyboard->LeftStick.x, WentDown, 1.0f);
+                                            ProcessButtonInput(&NewWin32Keyboard->D, WentDown);
+                                        } break;
+
+                                        case VK_UP:
+                                        {
+                                            ProcessButtonInput(&NewWin32Keyboard->Up, WentDown);
+                                        } break;
+
+                                        case VK_LEFT:
+                                        {
+                                            ProcessButtonInput(&NewWin32Keyboard->Left, WentDown);
+                                        } break;
+
+                                        case VK_DOWN:
+                                        {
+                                            ProcessButtonInput(&NewWin32Keyboard->Down, WentDown);
+                                        } break;
+                                        
+                                        case VK_RIGHT:
+                                        {
+                                            ProcessButtonInput(&NewWin32Keyboard->Right, WentDown);
                                         } break;
                                     }
                                     if(WentDown)
@@ -988,7 +1118,61 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                         }
                     }
 
-                    ProcessGamePadInput(OldInput, NewInput);
+                    if(NewWin32Keyboard->W.EndedDown)
+                    {
+                        NewKeyboard->LeftStick.y += 1.0f;
+                    }
+                    if(NewWin32Keyboard->A.EndedDown)
+                    {
+                        NewKeyboard->LeftStick.x -= 1.0f;
+                    }
+                    if(NewWin32Keyboard->S.EndedDown)
+                    {
+                        NewKeyboard->LeftStick.y -= 1.0f;
+                    }
+                    if(NewWin32Keyboard->D.EndedDown)
+                    {
+                        NewKeyboard->LeftStick.x += 1.0f;
+                    }
+                    if(NewWin32Keyboard->Up.EndedDown)
+                    {
+                        NewKeyboard->LeftStick.y += 1.0f;
+                    }
+                    if(NewWin32Keyboard->Left.EndedDown)
+                    {
+                        NewKeyboard->LeftStick.x -= 1.0f;
+                    }
+                    if(NewWin32Keyboard->Down.EndedDown)
+                    {
+                        NewKeyboard->LeftStick.y -= 1.0f;
+                    }
+                    if(NewWin32Keyboard->Right.EndedDown)
+                    {
+                        NewKeyboard->LeftStick.x += 1.0f;
+                    }
+                    NewKeyboard->LeftStick.x = Clamp(-1.0f, NewKeyboard->LeftStick.x, 1.0f);
+                    NewKeyboard->LeftStick.y = Clamp(-1.0f, NewKeyboard->LeftStick.y, 1.0f);
+
+                    if(GlobalFocus)
+                    {
+                        ProcessGamePadInput(OldInput, NewInput);
+                        if(!WasFocused)
+                        {
+                            for(u32 GamePadIndex = 0;
+                                GamePadIndex < ArrayCount(NewInput->GamePads);
+                                ++GamePadIndex)
+                            {
+                                game_controller *GamePad = NewInput->GamePads + GamePadIndex;
+                                for(u32 ButtonIndex = 0;
+                                    ButtonIndex < ArrayCount(GamePad->Buttons);
+                                    ++ButtonIndex)
+                                {
+                                    game_button *Button = GamePad->Buttons + ButtonIndex;
+                                    Button->HalfTransitionCount = 0;
+                                }
+                            }
+                        }
+                    }
 
                     for(u32 ControllerIndex = 1;
                         ControllerIndex < ArrayCount(NewInput->Controllers);
