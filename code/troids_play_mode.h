@@ -106,7 +106,10 @@ struct play_state
     r32 ResetTimer;
     s32 Difficulty;
     s32 Lives;
+    u32 SourcePoints;
+    r32 PointsTimer;
     u32 Points;
+    u32 SpinningPoints;
     enemy_state EnemyState;
     s32 AsteroidCount;
     seed AsteroidSeed;
@@ -123,6 +126,18 @@ struct play_state
     u32 ParticleCount;
     particle Particles[256];
 };
+
+inline void
+AddPoints(play_state *State, u32 Value)
+{
+    u32 Points = State->Points + Value;
+    if(Points > State->Points)
+    {
+        State->SourcePoints = State->SpinningPoints;
+        State->PointsTimer = 0.0f;
+        State->Points = Points;
+    }
+}
 
 internal r32
 CalculateBoundingRadius(entity *Entity)

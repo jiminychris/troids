@@ -162,8 +162,8 @@ RealMask(b32 Value)
     return(Result);
 }
 
-inline s32
-Minimum(s32 A, s32 B)
+inline u32
+Minimum(u32 A, u32 B)
 {
     if(B < A)
     {
@@ -176,6 +176,16 @@ inline u32
 Maximum(u32 A, u32 B)
 {
     if(B > A)
+    {
+        A = B;
+    }
+    return(A);
+}
+
+inline s32
+Minimum(s32 A, s32 B)
+{
+    if(B < A)
     {
         A = B;
     }
@@ -250,6 +260,13 @@ inline s32
 Clamp(s32 Min, s32 A, s32 Max)
 {
     s32 Result = Maximum(Min, Minimum(Max, A));
+    return(Result);
+}
+
+inline u32
+Clamp(u32 Min, u32 A, u32 Max)
+{
+    u32 Result = Maximum(Min, Minimum(Max, A));
     return(Result);
 }
 
