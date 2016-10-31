@@ -194,6 +194,7 @@ struct debug_state
 };
 
 global_variable debug_state *GlobalDebugState;
+global_variable debug_event NullDebugEvent;
 
 inline debug_thread_storage *
 GetThreadStorage(u32 ThreadID)
@@ -292,18 +293,22 @@ GetStringFromHash(char *String, debug_thread_storage *Thread = GlobalDebugState-
 #define DEBUG_GUID(Name) DEBUG_GUID_(Name, __FILE__, __LINE__)
 
 inline debug_event *
-BeginNextDebugEvent(char *GUID = "")
+NextDebugEvent(char *GUID = "")
 {
-    u32 Mask = ArrayCount(GlobalDebugState->Events)-1;
-    u32 EventCount = AtomicIncrement(&GlobalDebugState->EventCount);
-    u32 EventIndex = ((EventCount - 1) & Mask);
+    debug_event *Result = &NullDebugEvent;
+    if(GlobalDebugState)
+    {
+        u32 Mask = ArrayCount(GlobalDebugState->Events)-1;
+        u32 EventCount = AtomicIncrement(&GlobalDebugState->EventCount);
+        u32 EventIndex = ((EventCount - 1) & Mask);
                       
-    Assert(((EventIndex+1)&Mask) != GlobalDebugState->EventStart);
-    debug_event *Result = GlobalDebugState->Events + EventIndex;
-    Result->ThreadID = GetCurrentThreadID();
-    // TODO(chris): Does this impact the calling code too much?
-    Result->GUID = GetStringFromHash(GUID, GetThreadStorage(Result->ThreadID));
-    Result->Ignored = GlobalDebugState->Ignored;
+        Assert(((EventIndex+1)&Mask) != GlobalDebugState->EventStart);
+        Result = GlobalDebugState->Events + EventIndex;
+        Result->ThreadID = GetCurrentThreadID();
+        // TODO(chris): Does this impact the calling code too much?
+        Result->GUID = GetStringFromHash(GUID, GetThreadStorage(Result->ThreadID));
+        Result->Ignored = GlobalDebugState->Ignored;
+    }
 
     return(Result);
 }
@@ -311,7 +316,7 @@ BeginNextDebugEvent(char *GUID = "")
 inline char *
 BeginTimedBlock(char *GUID, u32 Iterations)
 {
-    debug_event *Event = BeginNextDebugEvent(GUID);
+    debug_event *Event = NextDebugEvent(GUID);
     Event->Type = DebugEventType_CodeBegin;
     Event->Value_u64 = __rdtsc();
     Event->Iterations = Iterations;
@@ -322,7 +327,7 @@ BeginTimedBlock(char *GUID, u32 Iterations)
 inline void
 EndTimedBlock(char *GUID)
 {
-    debug_event *Event = BeginNextDebugEvent(GUID);
+    debug_event *Event = NextDebugEvent(GUID);
     Event->Type = DebugEventType_CodeEnd;
     Event->Value_u64 = __rdtsc();
 }
@@ -347,13 +352,13 @@ struct debug_group
     
     debug_group(char *GUID, debug_event_type Type = DebugEventType_GroupBegin)
     {
-        debug_event *Event = BeginNextDebugEvent(GUID);
+        debug_event *Event = NextDebugEvent(GUID);
         BeginEvent = Event;
         BeginEvent->Type = Type;
     }
     ~debug_group(void)
     {
-        debug_event *Event = BeginNextDebugEvent();
+        debug_event *Event = NextDebugEvent();
         Event->GUID = BeginEvent->GUID;
         Event->Type = DebugEventType_GroupEnd;
     }
@@ -367,7 +372,7 @@ struct debug_group
 #define TIMED_FUNCTION() TIMED_BLOCK_(__FUNCTION__, 1, __COUNTER__)
 #define FRAME_MARKER(FrameSeconds)                              \
     {                                                           \
-        debug_event *Event = BeginNextDebugEvent();   \
+        debug_event *Event = NextDebugEvent();   \
         Event->Type = DebugEventType_FrameMarker;          \
         Event->ElapsedSeconds = FrameSeconds;              \
         Event->Value_u64 = __rdtsc();                      \
@@ -387,14 +392,14 @@ struct debug_group
 #define DEBUG_VALUE(Name, Value) LogDebugValue(DEBUG_GUID(Name), Value);
 #define DEBUG_FILL_BAR(NameInit, Used, Max)         \
     {                                               \
-        debug_event *Event = BeginNextDebugEvent(DEBUG_GUID(NameInit));  \
+        debug_event *Event = NextDebugEvent(DEBUG_GUID(NameInit));  \
         Event->Type = DebugEventType_FillBar;       \
         Event->Value_v2 = V2((r32)Used, (r32)Max);  \
     }
 
 #define LOG_DEBUG_FEATURE(TypeInit)             \
     {                                           \
-        debug_event *Event = BeginNextDebugEvent(DEBUG_GUID(#TypeInit)); \
+        debug_event *Event = NextDebugEvent(DEBUG_GUID(#TypeInit)); \
         Event->Type = TypeInit;                 \
     }
 #define DEBUG_PROFILER() LOG_DEBUG_FEATURE(DebugEventType_Profiler)
@@ -424,7 +429,7 @@ struct debug_group
     inline void                                                 \
     LogDebugValue(char *GUID, TypeInit Value)                   \
     {                                                               \
-        debug_event *Event = BeginNextDebugEvent(GUID);   \
+        debug_event *Event = NextDebugEvent(GUID);   \
         Event->Type = DebugEventType_##TypeInit;               \
         Event->Value_##TypeInit = Value;                       \
     }

@@ -232,6 +232,7 @@ LRESULT WindowProc(HWND Window,
                    WPARAM WParam,
                    LPARAM LParam)
 {
+    TIMED_FUNCTION();
     LRESULT Result = 0;
     switch(Message) 
     { 
@@ -241,6 +242,7 @@ LRESULT WindowProc(HWND Window,
 
         case WM_KILLFOCUS:
         {
+            TIMED_BLOCK("Handle Kill Focus");
             GlobalFocus = false;
             if(GlobalNewWin32Keyboard && GlobalNewKeyboard)
             {
@@ -261,11 +263,13 @@ LRESULT WindowProc(HWND Window,
         case WM_QUIT:
         case WM_DESTROY:
         {
+            TIMED_BLOCK("Handle Destroy");
             GlobalRunning = false;
         } break;
 
         case WM_PAINT:
         {
+            TIMED_BLOCK("Handle Paint");
             PAINTSTRUCT PaintStruct;
             HDC DeviceContext = BeginPaint(Window, &PaintStruct);
             CopyBackBufferToWindow(DeviceContext, &GlobalBackBuffer);
@@ -274,6 +278,7 @@ LRESULT WindowProc(HWND Window,
 
         case WM_DEVICECHANGE:
         {
+            TIMED_BLOCK("Handle Device Change");
             switch(WParam)
             {
                 case DBT_DEVICEARRIVAL:
@@ -314,38 +319,24 @@ LRESULT WindowProc(HWND Window,
                     }
                     
                 } break;
-
-#if 0
-                default:
-                {
-                    char Text[256];
-                    _snprintf_s(Text, sizeof(Text),
-                                "Something else happened: %d\n",
-                                WParam);
-                    OutputDebugStringA(Text);
-                } break;
-#endif
             }
         } break;
-
-        case WM_MOUSEMOVE:
+        
+        case WM_NCHITTEST:
         {
-            GlobalMousePosition = {(r32)(LParam & 0xFFFF),
-                                   (r32)((LParam >> 16) & 0xFFFF)};
-        } break;
-
-        case WM_LBUTTONUP:
-        {
-            ProcessButtonInput(&GlobalLeftMouse, false);
+            TIMED_BLOCK("Handle NCHITTEST");
+            Result = DefWindowProcA(Window, Message, WParam, LParam); 
         } break;
         
-        case WM_LBUTTONDOWN:
+        case WM_SETCURSOR:
         {
-            ProcessButtonInput(&GlobalLeftMouse, true);
+            TIMED_BLOCK("Handle SETCURSOR");
+            Result = DefWindowProcA(Window, Message, WParam, LParam); 
         } break;
 
         default:
         {
+            TIMED_BLOCK("Handle Something Else");
             Result = DefWindowProcA(Window, Message, WParam, LParam); 
         } break;
     }
@@ -514,6 +505,12 @@ Win32WaitForAllThreadWork()
         } while(!AllThreadsInactive);
     }
 }
+
+struct win32_peek_filter
+{
+    u32 Min;
+    u32 Max;
+};
 
 int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int Show)
 {
@@ -971,152 +968,196 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
 
                     b32 WasFocused = GlobalFocus;
 
-                    while(PeekMessageA(&Message, GlobalWindow, 0, 0, PM_REMOVE))
+                    win32_peek_filter PeekFilters[] =
                     {
-                        switch(Message.message)
+                        {0, WM_MOUSEMOVE-1},
+                        {WM_MOUSEMOVE+1, 0x0000FFFF},
+                    };
+
+                    for(u32 PeekFiltersIndex = 0;
+                        PeekFiltersIndex < ArrayCount(PeekFilters);
+                        ++PeekFiltersIndex)
+                    {
+                        TIMED_BLOCK("Message Loop");
+                        win32_peek_filter *PeekFilter = PeekFilters + PeekFiltersIndex;
+                        u32 MinFilter = PeekFilter->Min;
+                        u32 MaxFilter = PeekFilter->Max;
+                        b32 FoundMessage;
                         {
-                            case WM_KEYDOWN:
-                            case WM_KEYUP:
-                            case WM_SYSKEYDOWN:
-                            case WM_SYSKEYUP:
+                            TIMED_BLOCK("First PeekMessage");
+                            FoundMessage = PeekMessageA(&Message, 0, MinFilter, MaxFilter, PM_REMOVE);
+                        }
+                        while(FoundMessage)
+                        {
+                            TIMED_BLOCK("Handle Message");
+                            switch(Message.message)
                             {
-                                NewInput->MostRecentlyUsedController = 0;
-                                b32 AlreadyDown = ((Message.lParam >> 30) & 1);
-                                b32 WentDown = !((Message.lParam >> 31) & 1);
-                                if(!(AlreadyDown && WentDown))
+                                case WM_KEYDOWN:
+                                case WM_KEYUP:
+                                case WM_SYSKEYDOWN:
+                                case WM_SYSKEYUP:
                                 {
-                                    switch(Message.wParam)
+                                    TIMED_BLOCK("Handle Key Message");
+                                    NewInput->MostRecentlyUsedController = 0;
+                                    b32 AlreadyDown = ((Message.lParam >> 30) & 1);
+                                    b32 WentDown = !((Message.lParam >> 31) & 1);
+                                    if(!(AlreadyDown && WentDown))
                                     {
-                                        case VK_SPACE:
-                                        {
-                                            ProcessButtonInput(&NewKeyboard->ActionDown, WentDown);
-                                        } break;
-
-                                        case VK_RETURN:
-                                        {
-                                            ProcessButtonInput(&NewKeyboard->Start, WentDown);
-                                        } break;
-
-                                        case VK_ESCAPE:
-                                        {
-                                            ProcessButtonInput(&NewKeyboard->Select, WentDown);
-                                        } break;
-
-                                        case 'W':
-                                        {
-                                            ProcessButtonInput(&NewWin32Keyboard->W, WentDown);
-                                        } break;
-
-                                        case 'A':
-                                        {
-                                            ProcessButtonInput(&NewWin32Keyboard->A, WentDown);
-                                        } break;
-
-                                        case 'S':
-                                        {
-                                            ProcessButtonInput(&NewWin32Keyboard->S, WentDown);
-                                        } break;
-                                        
-                                        case 'D':
-                                        {
-                                            ProcessButtonInput(&NewWin32Keyboard->D, WentDown);
-                                        } break;
-
-                                        case VK_UP:
-                                        {
-                                            ProcessButtonInput(&NewWin32Keyboard->Up, WentDown);
-                                        } break;
-
-                                        case VK_LEFT:
-                                        {
-                                            ProcessButtonInput(&NewWin32Keyboard->Left, WentDown);
-                                        } break;
-
-                                        case VK_DOWN:
-                                        {
-                                            ProcessButtonInput(&NewWin32Keyboard->Down, WentDown);
-                                        } break;
-                                        
-                                        case VK_RIGHT:
-                                        {
-                                            ProcessButtonInput(&NewWin32Keyboard->Right, WentDown);
-                                        } break;
-                                    }
-                                    if(WentDown)
-                                    {
-                                        b32 AltIsDown = (Message.lParam & (1 << 29));
                                         switch(Message.wParam)
                                         {
+                                            case VK_SPACE:
+                                            {
+                                                ProcessButtonInput(&NewKeyboard->ActionDown, WentDown);
+                                            } break;
+
                                             case VK_RETURN:
                                             {
-                                                if(AltIsDown)
-                                                {
-                                                    ToggleFullscreen(GlobalWindow, MonitorRect);
-                                                }
+                                                ProcessButtonInput(&NewKeyboard->Start, WentDown);
                                             } break;
 
-                                            case VK_F4:
+                                            case VK_ESCAPE:
                                             {
-                                                if(AltIsDown)
-                                                {
-                                                    GlobalRunning = false;
-                                                }
+                                                ProcessButtonInput(&NewKeyboard->Select, WentDown);
                                             } break;
+
+                                            case 'W':
+                                            {
+                                                ProcessButtonInput(&NewWin32Keyboard->W, WentDown);
+                                            } break;
+
+                                            case 'A':
+                                            {
+                                                ProcessButtonInput(&NewWin32Keyboard->A, WentDown);
+                                            } break;
+
+                                            case 'S':
+                                            {
+                                                ProcessButtonInput(&NewWin32Keyboard->S, WentDown);
+                                            } break;
+                                        
+                                            case 'D':
+                                            {
+                                                ProcessButtonInput(&NewWin32Keyboard->D, WentDown);
+                                            } break;
+
+                                            case VK_UP:
+                                            {
+                                                ProcessButtonInput(&NewWin32Keyboard->Up, WentDown);
+                                            } break;
+
+                                            case VK_LEFT:
+                                            {
+                                                ProcessButtonInput(&NewWin32Keyboard->Left, WentDown);
+                                            } break;
+
+                                            case VK_DOWN:
+                                            {
+                                                ProcessButtonInput(&NewWin32Keyboard->Down, WentDown);
+                                            } break;
+                                        
+                                            case VK_RIGHT:
+                                            {
+                                                ProcessButtonInput(&NewWin32Keyboard->Right, WentDown);
+                                            } break;
+                                        }
+                                        if(WentDown)
+                                        {
+                                            b32 AltIsDown = (Message.lParam & (1 << 29));
+                                            switch(Message.wParam)
+                                            {
+                                                case VK_RETURN:
+                                                {
+                                                    if(AltIsDown)
+                                                    {
+                                                        ToggleFullscreen(GlobalWindow, MonitorRect);
+                                                    }
+                                                } break;
+
+                                                case VK_F4:
+                                                {
+                                                    if(AltIsDown)
+                                                    {
+                                                        GlobalRunning = false;
+                                                    }
+                                                } break;
 
 #if TROIDS_INTERNAL
-                                            case 'R':
-                                            {
-                                                switch(RecordingState)
+                                                case 'R':
                                                 {
-                                                    case RecordingState_None:
+                                                    switch(RecordingState)
                                                     {
-                                                        RecordingState = RecordingState_Recording;
-                                                        if(RecordFile)
+                                                        case RecordingState_None:
                                                         {
-                                                            DWORD BytesWritten;
-                                                            OVERLAPPED Overlapped = {};
-                                                            BOOL Result = WriteFile(RecordFile, GameMemory.PermanentMemory,
-                                                                                    (u32)GameMemory.PermanentMemorySize,
-                                                                                    &BytesWritten, &Overlapped);
-                                                            Assert(Result && (BytesWritten == GameMemory.PermanentMemorySize));
-                                                        }
-                                                    } break;
+                                                            RecordingState = RecordingState_Recording;
+                                                            if(RecordFile)
+                                                            {
+                                                                DWORD BytesWritten;
+                                                                OVERLAPPED Overlapped = {};
+                                                                BOOL Result = WriteFile(RecordFile, GameMemory.PermanentMemory,
+                                                                                        (u32)GameMemory.PermanentMemorySize,
+                                                                                        &BytesWritten, &Overlapped);
+                                                                Assert(Result && (BytesWritten == GameMemory.PermanentMemorySize));
+                                                            }
+                                                        } break;
 
-                                                    case RecordingState_Recording:
-                                                    {
-                                                        RecordingState = RecordingState_PlayingRecord;
-                                                        if(RecordFile)
+                                                        case RecordingState_Recording:
                                                         {
-                                                            DWORD BytesRead;
-                                                            OVERLAPPED Overlapped = {};
-                                                            BOOL Result = ReadFile(RecordFile, GameMemory.PermanentMemory,
-                                                                                   (u32)GameMemory.PermanentMemorySize,
-                                                                                   &BytesRead, &Overlapped);
-                                                            Assert(Result && (BytesRead == GameMemory.PermanentMemorySize));
-                                                        }
-                                                    } break;
+                                                            RecordingState = RecordingState_PlayingRecord;
+                                                            if(RecordFile)
+                                                            {
+                                                                DWORD BytesRead;
+                                                                OVERLAPPED Overlapped = {};
+                                                                BOOL Result = ReadFile(RecordFile, GameMemory.PermanentMemory,
+                                                                                       (u32)GameMemory.PermanentMemorySize,
+                                                                                       &BytesRead, &Overlapped);
+                                                                Assert(Result && (BytesRead == GameMemory.PermanentMemorySize));
+                                                            }
+                                                        } break;
 
-                                                    case RecordingState_PlayingRecord:
-                                                    {
-                                                        RecordingState = RecordingState_None;
-                                                        // TODO(chris): Do something to reset controller
-                                                        // state so we don't have errant inputs.
-                                                    } break;
+                                                        case RecordingState_PlayingRecord:
+                                                        {
+                                                            RecordingState = RecordingState_None;
+                                                            // TODO(chris): Do something to reset controller
+                                                            // state so we don't have errant inputs.
+                                                        } break;
+                                                    }
                                                 }
-                                            }
 #endif
+                                            }
                                         }
                                     }
-                                }
-                            } break;
+                                } break;
 
-                            default:
+                                case WM_LBUTTONUP:
+                                {
+                                    TIMED_BLOCK("Handle Mouse Up");
+                                    ProcessButtonInput(&GlobalLeftMouse, false);
+                                } break;
+        
+                                case WM_LBUTTONDOWN:
+                                {
+                                    TIMED_BLOCK("Handle Mouse Down");
+                                    ProcessButtonInput(&GlobalLeftMouse, true);
+                                } break;
+
+                                default:
+                                {
+                                    TIMED_BLOCK("Handle Other Message");
+                                    TranslateMessage(&Message);
+                                    DispatchMessageA(&Message);
+                                } break;
+                            }
                             {
-                                TranslateMessage(&Message);
-                                DispatchMessageA(&Message);
-                            } break;
+                                TIMED_BLOCK("Subsequent PeekMessage");
+                                FoundMessage = PeekMessageA(&Message, 0, MinFilter, MaxFilter, PM_REMOVE);
+                            }
                         }
                     }
+
+                    PeekMessageA(&Message, 0, WM_MOUSEMOVE, WM_MOUSEMOVE, PM_REMOVE);
+
+                    GlobalMousePosition = {(r32)(Message.lParam & 0xFFFF),
+                                           (r32)((Message.lParam >> 16) & 0xFFFF)};
 
                     if(NewWin32Keyboard->W.EndedDown)
                     {
