@@ -9,8 +9,8 @@
 
 struct title_screen_state
 {
-    u32 FadeInTicks;
-    r32 FlickerTicks;
+    r32 FadeInTimer;
+    r32 FlickerTimer;
     b32 PressedStart;
     title_screen_selection Selection;
     b32 Debounce;

@@ -23,22 +23,23 @@ TitleScreenMode(game_memory *GameMemory, game_input *Input, renderer_state *Rend
     r32 FadeInDuration = 3.0f;
     r32 FlickerPeriod = 0.5f;
 
-    r32 tTitle = (State->FadeInTicks*Input->dtForFrame) / FadeInDuration;
-    r32 TitleAlpha = State->PressedStart ? 1.0f : Cube(tTitle);
-    r32 tFlicker = (State->FlickerTicks*Input->dtForFrame) / (2*FlickerPeriod);
+    r32 tTitle = State->FadeInTimer / FadeInDuration;
+    r32 tFlicker = State->FlickerTimer / (2*FlickerPeriod);
     b32 FlickerOn = (tFlicker >= 0.5f);
     if(tTitle >= 1.0f)
     {
-        ++State->FlickerTicks;
+        tTitle = 1.0f;
+        State->FlickerTimer += Input->dtForFrame;
         if(tFlicker >= 1.0f)
         {
-            State->FlickerTicks = 0;
+            State->FlickerTimer = 0.0f;
         }
     }
     else
     {
-        ++State->FadeInTicks;
+        State->FadeInTimer += Input->dtForFrame;
     }
+    r32 TitleAlpha = State->PressedStart ? 1.0f : Cube(tTitle);
 
     text_layout Layout = {};
     Layout.Font = &GameMemory->Font;
