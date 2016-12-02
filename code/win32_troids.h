@@ -10,6 +10,8 @@
 #define THREAD_QUEUE_SIZE 256
 #define MAX_THREAD_COUNT 256
 
+#define internal static
+
 #include <windows.h>
 #include <stdio.h>
 #include <dbt.h>

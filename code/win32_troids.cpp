@@ -343,8 +343,8 @@ LRESULT WindowProc(HWND Window,
     return(Result);
 }
 
-internal read_file_result
-Win32ReadFile(char *FileName, u32 Offset)
+internal
+PLATFORM_READ_FILE(Win32ReadFile)
 {
     read_file_result Result = {};
 
@@ -427,9 +427,8 @@ FileExists(char *Path)
     return(Result);
 }
 
-inline void
-Win32PushThreadWork(thread_callback *Callback, void *Params,
-                    thread_progress *Progress = 0)
+internal 
+PLATFORM_PUSH_THREAD_WORK(Win32PushThreadWork)
 {
     TIMED_FUNCTION();
     if(!Progress)
@@ -471,8 +470,8 @@ ThreadProc(void *Parameter)
     return(Result);
 }
 
-inline void
-Win32WaitForAllThreadWork()
+internal 
+PLATFORM_WAIT_FOR_ALL_THREAD_WORK(Win32WaitForAllThreadWork)
 {
     TIMED_FUNCTION();
     {
@@ -516,9 +515,6 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
 {
     // TODO(chris): CreateMutex?
     GlobalRunning = true;
-
-    SYSTEM_INFO SystemInfo;
-    GetSystemInfo(&SystemInfo);
 
     GlobalThreadQueueSemaphore = CreateSemaphore(0, 0, ArrayCount(GlobalThreadQueue), 0);
 
@@ -676,6 +672,9 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                             (u8 *)GameMemory.DebugMemory + sizeof(debug_state));
             GetThreadStorage(GetCurrentThreadID());
 #endif
+
+            SYSTEM_INFO SystemInfo;
+            GetSystemInfo(&SystemInfo);
 
             GlobalThreadCount = Minimum(MAX_THREAD_COUNT, SystemInfo.dwNumberOfProcessors - 1);
             for(u32 ProcessorIndex = 0;

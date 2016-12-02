@@ -204,7 +204,7 @@ DrawThread(render_buffer *RenderBuffer, text_layout *Layout, debug_thread *Threa
             char *ElementLine = Element->GUID + GUIDHash.LineOffset;
             if(Element->Iterations > 1)
             {
-                TextLength = _snprintf_s(Text, sizeof(Text), "%.*s %.*s(%.*s) %llucy/%lu=%llu",
+                TextLength = snprintf(Text, sizeof(Text), "%.*s %.*s(%.*s) %llucy/%u=%llu",
                                          GUIDHash.NameLength, ElementName,
                                          GUIDHash.FileLength, ElementFile,
                                          GUIDHash.LineLength, ElementLine,
@@ -213,7 +213,7 @@ DrawThread(render_buffer *RenderBuffer, text_layout *Layout, debug_thread *Threa
             }
             else
             {
-                TextLength = _snprintf_s(Text, sizeof(Text), "%.*s %.*s(%.*s) %llucy",
+                TextLength = snprintf(Text, sizeof(Text), "%.*s %.*s(%.*s) %llucy",
                                          GUIDHash.NameLength, ElementName,
                                          GUIDHash.FileLength, ElementFile,
                                          GUIDHash.LineLength, ElementLine,
@@ -369,7 +369,7 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
             }
             else
             {
-                TextLength = _snprintf_s(Text, sizeof(Text), "Frame time: %fms",
+                TextLength = snprintf(Text, sizeof(Text), "Frame time: %fms",
                                          Frame->ElapsedSeconds*1000);
                 HitBox = GetLineRect(DrawText(RenderBuffer, Layout, TextLength, Text));
             }
@@ -424,7 +424,7 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
             }
 
             r32 XInit = Layout->P.x;
-            TextLength = _snprintf_s(Text, sizeof(Text), "%.*s: ", NameLength, Name);
+            TextLength = snprintf(Text, sizeof(Text), "%.*s: ", NameLength, Name);
             DrawText(RenderBuffer, Layout, TextLength, Text, DrawTextFlags_NoLineAdvance);
             DEBUGDrawFillBar(RenderBuffer, Layout, Used, Max);
             Layout->P.x = XInit;
@@ -449,7 +449,7 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
                 Name = Node->Name;
             }
             r32 XInit = Layout->P.x;
-            TextLength = _snprintf_s(Text, sizeof(Text), "%.*s: ", NameLength, Name);
+            TextLength = snprintf(Text, sizeof(Text), "%.*s: ", NameLength, Name);
             DrawText(RenderBuffer, Layout, TextLength, Text, DrawTextFlags_NoLineAdvance);
             DEBUGDrawFillBar(RenderBuffer, Layout, Arena->Used, Arena->Size);
             Layout->P.x = XInit;
@@ -458,7 +458,7 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
         case DebugEventType_v2:
         {
             debug_node *FrameNode = GetNode(Node->GUID, Frame);
-            TextLength = _snprintf_s(Text, sizeof(Text), "%.*s: <%f, %f>", NameLength, Node->Name,
+            TextLength = snprintf(Text, sizeof(Text), "%.*s: <%f, %f>", NameLength, Node->Name,
                                      FrameNode->Value_v2.x, FrameNode->Value_v2.y);
             DrawText(RenderBuffer, Layout, TextLength, Text);
         } break;
@@ -466,7 +466,7 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
         case DebugEventType_b32:
         {
             debug_node *FrameNode = GetNode(Node->GUID, Frame);
-            TextLength = _snprintf_s(Text, sizeof(Text), "%.*s: %s", NameLength, Node->Name,
+            TextLength = snprintf(Text, sizeof(Text), "%.*s: %s", NameLength, Node->Name,
                                      FrameNode->Value_b32 ? "true" : "false");
             DrawText(RenderBuffer, Layout, TextLength, Text);
         } break;
@@ -474,7 +474,7 @@ DrawNodes(render_buffer *RenderBuffer, text_layout *Layout, debug_frame *Frame, 
         case DebugEventType_r32:
         {
             debug_node *FrameNode = GetNode(Node->GUID, Frame);
-            TextLength = _snprintf_s(Text, sizeof(Text), "%.*s: %f", NameLength, Node->Name,
+            TextLength = snprintf(Text, sizeof(Text), "%.*s: %f", NameLength, Node->Name,
                                      FrameNode->Value_r32);
             DrawText(RenderBuffer, Layout, TextLength, Text);
         } break;
@@ -555,7 +555,7 @@ LinkNode(debug_node *Node, debug_node **Prev, debug_node **GroupBeginStack, u32 
 }
 
 inline debug_thread *
-GetThread(debug_frame *Frame, u32 ThreadID)
+GetThread(debug_frame *Frame, u64 ThreadID)
 {
     debug_thread *Thread = 0;
     b32 Found = false;

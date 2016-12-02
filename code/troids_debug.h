@@ -41,7 +41,7 @@ enum debug_event_type
 
 struct debug_event
 {
-    u32 ThreadID;
+    u64 ThreadID;
     b32 Ignored;
     union
     {
@@ -197,7 +197,7 @@ global_variable debug_state *GlobalDebugState;
 global_variable debug_event NullDebugEvent;
 
 inline debug_thread_storage *
-GetThreadStorage(u32 ThreadID)
+GetThreadStorage(u64 ThreadID)
 {
     debug_thread_storage *Thread = 0;
     b32 Found = false;
@@ -288,7 +288,7 @@ GetStringFromHash(char *String, debug_thread_storage *Thread = GlobalDebugState-
     return(Result);
 }
 
-#define DEBUG_GUID__(Name, File, Line) Name##"|"##File##"|"###Line
+#define DEBUG_GUID__(Name, File, Line) #Name"|"File"|"#Line
 #define DEBUG_GUID_(Name, File, Line) DEBUG_GUID__(Name, File, Line)
 #define DEBUG_GUID(Name) DEBUG_GUID_(Name, __FILE__, __LINE__)
 
@@ -318,7 +318,7 @@ BeginTimedBlock(char *GUID, u32 Iterations)
 {
     debug_event *Event = NextDebugEvent(GUID);
     Event->Type = DebugEventType_CodeBegin;
-    Event->Value_u64 = __rdtsc();
+    Event->Value_u64 = rdtsc();
     Event->Iterations = Iterations;
     return(Event->GUID);
 }
@@ -329,7 +329,7 @@ EndTimedBlock(char *GUID)
 {
     debug_event *Event = NextDebugEvent(GUID);
     Event->Type = DebugEventType_CodeEnd;
-    Event->Value_u64 = __rdtsc();
+    Event->Value_u64 = rdtsc();
 }
 #define END_TIMED_BLOCK(GUID) EndTimedBlock(GUID)
 
@@ -375,7 +375,7 @@ struct debug_group
         debug_event *Event = NextDebugEvent();   \
         Event->Type = DebugEventType_FrameMarker;          \
         Event->ElapsedSeconds = FrameSeconds;              \
-        Event->Value_u64 = __rdtsc();                      \
+        Event->Value_u64 = rdtsc();                      \
     }
 
 #define DEBUG_GROUP__(Name, Type, Counter) debug_group Group_##Counter(DEBUG_GUID(Name), Type)

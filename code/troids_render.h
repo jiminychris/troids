@@ -37,10 +37,10 @@ struct render_buffer
 };
 
 inline v3
-Project(render_buffer *RenderBuffer, v3 WorldP, v3 CameraP = {NAN})
+Project(render_buffer *RenderBuffer, v3 WorldP, v3 CameraP = InvalidV3)
 {
     v3 Result = {};
-    if(IsNaN(CameraP.x))
+    if(Invalid(CameraP))
     {
         CameraP = RenderBuffer->CameraP;
     }
@@ -84,9 +84,9 @@ Project(render_buffer *RenderBuffer, v3 WorldP, v3 CameraP = {NAN})
 }
 
 inline v3
-Unproject(render_buffer *RenderBuffer, v3 ScreenP, v3 CameraP = {NAN})
+Unproject(render_buffer *RenderBuffer, v3 ScreenP, v3 CameraP = InvalidV3)
 {
-    if(IsNaN(CameraP.x))
+    if(Invalid(CameraP))
     {
         CameraP = RenderBuffer->CameraP;
     }
@@ -397,7 +397,7 @@ Clip(clipped_polygon *Polygon, r32 Plane, clip_dimension Dimension, clip_directi
 }
 
 inline void
-ProjectPolygon(render_buffer *RenderBuffer, clipped_polygon *Polygon, v3 CameraP = {NAN})
+ProjectPolygon(render_buffer *RenderBuffer, clipped_polygon *Polygon, v3 CameraP = InvalidV3)
 {
     for(s32 VertexIndex = 0;
         VertexIndex < Polygon->VertexCount;

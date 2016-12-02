@@ -23,12 +23,12 @@ Seed(u64 Value)
 inline u64
 RandomU64(seed *Seed)
 {
-    u64 Result = 6364136223846793005*Seed->Value+1442695040888963407;
+    u64 Result = 6364136223846793005ull*Seed->Value+1442695040888963407ull;
     Seed->Value = Result;
     return(Result);
 }
 
-global_variable r32 InvU64Max = 1.0f / (r32)18446744073709551615;
+global_variable r32 InvU64Max = 1.0f / (r32)18446744073709551615ull;
 
 inline r32
 Random01(seed *Seed)

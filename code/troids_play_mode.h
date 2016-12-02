@@ -200,7 +200,7 @@ CreateEntity(play_state *State, u32 ShapeCount = 0, collision_shape *Shapes = 0)
         if(HasRoomForArray(ShapeArena, ShapeCount, collision_shape))
         {
             Result = State->Entities + State->EntityCount++;
-            *Result = {};
+            *Result = ZERO(entity);
             for(u32 ShapeIndex = 0;
                 ShapeIndex < ShapeCount;
                 ++ShapeIndex)

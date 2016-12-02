@@ -264,9 +264,15 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     PlatformPushThreadWork = GameMemory->PlatformPushThreadWork;
     PlatformWaitForAllThreadWork = GameMemory->PlatformWaitForAllThreadWork;
 
+    SplitWorkIntoSquares(RendererState->RenderChunks, RendererState->RenderChunkCount,
+                         RendererState->BackBuffer.Width,
+                         RendererState->BackBuffer.Height,
+                         0, 0);
+
     if(!State->IsInitialized)
     {
         State->IsInitialized = true;
+        State->Mode = State->NextMode = GameMode_Play;
 
         InitializeArena(&State->Arena,
                         GameMemory->PermanentMemorySize - sizeof(game_state),
@@ -305,7 +311,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         TranState->RenderBuffer.MetersToPixels = State->MetersToPixels;
         TranState->RenderBuffer.DefaultProjection = Projection_Perspective;
         TranState->RenderBuffer.Projection = TranState->RenderBuffer.DefaultProjection;
-        TranState->RenderBuffer.CameraP = {};
+        TranState->RenderBuffer.CameraP = ZERO(v3);
         
 //        State->HeadMesh = LoadObj("head.obj", &TranState->Arena);
 
@@ -360,7 +366,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         {
             case GameMode_TitleScreen:
             {
-                State->TitleScreenState = {};
+                State->TitleScreenState = ZERO(title_screen_state);
             } break;
 
             case GameMode_Play:
@@ -370,7 +376,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                 {
                     PlayType = (play_type)State->TitleScreenState.Selection;
                 }
-                State->PlayState = {};
+                State->PlayState = ZERO(play_state);
                 State->PlayState.PlayType = PlayType;
             } break;
         }

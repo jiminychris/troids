@@ -117,7 +117,7 @@ internal void
 DEBUGDrawFillBar(render_buffer *RenderBuffer, text_layout *Layout, r32 Used, r32 Max, u32 Precision = 0)
 {
     char Text[256];
-    u32 TextLength = _snprintf_s(Text, sizeof(Text), "%.*f / %.*f", Precision, Used, Precision, Max);
+    u32 TextLength = snprintf(Text, sizeof(Text), "%.*f / %.*f", Precision, Used, Precision, Max);
     rectangle2 TextRect = GetLineRect(DrawText(RenderBuffer, Layout, TextLength, Text));
     r32 Percentage = Used / Max;
 
@@ -139,6 +139,12 @@ DEBUGDrawFillBar(render_buffer *RenderBuffer, text_layout *Layout, u32 Used, u32
 
 internal void
 DEBUGDrawFillBar(render_buffer *RenderBuffer, text_layout *Layout, u64 Used, u64 Max)
+{
+    DEBUGDrawFillBar(RenderBuffer, Layout, (r32)Used, (r32)Max);
+}
+
+internal void
+DEBUGDrawFillBar(render_buffer *RenderBuffer, text_layout *Layout, memory_size Used, memory_size Max)
 {
     DEBUGDrawFillBar(RenderBuffer, Layout, (r32)Used, (r32)Max);
 }
@@ -256,22 +262,26 @@ RenderBitmap(loaded_bitmap *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAx
             __m128 OffsetC = _mm_add_ps(OffsetA, BitmapWidth);
             __m128 OffsetD = _mm_add_ps(OffsetC, RealOne);
 
-            __m128i TexelA = _mm_set_epi32(*((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetA).m128i_u32[3]),
-                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetA).m128i_u32[2]),
-                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetA).m128i_u32[1]),
-                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetA).m128i_u32[0]));
-            __m128i TexelB = _mm_set_epi32(*((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetB).m128i_u32[3]),
-                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetB).m128i_u32[2]),
-                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetB).m128i_u32[1]),
-                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetB).m128i_u32[0]));
-            __m128i TexelC = _mm_set_epi32(*((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetC).m128i_u32[3]),
-                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetC).m128i_u32[2]),
-                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetC).m128i_u32[1]),
-                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetC).m128i_u32[0]));
-            __m128i TexelD = _mm_set_epi32(*((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetD).m128i_u32[3]),
-                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetD).m128i_u32[2]),
-                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetD).m128i_u32[1]),
-                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetD).m128i_u32[0]));
+            u__m128i RoundedOffsetA = {_mm_cvtps_epi32(OffsetA)};
+            u__m128i RoundedOffsetB = {_mm_cvtps_epi32(OffsetB)};
+            u__m128i RoundedOffsetC = {_mm_cvtps_epi32(OffsetC)};
+            u__m128i RoundedOffsetD = {_mm_cvtps_epi32(OffsetD)};
+            __m128i TexelA = _mm_set_epi32(*((u32 *)Bitmap->Memory + RoundedOffsetA.a[3]),
+                                           *((u32 *)Bitmap->Memory + RoundedOffsetA.a[2]),
+                                           *((u32 *)Bitmap->Memory + RoundedOffsetA.a[1]),
+                                           *((u32 *)Bitmap->Memory + RoundedOffsetA.a[0]));
+            __m128i TexelB = _mm_set_epi32(*((u32 *)Bitmap->Memory + RoundedOffsetB.a[3]),
+                                           *((u32 *)Bitmap->Memory + RoundedOffsetB.a[2]),
+                                           *((u32 *)Bitmap->Memory + RoundedOffsetB.a[1]),
+                                           *((u32 *)Bitmap->Memory + RoundedOffsetB.a[0]));
+            __m128i TexelC = _mm_set_epi32(*((u32 *)Bitmap->Memory + RoundedOffsetC.a[3]),
+                                           *((u32 *)Bitmap->Memory + RoundedOffsetC.a[2]),
+                                           *((u32 *)Bitmap->Memory + RoundedOffsetC.a[1]),
+                                           *((u32 *)Bitmap->Memory + RoundedOffsetC.a[0]));
+            __m128i TexelD = _mm_set_epi32(*((u32 *)Bitmap->Memory + RoundedOffsetD.a[3]),
+                                           *((u32 *)Bitmap->Memory + RoundedOffsetD.a[2]),
+                                           *((u32 *)Bitmap->Memory + RoundedOffsetD.a[1]),
+                                           *((u32 *)Bitmap->Memory + RoundedOffsetD.a[0]));
 
 
             __m128 TexelAR = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelA, 16), ColorMask));
@@ -485,23 +495,27 @@ RenderBitmap(render_chunk *RenderChunk, loaded_bitmap *Bitmap, v2 Origin, v2 XAx
             __m128 OffsetC = _mm_add_ps(OffsetA, BitmapWidth);
             __m128 OffsetD = _mm_add_ps(OffsetC, RealOne);
 
-            __m128i TexelA = _mm_set_epi32(*((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetA).m128i_u32[3]),
-                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetA).m128i_u32[2]),
-                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetA).m128i_u32[1]),
-                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetA).m128i_u32[0]));
-            __m128i TexelB = _mm_set_epi32(*((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetB).m128i_u32[3]),
-                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetB).m128i_u32[2]),
-                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetB).m128i_u32[1]),
-                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetB).m128i_u32[0]));
-            __m128i TexelC = _mm_set_epi32(*((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetC).m128i_u32[3]),
-                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetC).m128i_u32[2]),
-                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetC).m128i_u32[1]),
-                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetC).m128i_u32[0]));
-            __m128i TexelD = _mm_set_epi32(*((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetD).m128i_u32[3]),
-                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetD).m128i_u32[2]),
-                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetD).m128i_u32[1]),
-                                           *((u32 *)Bitmap->Memory + _mm_cvtps_epi32(OffsetD).m128i_u32[0]));
 
+            u__m128i RoundedOffsetA = {_mm_cvtps_epi32(OffsetA)};
+            u__m128i RoundedOffsetB = {_mm_cvtps_epi32(OffsetB)};
+            u__m128i RoundedOffsetC = {_mm_cvtps_epi32(OffsetC)};
+            u__m128i RoundedOffsetD = {_mm_cvtps_epi32(OffsetD)};
+            __m128i TexelA = _mm_set_epi32(*((u32 *)Bitmap->Memory + RoundedOffsetA.a[3]),
+                                           *((u32 *)Bitmap->Memory + RoundedOffsetA.a[2]),
+                                           *((u32 *)Bitmap->Memory + RoundedOffsetA.a[1]),
+                                           *((u32 *)Bitmap->Memory + RoundedOffsetA.a[0]));
+            __m128i TexelB = _mm_set_epi32(*((u32 *)Bitmap->Memory + RoundedOffsetB.a[3]),
+                                           *((u32 *)Bitmap->Memory + RoundedOffsetB.a[2]),
+                                           *((u32 *)Bitmap->Memory + RoundedOffsetB.a[1]),
+                                           *((u32 *)Bitmap->Memory + RoundedOffsetB.a[0]));
+            __m128i TexelC = _mm_set_epi32(*((u32 *)Bitmap->Memory + RoundedOffsetC.a[3]),
+                                           *((u32 *)Bitmap->Memory + RoundedOffsetC.a[2]),
+                                           *((u32 *)Bitmap->Memory + RoundedOffsetC.a[1]),
+                                           *((u32 *)Bitmap->Memory + RoundedOffsetC.a[0]));
+            __m128i TexelD = _mm_set_epi32(*((u32 *)Bitmap->Memory + RoundedOffsetD.a[3]),
+                                           *((u32 *)Bitmap->Memory + RoundedOffsetD.a[2]),
+                                           *((u32 *)Bitmap->Memory + RoundedOffsetD.a[1]),
+                                           *((u32 *)Bitmap->Memory + RoundedOffsetD.a[0]));
 
             __m128 TexelAR = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelA, 16), ColorMask));
             __m128 TexelBR = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelB, 16), ColorMask));
@@ -805,7 +819,8 @@ RenderAlignedInvertedRectangle(loaded_bitmap *BackBuffer, rectangle2 Rect,
             X < XMax;
             ++X)
         {
-            *Dest++ = InvertColor(*Dest);
+            *Dest = InvertColor(*Dest);
+            ++Dest;
         }
         PixelRow += BackBuffer->Pitch;
     }
@@ -1873,11 +1888,6 @@ RenderBufferToBackBuffer(renderer_state *RendererState, render_buffer *RenderBuf
         render_tree_data RenderTreeData[MAX_RENDER_CHUNKS];
         thread_progress ThreadProgress[MAX_RENDER_CHUNKS];
 
-        SplitWorkIntoSquares(RendererState->RenderChunks, RendererState->RenderChunkCount,
-                             RendererState->BackBuffer.Width,
-                             RendererState->BackBuffer.Height,
-                             0, 0);
-        
         for(s32 RenderChunkIndex = RendererState->RenderChunkCount-1;
             RenderChunkIndex >= 0;
             --RenderChunkIndex)

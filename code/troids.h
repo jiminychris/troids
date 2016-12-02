@@ -10,6 +10,7 @@
 #define DEBUG_CAMERA 0
 
 #include "troids_platform.h"
+#include "troids_memory.h"
 #include "troids_intrinsics.h"
 #include "troids_math.h"
 #include "troids_debug.h"

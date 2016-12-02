@@ -55,6 +55,7 @@ inline collision_shape
 CollisionCircleDiameter(r32 Diameter, v2 Center = V2(0, 0))
 {
     collision_shape Result = CollisionCircle(0.5f*Diameter, Center);
+    return(Result);
 }
 
 // TODO(chris): Don't need to always allocate this same shape
@@ -142,7 +143,7 @@ RecenterShapes(entity *Entity)
 }
 
 inline entity *
-CreateAsteroid(play_state *State, r32 MaxRadius, rectangle2 Cell, v3 P = {NAN})
+CreateAsteroid(play_state *State, r32 MaxRadius, rectangle2 Cell, v3 P = InvalidV3)
 {
     seed *Seed = &State->AsteroidSeed;
     MaxRadius = RandomBetween(Seed, 10.0f, MaxRadius);
@@ -171,7 +172,7 @@ CreateAsteroid(play_state *State, r32 MaxRadius, rectangle2 Cell, v3 P = {NAN})
     entity *Result = CreateEntity(State, ArrayCount(Shapes), Shapes);
     Result->ColliderType = ColliderType_Asteroid;
     Result->Type = EntityType_Asteroid;
-    if(IsNaN(P.x))
+    if(Invalid(P))
     {
         Result->P = V3(0.5f*(Cell.Min + Cell.Max), 0.0f);
     }
@@ -1141,7 +1142,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
                             Entity->ddYaw = -2.0f*ShipController->LeftStick.x;
 #endif
     
-                            Entity->ddP = {};
+                            Entity->ddP = ZERO(v3);
                             if(ShipController->ActionDown.EndedDown)
                             {
                                 if(Entity->Timer <= 0.0f)
@@ -1214,7 +1215,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
 
                             Entity->ddYaw = -2.0f*LeftStickX;
     
-                            Entity->ddP = {};
+                            Entity->ddP = ZERO(v3);
                             if(Fire && Entity->Timer <= 0.0f)
                             {
                                 entity *Laser = CreateEnemyLaser(State, Entity->P, Entity->dP + Facing*LaserSpeed,
@@ -1892,7 +1893,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
                             Entity_->P += dP*tMove;
                             Entity_->dP += Entity_->ddP*dtPhysics*tMove;
                             // TODO(chris): This is to clear out player input. How to keep around other forces?
-                            Entity_->ddP = {};
+                            Entity_->ddP = ZERO(v3);
                             CalculateVirtualEntities(Entity_, (1.0f-tMove)*dtPhysics, FieldRect, VirtualEntities);
                     
                             if(CollidedWith)
@@ -2510,7 +2511,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
         
             v2 TopCenter = V2i(RenderBuffer->Width/2, RenderBuffer->Height) - V2(0.0f, HudMargin);
             char PointsText[16];
-            u32 PointsTextLength = _snprintf_s(PointsText, sizeof(PointsText), "%010lu", State->SpinningPoints);
+            u32 PointsTextLength = snprintf(PointsText, sizeof(PointsText), "%010u", State->SpinningPoints);
             text_measurement PointsMeasurement = DrawText(0, &Layout,
                                                           PointsTextLength, PointsText,
                                                           DrawTextFlags_Measure);
@@ -2741,7 +2742,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
         DEBUG_FILL_BAR("Entities", State->EntityCount, ArrayCount(State->Entities));
         DEBUG_FILL_BAR("Particles", State->ParticleCount, ArrayCount(State->Particles));
         DEBUG_VALUE("Shape Arena", State->PhysicsState.ShapeArena);
-        DEBUG_VALUE("Shape Freelist", (b32)State->PhysicsState.FirstFreeShape);
+        DEBUG_VALUE("Shape Freelist", (b32)(memory_size)State->PhysicsState.FirstFreeShape);
         DEBUG_VALUE("Render Arena", TranState->RenderBuffer.Arena);
     }
     EndTemporaryMemory(RenderMemory);
