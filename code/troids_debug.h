@@ -128,7 +128,7 @@ struct hashed_string
 
 struct debug_thread
 {
-    u32 ID;
+    u64 ID;
     
     profiler_element ProfilerSentinel;
     profiler_element *CurrentElement;
@@ -139,7 +139,7 @@ struct debug_thread
 
 struct debug_thread_storage
 {
-    u32 ID;
+    u64 ID;
     
     memory_arena StringArena;
     // TODO(chris): These never get freed!
@@ -288,7 +288,7 @@ GetStringFromHash(char *String, debug_thread_storage *Thread = GlobalDebugState-
     return(Result);
 }
 
-#define DEBUG_GUID__(Name, File, Line) #Name"|"File"|"#Line
+#define DEBUG_GUID__(Name, File, Line) Name"|"File"|"#Line
 #define DEBUG_GUID_(Name, File, Line) DEBUG_GUID__(Name, File, Line)
 #define DEBUG_GUID(Name) DEBUG_GUID_(Name, __FILE__, __LINE__)
 

@@ -15,14 +15,21 @@
 #define COMPILER_LLVM 0
 #endif
 
+// TODO(chris): Intrinsics for different platforms
 #if !COMPILER_MSVC && !COMPILER_LLVM
 #if _MSC_VER
 #undef COMPILER_MSVC
 #define COMPILER_MSVC 1
 #define snprintf _snprintf_s
+#include <windows.h>
+#include <intrin.h>
+#define ZERO(type) {}
 #else
 #undef COMPILER_LLVM
 #define COMPILER_LLVM 1
+#include <pthread.h>
+#include <mach/mach_time.h>
+#define ZERO(type) (const type){}
 #endif
 #endif
 
@@ -67,8 +74,6 @@ typedef union {
 
 #define REAL32_MIN FLT_MIN
 #define REAL32_MAX FLT_MAX
-
-#define ZERO(type) (const type){}
 
 typedef struct v2i
 {

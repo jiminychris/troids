@@ -143,11 +143,13 @@ DEBUGDrawFillBar(render_buffer *RenderBuffer, text_layout *Layout, u64 Used, u64
     DEBUGDrawFillBar(RenderBuffer, Layout, (r32)Used, (r32)Max);
 }
 
+#if COMPILER_LLVM
 internal void
 DEBUGDrawFillBar(render_buffer *RenderBuffer, text_layout *Layout, memory_size Used, memory_size Max)
 {
     DEBUGDrawFillBar(RenderBuffer, Layout, (r32)Used, (r32)Max);
 }
+#endif
 #endif
 
 #if 1

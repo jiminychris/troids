@@ -7,16 +7,6 @@
    $Notice: $
    ======================================================================== */
 
-// TODO(chris): Intrinsics for different platforms
-#if COMPILER_MSVC
-#include <windows.h>
-#include <intrin.h>
-#elif COMPILER_LLVM
-#include <pthread.h>
-#include <mach/mach_time.h>
-#endif
-
-
 typedef struct bitscan_result
 {
     b32 Found;
