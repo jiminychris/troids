@@ -1476,6 +1476,8 @@ int main(int ArgCount, char **Args)
         END_TIMED_BLOCK(FrameIndex);
 
         GameUpdateAndRender(&GameMemory, NewInput, &RendererState);
+        GlobalRunning &= !NewInput->Quit;
+        
         DebugCollate(&GameMemory, NewInput, &RendererState);
 
         CopyBackBufferToWindow(OpenGLContext, &GlobalBackBuffer);

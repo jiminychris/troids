@@ -288,7 +288,11 @@ GetStringFromHash(char *String, debug_thread_storage *Thread = GlobalDebugState-
     return(Result);
 }
 
+#if COMPILER_MSVC
 #define DEBUG_GUID__(Name, File, Line) Name"|"File"|"#Line
+#else
+#define DEBUG_GUID__(Name, File, Line) #Name"|"File"|"#Line
+#endif
 #define DEBUG_GUID_(Name, File, Line) DEBUG_GUID__(Name, File, Line)
 #define DEBUG_GUID(Name) DEBUG_GUID_(Name, __FILE__, __LINE__)
 
