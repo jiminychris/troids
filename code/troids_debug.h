@@ -288,14 +288,6 @@ GetStringFromHash(char *String, debug_thread_storage *Thread = GlobalDebugState-
     return(Result);
 }
 
-#if COMPILER_MSVC
-#define DEBUG_GUID__(Name, File, Line) Name"|"File"|"#Line
-#else
-#define DEBUG_GUID__(Name, File, Line) #Name"|"File"|"#Line
-#endif
-#define DEBUG_GUID_(Name, File, Line) DEBUG_GUID__(Name, File, Line)
-#define DEBUG_GUID(Name) DEBUG_GUID_(Name, __FILE__, __LINE__)
-
 inline debug_event *
 NextDebugEvent(char *GUID = "")
 {
@@ -326,7 +318,6 @@ BeginTimedBlock(char *GUID, u32 Iterations)
     Event->Iterations = Iterations;
     return(Event->GUID);
 }
-#define BEGIN_TIMED_BLOCK(GUIDName, Name) char *GUIDName = BeginTimedBlock(DEBUG_GUID(Name), 1);
 
 inline void
 EndTimedBlock(char *GUID)
@@ -367,6 +358,20 @@ struct debug_group
         Event->Type = DebugEventType_GroupEnd;
     }
 };
+
+#if COMPILER_MSVC
+#define DEBUG_GUID__(Name, File, Line) Name"|"File"|"#Line
+#else
+global_variable char GlobalDebugGUID[256];
+#define DEBUG_GUID__(Name, File, Line) \
+    snprintf(GlobalDebugGUID, sizeof(GlobalDebugGUID), "%s|%s|%d", Name, File, Line) \
+        ? GlobalDebugGUID \
+        : GlobalDebugGUID
+#endif
+#define DEBUG_GUID_(Name, File, Line) DEBUG_GUID__(Name, File, Line)
+#define DEBUG_GUID(Name) DEBUG_GUID_(Name, __FILE__, __LINE__)
+
+#define BEGIN_TIMED_BLOCK(GUIDName, Name) char *GUIDName = BeginTimedBlock(DEBUG_GUID(Name), 1);
 
 #define TIMED_BLOCK__(Name, Iterations, Counter) debug_timer Timer_##Counter(DEBUG_GUID(Name), Iterations)
 #define TIMED_BLOCK_(Name, Iterations, Counter) TIMED_BLOCK__(Name, Iterations, Counter)

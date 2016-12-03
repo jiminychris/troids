@@ -170,6 +170,87 @@ typedef union v4
     };
 } v4;
 
+inline v2
+V2(r32 X, r32 Y)
+{
+    v2 Result;
+    Result.x = X;
+    Result.y = Y;
+    return(Result);
+}
+
+inline v2
+V2i(s32 X, s32 Y)
+{
+    v2 Result;
+    Result.x = (r32)X;
+    Result.y = (r32)Y;
+    return(Result);
+}
+
+inline v3
+V3(r32 X, r32 Y, r32 Z)
+{
+    v3 Result;
+    Result.x = X;
+    Result.y = Y;
+    Result.z = Z;
+    return(Result);
+}
+
+inline v3
+V3i(s32 X, s32 Y, s32 Z)
+{
+    v3 Result;
+    Result.x = (r32)X;
+    Result.y = (r32)Y;
+    Result.z = (r32)Z;
+    return(Result);
+}
+
+inline v3
+V3(v2 XY, r32 Z)
+{
+    v3 Result;
+    Result.x = XY.x;
+    Result.y = XY.y;
+    Result.z = Z;
+    return(Result);
+}
+
+inline v4
+V4(r32 X, r32 Y, r32 Z, r32 W)
+{
+    v4 Result;
+    Result.x = X;
+    Result.y = Y;
+    Result.z = Z;
+    Result.w = W;
+    return(Result);
+}
+
+inline v4
+V4(v3 XYZ, r32 W)
+{
+    v4 Result;
+    Result.x = XYZ.x;
+    Result.y = XYZ.y;
+    Result.z = XYZ.z;
+    Result.w = W;
+    return(Result);
+}
+
+inline v4
+V4i(u32 X, u32 Y, u32 Z, u32 W)
+{
+    v4 Result;
+    Result.x = (r32)X;
+    Result.y = (r32)Y;
+    Result.z = (r32)Z;
+    Result.w = (r32)W;
+    return(Result);
+}
+
 typedef union m22
 {
     v2 Rows[2];

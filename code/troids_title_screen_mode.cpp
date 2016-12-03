@@ -185,7 +185,11 @@ TitleScreenMode(game_memory *GameMemory, game_input *Input, renderer_state *Rend
 
     {
         TIMED_BLOCK("Render Game");
+#if 0
+        RenderBufferToBackBuffer(RendererState, RenderBuffer, 0);
+#else
         RenderBufferToBackBuffer(RendererState, RenderBuffer, RenderFlags_UsePipeline);
+#endif
     }
     
     {DEBUG_GROUP("Title Screen Mode");

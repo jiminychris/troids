@@ -2746,7 +2746,11 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
 
     {
         TIMED_BLOCK("Render Game");
+#if 0
+        RenderBufferToBackBuffer(RendererState, RenderBuffer, 0);
+#else
         RenderBufferToBackBuffer(RendererState, RenderBuffer, RenderFlags_UsePipeline);
+#endif
     }
     
     {DEBUG_GROUP("Play Mode");

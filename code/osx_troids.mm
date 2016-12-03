@@ -1277,7 +1277,8 @@ int main(int ArgCount, char **Args)
                     }
                     switch ([Event type]) {
                         case NSKeyUp:
-                        case NSKeyDown: {
+                        case NSKeyDown: 
+                        {
                             int HotkeyMask = NSCommandKeyMask
                                            | NSAlternateKeyMask
                                            | NSControlKeyMask
@@ -1367,8 +1368,17 @@ int main(int ArgCount, char **Args)
                             // TODO(chris): Alt-F4 for close? Probably not, Cmd-Q does this.
                         } break;
 
-                        // TODO(chris): Handle MouseUp
-                        // TODO(chris): Handle MouseDown
+                        case NSLeftMouseUp:
+                        {
+                            TIMED_BLOCK("Handle Mouse Up");
+                            ProcessButtonInput(&GlobalLeftMouse, false);
+                        } break;
+
+                        case NSLeftMouseDown:
+                        {
+                            TIMED_BLOCK("Handle Mouse Down");
+                            ProcessButtonInput(&GlobalLeftMouse, true);
+                        } break;
 
                         default: 
                         {
@@ -1380,7 +1390,8 @@ int main(int ArgCount, char **Args)
                 [EventsAutoreleasePool drain];
             }
 
-            // TODO(chris): Get current mouse position.
+            NSPoint MouseP = [NSEvent mouseLocation];
+            GlobalMousePosition = V2i(MouseP.x, MouseP.y);
 
             if(NewOSXKeyboard->W.EndedDown)
             {
@@ -1465,19 +1476,16 @@ int main(int ArgCount, char **Args)
                     NewInput->MostRecentlyUsedController = ControllerIndex;
                 }
             }
-            // TODO(chris): Capture these values in the event loop
-            #if 0
-            NewInput->MousePosition = {GlobalMousePosition.x,
-                                       MonitorHeight - GlobalMousePosition.y};
+            NewInput->MousePosition = V2i(BackBufferWidth*((r32)GlobalMousePosition.x / (r32)MonitorWidth),
+                                       BackBufferHeight*((r32)GlobalMousePosition.y / (r32)MonitorHeight));
             NewInput->LeftMouse = GlobalLeftMouse;
-            #endif
         }
 
         END_TIMED_BLOCK(FrameIndex);
 
         GameUpdateAndRender(&GameMemory, NewInput, &RendererState);
         GlobalRunning &= !NewInput->Quit;
-        
+
         DebugCollate(&GameMemory, NewInput, &RendererState);
 
         CopyBackBufferToWindow(OpenGLContext, &GlobalBackBuffer);

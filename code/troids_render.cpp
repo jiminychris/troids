@@ -832,6 +832,147 @@ RenderAlignedInvertedRectangle(loaded_bitmap *BackBuffer, rectangle2 Rect,
 
 // TODO(chris): Further optimization
 internal void
+RenderTriangle(loaded_bitmap *BackBuffer, 
+               v2 A, v2 B, v2 C, v4 Color, s32 OffsetX = 0, s32 OffsetY = 0)
+{
+    s32 XMin = Clamp(OffsetX, Floor(Minimum(Minimum(A.x, B.x), C.x)),
+                     OffsetX + BackBuffer->Width);
+    s32 YMin = Clamp(OffsetY, Floor(Minimum(Minimum(A.y, B.y), C.y)),
+                     OffsetY + BackBuffer->Height);
+
+    s32 XMax = Clamp(OffsetX, Ceiling(Maximum(Maximum(A.x, B.x), C.x)),
+                     OffsetX + BackBuffer->Width);
+    s32 YMax = Clamp(OffsetY, Ceiling(Maximum(Maximum(A.y, B.y), C.y)),
+                     OffsetY + BackBuffer->Height);
+
+    s32 AdjustedXMin = (XMin/4)*4;
+    s32 AdjustedXMax = ((XMax+3)/4)*4;
+
+#if GAMMA_CORRECT
+    // NOTE(chris): sRGB to linear
+    Color = sRGB1ToLinear1(Color);
+#endif
+    Color.rgb *= Color.a;
+
+    v2 PerpAB = Perp(B - A);
+    v2 PerpBC = Perp(C - B);
+    v2 PerpCA = Perp(A - C);
+    __m128 SR = _mm_set_ps1(255.0f*Color.r);
+    __m128 SG = _mm_set_ps1(255.0f*Color.g);
+    __m128 SB = _mm_set_ps1(255.0f*Color.b);
+    __m128 DA = _mm_set_ps1(1.0f - Color.a);
+    __m128 PerpABX = _mm_set_ps1(PerpAB.x);
+    __m128 PerpBCX = _mm_set_ps1(PerpBC.x);
+    __m128 PerpCAX = _mm_set_ps1(PerpCA.x);
+    __m128 PerpABY = _mm_set_ps1(PerpAB.y);
+    __m128 PerpBCY = _mm_set_ps1(PerpBC.y);
+    __m128 PerpCAY = _mm_set_ps1(PerpCA.y);
+    __m128 ABIsTopLeft = _mm_set_ps1(RealMask(((A.y == B.y) && (B.x < A.x)) || (B.y < A.y)));
+    __m128 BCIsTopLeft = _mm_set_ps1(RealMask(((B.y == C.y) && (C.x < B.x)) || (C.y < B.y)));
+    __m128 CAIsTopLeft = _mm_set_ps1(RealMask(((C.y == A.y) && (A.x < C.x)) || (A.y < C.y)));
+    __m128 AX = _mm_set_ps1(A.x);
+    __m128 BX = _mm_set_ps1(B.x);
+    __m128 CX = _mm_set_ps1(C.x);
+    __m128 AY = _mm_set_ps1(A.y);
+    __m128 BY = _mm_set_ps1(B.y);
+    __m128 CY = _mm_set_ps1(C.y);
+    __m128 Four = _mm_set_ps1(4.0f);
+    __m128 RealZero = _mm_set_ps1(0.0f);
+    __m128 RealOne = _mm_set_ps1(1.0f);
+    __m128 Half = _mm_set_ps1(0.5f);
+    __m128 Quarter = _mm_set_ps1(0.25f);
+    __m128 Sixteenth = _mm_set_ps1(0.0625f);
+    __m128 Inv255 = _mm_set_ps1(1.0f/255.0f);
+    __m128 One255 = _mm_set_ps1(255.0f);
+    __m128i ColorMask = _mm_set1_epi32(0x000000FF);
+    u32 SampleAdvance = 4*SAMPLE_COUNT;
+    u8 *PixelRow = (u8 *)BackBuffer->Memory + BackBuffer->Pitch*YMin;
+    __m128 Y4 = _mm_set_ps1((r32)YMin + 0.25f);
+    __m128 YRelA = _mm_sub_ps(Y4, AY);
+    __m128 YRelB = _mm_sub_ps(Y4, BY);
+    __m128 YRelC = _mm_sub_ps(Y4, CY);
+    __m128 X4 = _mm_set_ps((r32)AdjustedXMin + 3.5f, (r32)AdjustedXMin + 2.5f,
+                           (r32)AdjustedXMin + 1.5f, (r32)AdjustedXMin + 0.5f);
+    __m128i Used = _mm_set1_epi32(0);
+    IGNORED_TIMED_LOOP_FUNCTION(Width*Height);
+    for(s32 Y = YMin;
+        Y < YMax;
+        ++Y)
+    {
+        u32 *Pixel = (u32 *)PixelRow + AdjustedXMin;
+
+        __m128 XRelA = _mm_sub_ps(X4, AX);
+        __m128 XRelB = _mm_sub_ps(X4, BX);
+        __m128 XRelC = _mm_sub_ps(X4, CX);
+        for(s32 X = AdjustedXMin;
+            X < AdjustedXMax;
+            X += 4)
+        {
+            __m128 InnerAB = _mm_add_ps(_mm_mul_ps(XRelA, PerpABX),
+                                        _mm_mul_ps(YRelA, PerpABY));
+            __m128 InnerBC = _mm_add_ps(_mm_mul_ps(XRelB, PerpBCX),
+                                        _mm_mul_ps(YRelB, PerpBCY));
+            __m128 InnerCA = _mm_add_ps(_mm_mul_ps(XRelC, PerpCAX),
+                                        _mm_mul_ps(YRelC, PerpCAY));
+
+            __m128 PixelMask = _mm_and_ps(
+                _mm_and_ps(_mm_or_ps(_mm_cmpgt_ps(InnerAB, RealZero),
+                                     _mm_and_ps(ABIsTopLeft, _mm_cmpeq_ps(InnerAB, RealZero))),
+                           _mm_or_ps(_mm_cmpgt_ps(InnerBC, RealZero),
+                                     _mm_and_ps(BCIsTopLeft, _mm_cmpeq_ps(InnerBC, RealZero)))),
+                _mm_or_ps(_mm_cmpgt_ps(InnerCA, RealZero),
+                          _mm_and_ps(CAIsTopLeft, _mm_cmpeq_ps(InnerCA, RealZero))));
+
+            __m128i Dest = _mm_loadu_si128((__m128i *)Pixel);
+
+            __m128 DestR = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(Dest, 16), ColorMask));
+            __m128 DestG = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(Dest, 8), ColorMask));
+            __m128 DestB = _mm_cvtepi32_ps(_mm_and_si128(Dest, ColorMask));
+
+#if GAMMA_CORRECT
+            // NOTE(chris): sRGB to linear
+            DestR = _mm_mul_ps(_mm_mul_ps(DestR, DestR), Inv255);
+
+            DestG = _mm_mul_ps(_mm_mul_ps(DestG, DestG), Inv255);
+
+            DestB = _mm_mul_ps(_mm_mul_ps(DestB, DestB), Inv255);
+#endif            
+            __m128 ResultR = _mm_add_ps(SR, _mm_mul_ps(DestR, DA));
+            __m128 ResultG = _mm_add_ps(SG, _mm_mul_ps(DestG, DA));
+            __m128 ResultB = _mm_add_ps(SB, _mm_mul_ps(DestB, DA));
+
+#if GAMMA_CORRECT
+            // NOTE(chris): linear to sRGB
+            __m128 ResultR255 = _mm_mul_ps(One255, ResultR);
+            __m128 ResultG255 = _mm_mul_ps(One255, ResultG);
+            __m128 ResultB255 = _mm_mul_ps(One255, ResultB);
+            ResultR = _mm_mul_ps(ResultR255, _mm_rsqrt_ps(ResultR255));
+            ResultG = _mm_mul_ps(ResultG255, _mm_rsqrt_ps(ResultG255));
+            ResultB = _mm_mul_ps(ResultB255, _mm_rsqrt_ps(ResultB255));
+#endif
+
+            __m128i Result = _mm_or_si128(
+                _mm_or_si128(_mm_slli_epi32(_mm_cvtps_epi32(ResultR), 16),
+                             _mm_slli_epi32(_mm_cvtps_epi32(ResultG), 8)),
+                _mm_cvtps_epi32(ResultB));
+
+            _mm_storeu_si128((__m128i *)Pixel, _mm_or_si128(_mm_and_si128(_mm_castps_si128(PixelMask), Result),
+                                                             _mm_andnot_si128(_mm_castps_si128(PixelMask), Dest)));
+
+            Pixel += 4;
+            XRelA = _mm_add_ps(XRelA, Four);
+            XRelB = _mm_add_ps(XRelB, Four);
+            XRelC = _mm_add_ps(XRelC, Four);
+        }
+        YRelA = _mm_add_ps(YRelA, RealOne);
+        YRelB = _mm_add_ps(YRelB, RealOne);
+        YRelC = _mm_add_ps(YRelC, RealOne);
+        PixelRow += BackBuffer->Pitch;
+    }
+}
+
+// TODO(chris): Further optimization
+internal void
 RenderTriangle(render_chunk *RenderChunk, 
                v2 A, v2 B, v2 C, v4 Color, s32 OffsetX = 0, s32 OffsetY = 0)
 {
@@ -1778,6 +1919,8 @@ RenderTree(render_buffer *RenderBuffer, render_chunk *RenderChunk,
                 }
                 else
                 {
+                    RenderTriangle(&RenderChunk->BackBuffer, Data->A, Data->B, Data->C,
+                                   Data->Color, OffsetX, OffsetY);
                 }
             } break;
             
