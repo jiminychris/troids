@@ -802,6 +802,7 @@ extern "C" DEBUG_COLLATE(DebugCollate)
         {
             text_layout Layout;
             Layout.Font = &GlobalDebugState->Font;
+            Layout.Assets = &TranState->Assets;
             Layout.Scale = 21.0f / Layout.Font->Height;
             Layout.DropShadow = true;
             Layout.P = V2(0, RendererState->BackBuffer.Height - Layout.Font->Ascent*Layout.Scale);

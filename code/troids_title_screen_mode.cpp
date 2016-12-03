@@ -43,6 +43,7 @@ TitleScreenMode(game_memory *GameMemory, game_input *Input, renderer_state *Rend
 
     text_layout Layout = {};
     Layout.Font = &GameMemory->Font;
+    Layout.Assets = &TranState->Assets;
     Layout.Color = V4(1, 1, 1, TitleAlpha);
     Layout.Scale = 1.0f;
     char TroidsText[] = "TROIDS";

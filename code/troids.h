@@ -10,6 +10,7 @@
 #define DEBUG_CAMERA 0
 
 #include "troids_platform.h"
+#include "troids_assets.h"
 #include "troids_memory.h"
 #include "troids_intrinsics.h"
 #include "troids_math.h"
@@ -61,12 +62,6 @@ struct game_state
         title_screen_state TitleScreenState;
     };
 
-    loaded_bitmap LaserBitmap;
-
-#if 0
-    loaded_bitmap StructuredArt;
-#endif
-
     memory_arena Arena;
 };
 
@@ -76,6 +71,7 @@ struct transient_state
 
     memory_arena Arena;
     render_buffer RenderBuffer;
+    game_assets Assets;
 };
 
 #define TROIDS_H

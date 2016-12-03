@@ -274,12 +274,17 @@ typedef enum font_weight
     FontWeight_Bold,
 } font_weight;
 
+struct bitmap_id
+{
+    u32 Value;
+};
+
 typedef struct loaded_font
 {
     r32 Height;
     r32 Ascent;
     r32 LineAdvance;
-    loaded_bitmap Glyphs[128];
+    bitmap_id Glyphs[128];
     r32 KerningTable[128][128];
 } loaded_font;
 

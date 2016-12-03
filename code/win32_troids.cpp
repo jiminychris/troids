@@ -703,13 +703,6 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                 RenderChunk->SampleBuffer.Memory = RendererState.SampleBuffer.Memory;
             }
 
-#if TROIDS_INTERNAL
-            Win32LoadFont(&GlobalDebugState->Font, DeviceContext, "Courier New",
-                          RoundU32((r32)BackBufferHeight*42.0f/1080.0f), FW_BOLD, true);
-#endif
-            Win32LoadFont(&GameMemory.Font, DeviceContext, "Arial",
-                          RoundU32((r32)BackBufferHeight*128.0f/1080.0f), FW_NORMAL, false);
-
             GameMemory.PlatformReadFile = Win32ReadFile;
             GameMemory.PlatformPushThreadWork = Win32PushThreadWork;
             GameMemory.PlatformWaitForAllThreadWork = Win32WaitForAllThreadWork;

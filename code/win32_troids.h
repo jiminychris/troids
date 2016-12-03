@@ -18,6 +18,7 @@
 #include <gl/gl.h>
 
 #include "troids_platform.h"
+#include "troids_math.h"
 #include "troids_memory.h"
 #include "troids_intrinsics.h"
 #include "troids_debug.h"
@@ -78,8 +79,6 @@ global_variable HANDLE GlobalThreadQueueSemaphore;
 global_variable WINDOWPLACEMENT PreviousWindowPlacement = { sizeof(PreviousWindowPlacement) };
 global_variable HWND GlobalWindow;
 global_variable HANDLE GlobalEXEFile;
-
-#include "win32_troids_font.h"
 
 #define WIN32_TROIDS_H
 #endif

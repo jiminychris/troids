@@ -191,11 +191,13 @@ CreateAsteroid(play_state *State, r32 MaxRadius, rectangle2 Cell, v3 P = Invalid
 }
 
 inline entity *
-CreateLetter(play_state *State, loaded_font *Font, v3 P, r32 Scale, char Character,
+CreateLetter(play_state *State, game_assets *Assets,
+             loaded_font *Font, v3 P, r32 Scale, char Character,
              u32 ShapeCount, collision_shape *Shapes)
 {
-    loaded_bitmap *Glyph = Font->Glyphs + Character;
-    v2 Dim = Scale*V2i(Glyph->Width, Glyph->Height);
+    bitmap_id GlyphID = Font->Glyphs[Character];
+    loaded_bitmap Glyph = GetBitmap(Assets, GlyphID);
+    v2 Dim = Scale*V2i(Glyph.Width, Glyph.Height);
 
     for(u32 ShapeIndex = 0;
         ShapeIndex < ShapeCount;
@@ -228,7 +230,7 @@ CreateLetter(play_state *State, loaded_font *Font, v3 P, r32 Scale, char Charact
 }
 
 inline entity *
-CreateG(play_state *State, loaded_font *Font, v3 P, r32 Scale)
+CreateG(play_state *State, game_assets *Assets, loaded_font *Font, v3 P, r32 Scale)
 {
     collision_shape Rectangles[] =
     {
@@ -247,13 +249,13 @@ CreateG(play_state *State, loaded_font *Font, v3 P, r32 Scale)
     CollisionTriangleStrip(Triangles, Strip);
     CombineShapes(Shapes, Rectangles, Triangles);
 
-    entity *Result = CreateLetter(State, Font, P, Scale, 'G', ArrayCount(Shapes), Shapes);
+    entity *Result = CreateLetter(State, Assets, Font, P, Scale, 'G', ArrayCount(Shapes), Shapes);
 
     return(Result);
 }
 
 inline entity *
-CreateA(play_state *State, loaded_font *Font, v3 P, r32 Scale)
+CreateA(play_state *State, game_assets *Assets, loaded_font *Font, v3 P, r32 Scale)
 {
     v2 Strip1[] =
     {
@@ -268,13 +270,13 @@ CreateA(play_state *State, loaded_font *Font, v3 P, r32 Scale)
     CollisionTriangleStrip(Shapes2, Strip2);
     CombineShapes(Shapes, Shapes1, Shapes2);
     
-    entity *Result = CreateLetter(State, Font, P, Scale, 'A', ArrayCount(Shapes), Shapes);
+    entity *Result = CreateLetter(State, Assets, Font, P, Scale, 'A', ArrayCount(Shapes), Shapes);
 
     return(Result);
 }
 
 inline entity *
-CreateM(play_state *State, loaded_font *Font, v3 P, r32 Scale)
+CreateM(play_state *State, game_assets *Assets, loaded_font *Font, v3 P, r32 Scale)
 {
     v2 Strip[] =
     {
@@ -284,13 +286,13 @@ CreateM(play_state *State, loaded_font *Font, v3 P, r32 Scale)
     };
     CollisionTriangleStrip(Shapes, Strip);
 
-    entity *Result = CreateLetter(State, Font, P, Scale, 'M', ArrayCount(Shapes), Shapes);
+    entity *Result = CreateLetter(State, Assets, Font, P, Scale, 'M', ArrayCount(Shapes), Shapes);
     
     return(Result);
 }
 
 inline entity *
-CreateE(play_state *State, loaded_font *Font, v3 P, r32 Scale)
+CreateE(play_state *State, game_assets *Assets, loaded_font *Font, v3 P, r32 Scale)
 {
     collision_shape Shapes[] =
     {
@@ -300,13 +302,13 @@ CreateE(play_state *State, loaded_font *Font, v3 P, r32 Scale)
         CollisionRectangle(MinMax(V2(0.18f, 0.465f), V2(0.915f, 0.586f))),
     };
 
-    entity *Result = CreateLetter(State, Font, P, Scale, 'E', ArrayCount(Shapes), Shapes);
+    entity *Result = CreateLetter(State, Assets, Font, P, Scale, 'E', ArrayCount(Shapes), Shapes);
 
     return(Result);
 }
 
 inline entity *
-CreateO(play_state *State, loaded_font *Font, v3 P, r32 Scale)
+CreateO(play_state *State, game_assets *Assets, loaded_font *Font, v3 P, r32 Scale)
 {
     v2 Strip[] =
     {
@@ -322,13 +324,13 @@ CreateO(play_state *State, loaded_font *Font, v3 P, r32 Scale)
     };
     CollisionTriangleStrip(Shapes, Strip);
     
-    entity *Result = CreateLetter(State, Font, P, Scale, 'O', ArrayCount(Shapes), Shapes);
+    entity *Result = CreateLetter(State, Assets, Font, P, Scale, 'O', ArrayCount(Shapes), Shapes);
 
     return(Result);
 }
 
 inline entity *
-CreateV(play_state *State, loaded_font *Font, v3 P, r32 Scale)
+CreateV(play_state *State, game_assets *Assets, loaded_font *Font, v3 P, r32 Scale)
 {
     v2 Strip[] =
     {
@@ -337,13 +339,13 @@ CreateV(play_state *State, loaded_font *Font, v3 P, r32 Scale)
     };
     CollisionTriangleStrip(Shapes, Strip);
     
-    entity *Result = CreateLetter(State, Font, P, Scale, 'V', ArrayCount(Shapes), Shapes);
+    entity *Result = CreateLetter(State, Assets, Font, P, Scale, 'V', ArrayCount(Shapes), Shapes);
 
     return(Result);
 }
 
 inline entity *
-CreateR(play_state *State, loaded_font *Font, v3 P, r32 Scale)
+CreateR(play_state *State, game_assets *Assets, loaded_font *Font, v3 P, r32 Scale)
 {
     collision_shape Shapes0[] =
     {
@@ -366,7 +368,7 @@ CreateR(play_state *State, loaded_font *Font, v3 P, r32 Scale)
     CombineShapes(Combo, Shapes0, Shapes1);
     CombineShapes(Shapes, Combo, Shapes2);
 
-    entity *Result = CreateLetter(State, Font, P, Scale, 'R', ArrayCount(Shapes), Shapes);
+    entity *Result = CreateLetter(State, Assets, Font, P, Scale, 'R', ArrayCount(Shapes), Shapes);
 
     return(Result);
 }
@@ -599,11 +601,12 @@ SplitAsteroid(play_state *State, entity *Asteroid)
 }
 
 inline void
-GameOver(play_state *State, render_buffer *RenderBuffer, loaded_font *Font)
+GameOver(play_state *State, render_buffer *RenderBuffer, game_assets *Assets, loaded_font *Font)
 {
     v2 ScreenCenter = 0.5f*V2i(RenderBuffer->Width, RenderBuffer->Height); 
     text_layout Layout = {};
     Layout.Font = Font;
+    Layout.Assets = Assets;
     Layout.Scale = 1.0f;
     Layout.Color = V4(1, 1, 1, 1);
     char GameOverText[] = "GAME OVER";
@@ -618,21 +621,21 @@ GameOver(play_state *State, render_buffer *RenderBuffer, loaded_font *Font)
     v3 EndP = Unproject(RenderBuffer, V3(Layout.P + V2(GameOverWidth, 0), 0.0f));
     r32 Scale = (EndP-P).x / GameOverWidth;
 
-    CreateG(State, Font, P, Scale);
+    CreateG(State, Assets, Font, P, Scale);
     P.x += Scale*GetTextAdvance(Font, 'G', 'A');
-    CreateA(State, Font, P, Scale);
+    CreateA(State, Assets, Font, P, Scale);
     P.x += Scale*GetTextAdvance(Font, 'A', 'M');
-    CreateM(State, Font, P, Scale);
+    CreateM(State, Assets, Font, P, Scale);
     P.x += Scale*GetTextAdvance(Font, 'M', 'E');
-    CreateE(State, Font, P, Scale);
+    CreateE(State, Assets, Font, P, Scale);
     P.x += Scale*(GetTextAdvance(Font, 'E', ' ') + GetTextAdvance(Font, ' ', 'O'));
-    CreateO(State, Font, P, Scale);
+    CreateO(State, Assets, Font, P, Scale);
     P.x += Scale*GetTextAdvance(Font, 'O', 'V');
-    CreateV(State, Font, P, Scale);
+    CreateV(State, Assets, Font, P, Scale);
     P.x += Scale*GetTextAdvance(Font, 'V', 'E');
-    CreateE(State, Font, P, Scale);
+    CreateE(State, Assets, Font, P, Scale);
     P.x += Scale*GetTextAdvance(Font, 'E', 'R');
-    CreateR(State, Font, P, Scale);
+    CreateR(State, Assets, Font, P, Scale);
 }
 
 internal void
@@ -946,6 +949,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
 {
     game_state *GameState = (game_state *)GameMemory->PermanentMemory;
     transient_state *TranState = (transient_state *)GameMemory->TemporaryMemory;
+    game_assets *Assets = &TranState->Assets;
     play_state *State = &GameState->PlayState;
 
     render_buffer *RenderBuffer = &TranState->RenderBuffer;
@@ -2247,7 +2251,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
                         }
                         else
                         {
-                            GameOver(State, RenderBuffer, &GameMemory->Font);
+                            GameOver(State, RenderBuffer, Assets, &GameMemory->Font);
                         }
                     } break;
 
@@ -2491,6 +2495,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
         RenderBuffer->Projection = Projection_None;
         text_layout Layout = {};
         Layout.Font = &GameMemory->Font;
+        Layout.Assets = Assets;
         Layout.Scale = 0.5f;
         Layout.Color = V4(1, 1, 1, 1);
 
@@ -2652,7 +2657,11 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
                         ++X)
                     {
                         v3 Offset = V3(X*FieldDim.x, Y*FieldDim.y, 0);
-                        PushBitmap(RenderBuffer, &GameState->LaserBitmap, Offset + Entity->P,
+                        // TODO(chris): This {1} nonsense is because I know the laser is the first
+                        // asset in the file. Didn't get around to querying assets by tags yet.
+                        bitmap_id Laser = {1};
+                        PushBitmap(RenderBuffer, Assets, Laser, 
+                                   Offset + Entity->P,
                                    XAxis, YAxis,
                                    Entity->Dim,
                                    Color);
@@ -2665,7 +2674,8 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
             {
                 XAxis = V2(1, 0);
                 YAxis = Perp(XAxis);
-                loaded_bitmap *Glyph = GameMemory->Font.Glyphs + Entity->Character;
+                bitmap_id GlyphID = GameMemory->Font.Glyphs[Entity->Character];
+                loaded_bitmap Glyph = GetBitmap(Assets, GlyphID);
                 PushBitmap(RenderBuffer, Glyph, Entity->P,
                            XAxis, YAxis, Entity->Dim);
             } break;
@@ -2706,6 +2716,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
             RenderBuffer->Projection = Projection_None;
             text_layout Layout = {};
             Layout.Font = &GameMemory->Font;
+            Layout.Assets = Assets;
             Layout.Scale = 1.0f;
             Layout.Color = V4(1, 1, 1, 1);
             

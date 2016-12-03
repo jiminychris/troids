@@ -168,7 +168,7 @@ struct render_bitmap_data
     v2 XAxis;
     v2 YAxis;
     v4 Color;
-    loaded_bitmap *Bitmap;
+    loaded_bitmap Bitmap;
 };
 
 struct render_aligned_rectangle_data
@@ -197,30 +197,39 @@ struct render_clear_data
     render_##CommandInit##_data *Name = PushStruct((Arena), render_##CommandInit##_data);
 
 inline void
-PushBitmap(render_buffer *RenderBuffer, loaded_bitmap *Bitmap, v3 P, v2 XAxis, v2 YAxis,
+PushBitmap(render_buffer *RenderBuffer, loaded_bitmap Bitmap,
+           v3 P, v2 XAxis, v2 YAxis,
            v2 Dim, v4 Color = V4(1, 1, 1, 1))
 {
-    if(Bitmap && Bitmap->Height && Bitmap->Width)
-    {
-        PushRenderHeader(Data, &RenderBuffer->Arena, bitmap);
+    PushRenderHeader(Data, &RenderBuffer->Arena, bitmap);
 
-        XAxis*=Dim.x;
-        YAxis*=Dim.y;
-        v2 Align = Bitmap->Align;
-        v3 Origin = P - V3(Hadamard(Align, XAxis + YAxis), 0);
+    XAxis*=Dim.x;
+    YAxis*=Dim.y;
+    v2 Align = Bitmap.Align;
+    v3 Origin = P - V3(Hadamard(Align, XAxis + YAxis), 0);
                 
-        XAxis = Project(RenderBuffer, Origin + V3(XAxis, 0)).xy;
-        YAxis = Project(RenderBuffer, Origin + V3(YAxis, 0)).xy;
-        v2 ScreenOrigin = Project(RenderBuffer, Origin).xy;
-        XAxis -= ScreenOrigin;
-        YAxis -= ScreenOrigin;
+    XAxis = Project(RenderBuffer, Origin + V3(XAxis, 0)).xy;
+    YAxis = Project(RenderBuffer, Origin + V3(YAxis, 0)).xy;
+    v2 ScreenOrigin = Project(RenderBuffer, Origin).xy;
+    XAxis -= ScreenOrigin;
+    YAxis -= ScreenOrigin;
         
-        Data->Bitmap = Bitmap;
-        Data->Origin = ScreenOrigin;
-        Data->XAxis = XAxis;
-        Data->YAxis = YAxis;
-        Data->Color = Color;
-        Data->SortKey = P.z;
+    Data->Bitmap = Bitmap;
+    Data->Origin = ScreenOrigin;
+    Data->XAxis = XAxis;
+    Data->YAxis = YAxis;
+    Data->Color = Color;
+    Data->SortKey = P.z;
+}
+
+inline void
+PushBitmap(render_buffer *RenderBuffer, game_assets *Assets, bitmap_id ID, v3 P, v2 XAxis, v2 YAxis,
+           v2 Dim, v4 Color = V4(1, 1, 1, 1))
+{
+    if(ID.Value)
+    {
+        loaded_bitmap Bitmap = GetBitmap(Assets, ID);
+        PushBitmap(RenderBuffer, Bitmap, P, XAxis, YAxis, Dim, Color);
     }
 }
 
@@ -586,6 +595,7 @@ struct text_layout
     v2 P;
     v4 Color;
     loaded_font *Font;
+    game_assets *Assets;
 };
 
 struct text_measurement

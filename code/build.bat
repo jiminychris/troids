@@ -17,7 +17,7 @@ set Internal=1
 set DebugDisplay=1
 set Slow=1
 set Rumble=0
-set Optimize=/O2
+set Optimize=/Od
 )
 
 set DataPath=\"..\\troids\\data\"
@@ -37,6 +37,9 @@ del pdb.lock
 )
 
 cl %CommonCompilerFlags% w:\troids\code\win32_troids.cpp /link %CommonLinkerFlags% user32.lib gdi32.lib winmm.lib opengl32.lib
+
+cl %CommonCompilerFlags% w:\troids\code\asset_packer.cpp /link %CommonLinkerFlags% user32.lib gdi32.lib winmm.lib
+REM w:\build\asset_packer.exe
 
 if %OneFile%==1 (
 cl %CommonCompilerFlags% -Od w:\troids\code\exe_packer.cpp /link %CommonLinkerFlags%

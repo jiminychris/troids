@@ -15,75 +15,6 @@
 #include "troids_play_mode.cpp"
 #include "troids_title_screen_mode.cpp"
 
-internal loaded_bitmap
-LoadBitmap(char *FileName, u32 Offset)
-{
-    loaded_bitmap Result = {};
-    // TODO(chris): Allocate memory from arena instead of dynamic platform alloc
-    read_file_result ReadResult = PlatformReadFile(FileName, Offset);
-    bitmap_header *BMPHeader = (bitmap_header *)ReadResult.Contents;
-
-    Assert(BMPHeader->FileType == (('B' << 0) | ('M' << 8)));
-//    Assert(BMPHeader->FileSize == ReadResult.ContentsSize);
-    Assert(BMPHeader->Reserved1 == 0);
-    Assert(BMPHeader->Reserved2 == 0);
-    Assert(BMPHeader->Planes == 1);
-    Assert(BMPHeader->BitsPerPixel == 32);
-    Assert(BMPHeader->Compression == 3);
-    Assert(BMPHeader->ColorsUsed == 0);
-    Assert(BMPHeader->ColorsImportant == 0);
-
-    Result.Height = BMPHeader->Height;
-    Result.Width = BMPHeader->Width;
-    Result.Align = V2(0.5f, 0.5f);
-    Result.Pitch = Result.Width*sizeof(u32);
-    Result.Memory = (u8 *)BMPHeader + BMPHeader->BitmapOffset;
-
-    u32 AlphaShift = BitScanForward(BMPHeader->AlphaMask).Index;
-    u32 RedShift = BitScanForward(BMPHeader->RedMask).Index;
-    u32 GreenShift = BitScanForward(BMPHeader->GreenMask).Index;
-    u32 BlueShift = BitScanForward(BMPHeader->BlueMask).Index;
-
-    u8 *PixelRow = (u8 *)Result.Memory;
-    r32 Inv255 = 1.0f / 255.0f;
-    for(s32 Y = 0;
-        Y < Result.Height;
-        ++Y)
-    {
-        u32 *Pixel = ((u32 *)PixelRow);
-        for(s32 X = 0;
-            X < Result.Width;
-            ++X)
-        {
-            v4 Color = V4i((*Pixel >> RedShift) & 0xFF,
-                           (*Pixel >> GreenShift) & 0xFF,
-                           (*Pixel >> BlueShift) & 0xFF,
-                           (*Pixel >> AlphaShift) & 0xFF);
-
-#if GAMMA_CORRECT
-            Color = sRGB255ToLinear1(Color);
-            // NOTE(chris): Pre-multiply alpha
-            Color.rgb *= Color.a;
-            Color = Linear1TosRGB255(Color);
-#else
-            Color.rgb *= Color.a*Inv255;
-#endif
-            u32 R = (u32)(Color.r + 0.5f);
-            u32 G = (u32)(Color.g + 0.5f);
-            u32 B = (u32)(Color.b + 0.5f);
-            u32 A = (u32)(Color.a + 0.5f);
-
-            *Pixel++ = ((A << 24) |
-                        (R << 16) |
-                        (G << 8) |
-                        (B << 0));
-        }
-        PixelRow += Result.Pitch;
-    }
-
-    return(Result);
-}
-
 inline b32
 IsEOF(char *String)
 {
@@ -112,6 +43,28 @@ SkipLine(char *String)
     char *Result = String;
     while(!IsEOF(Result) && *Result++ != '\n');
     return(Result);
+}
+
+internal void
+LoadAssetFile(game_assets *Assets, char *FileName, u32 Offset)
+{
+    // TODO(chris): Allocate memory from arena instead of dynamic platform alloc
+    read_file_result ReadResult = PlatformReadFile(FileName, Offset);
+    u8 *Cursor = (u8 *)ReadResult.Contents;
+    
+    Assets->FontCount = *((u32 *)Cursor);
+    Cursor += sizeof(u32);
+    
+    Assets->Fonts = (loaded_font *)Cursor;
+    Cursor += sizeof(loaded_font)*Assets->FontCount;
+
+    Assets->BitmapCount = *((u32 *)Cursor);
+    Cursor += sizeof(u32);
+    
+    Assets->Bitmaps = (tra_bitmap *)Cursor;
+    Cursor += sizeof(tra_bitmap)*Assets->BitmapCount;
+
+    Assets->Memory = Cursor;
 }
 
 internal loaded_obj
@@ -272,30 +225,13 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     if(!State->IsInitialized)
     {
         State->IsInitialized = true;
-        State->Mode = State->NextMode = GameMode_Play;
+        //State->Mode = State->NextMode = GameMode_Play;
 
         InitializeArena(&State->Arena,
                         GameMemory->PermanentMemorySize - sizeof(game_state),
                         (u8 *)GameMemory->PermanentMemory + sizeof(game_state));
 
         State->MetersToPixels = 3674.9418959066769192359305459154f;
-
-#if 1
-//        State->ShipBitmap = LoadBitmap("ship_opaque.bmp");
-//        State->AsteroidBitmap = LoadBitmap("asteroid_opaque.bmp");
-#else
-//        State->ShipBitmap = LoadBitmap("ship_opaque.bmp");
-//        State->AsteroidBitmap = LoadBitmap("asteroid_opaque.bmp");
-#endif
-#if ONE_FILE
-        State->LaserBitmap = LoadBitmap(0, GameMemory->AssetOffset);
-#else
-        State->LaserBitmap = LoadBitmap("laser.bmp", 0);
-#if 0
-        State->StructuredArt = LoadBitmap("structured_art.bmp", 0);
-        State->StructuredArt.Align = V2(0, 0);
-#endif
-#endif
     }
 
     transient_state *TranState = (transient_state *)GameMemory->TemporaryMemory;
@@ -304,6 +240,19 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         InitializeArena(&TranState->Arena,
                         GameMemory->TemporaryMemorySize - sizeof(transient_state),
                         (u8 *)GameMemory->TemporaryMemory + sizeof(transient_state));
+
+            
+        TranState->Assets.Arena = SubArena(&TranState->Arena, Megabytes(0));
+#if ONE_FILE
+        LoadAssetFile(&TranState->Assets, 0, GameMemory->AssetOffset);
+#else
+        LoadAssetFile(&TranState->Assets, "assets.tra", 0);
+#endif
+
+        GameMemory->Font = TranState->Assets.Fonts[1];
+#if TROIDS_INTERNAL
+        GlobalDebugState->Font = TranState->Assets.Fonts[2];
+#endif
 
         TranState->RenderBuffer.Arena = SubArena(&TranState->Arena, Megabytes(1));
         TranState->RenderBuffer.Width = BackBuffer->Width;

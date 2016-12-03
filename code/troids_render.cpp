@@ -25,7 +25,8 @@ enum draw_text_flags
 
 // TODO(chris): Clean this up. Make fonts and font layout more systematic.
 internal text_measurement
-DrawText(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char *Text, u32 Flags = 0)
+DrawText(render_buffer *RenderBuffer, text_layout *Layout,
+         u32 TextLength, char *Text, u32 Flags = 0)
 {
     text_measurement Result;
     v2 PInit = Layout->P;
@@ -43,8 +44,9 @@ DrawText(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char 
         AtIndex < TextLength;
         ++AtIndex)
     {
-        loaded_bitmap *Glyph = Layout->Font->Glyphs + *At;
-        if(Glyph->Height && Glyph->Width)
+        bitmap_id GlyphID = Layout->Font->Glyphs[*At];
+        loaded_bitmap Glyph = GetBitmap(Layout->Assets, GlyphID);
+        if(Glyph.Height && Glyph.Width)
         {
             v2 XAxis = V2(1, 0);
             v2 YAxis = Perp(XAxis);
@@ -55,7 +57,7 @@ DrawText(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char 
                               V4(1.0f, 0.0f, 1.0f, 1.0f));
             }
 #endif
-            v2 Dim = Layout->Scale*V2((r32)Glyph->Width, (r32)Glyph->Height);
+            v2 Dim = Layout->Scale*V2((r32)Glyph.Width, (r32)Glyph.Height);
             if(Layout->DropShadow)
             {
                 v3 P = V3(Layout->P + Height*V2(0.05f, -0.05f), TEXT_Z-1);
@@ -64,16 +66,16 @@ DrawText(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char 
                     PushBitmap(RenderBuffer, Glyph, P,
                                XAxis, YAxis, Dim, V4(0, 0, 0, Layout->Color.a));
                 }
-                Result.TextMinY = Minimum(Result.TextMinY, P.y - Glyph->Align.y*Dim.y);
-                Result.TextMaxY = Maximum(Result.TextMaxY, P.y + (1.0f-Glyph->Align.y)*Dim.y);
+                Result.TextMinY = Minimum(Result.TextMinY, P.y - Glyph.Align.y*Dim.y);
+                Result.TextMaxY = Maximum(Result.TextMaxY, P.y + (1.0f-Glyph.Align.y)*Dim.y);
             }
             v3 P = V3(Layout->P, TEXT_Z);
             if(!Measure)
             {
                 PushBitmap(RenderBuffer, Glyph, P, XAxis, YAxis, Dim, Layout->Color);
             }
-            Result.TextMinY = Minimum(Result.TextMinY, P.y - Glyph->Align.y*Dim.y);
-            Result.TextMaxY = Maximum(Result.TextMaxY, P.y + (1.0f-Glyph->Align.y)*Dim.y);
+            Result.TextMinY = Minimum(Result.TextMinY, P.y - Glyph.Align.y*Dim.y);
+            Result.TextMaxY = Maximum(Result.TextMaxY, P.y + (1.0f-Glyph.Align.y)*Dim.y);
         }
         Prev = *At++;
         Layout->P.x += Layout->Scale*GetTextAdvance(Layout->Font, Prev, *At);
@@ -101,7 +103,7 @@ DrawText(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char 
 #if TROIDS_INTERNAL
 internal rectangle2
 DEBUGDrawButton(render_buffer *RenderBuffer, text_layout *Layout, u32 TextLength, char *Text,
-           v4 Color = INVERTED_COLOR, r32 Border = 0.0f)
+                v4 Color = INVERTED_COLOR, r32 Border = 0.0f)
 {
     rectangle2 Result;
     v2 PInit = Layout->P;
@@ -157,7 +159,7 @@ DEBUGDrawFillBar(render_buffer *RenderBuffer, text_layout *Layout, memory_size U
 #endif
 // TODO(chris): Further optimization
 internal void
-RenderBitmap(loaded_bitmap *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAxis, v2 YAxis,
+RenderBitmap(loaded_bitmap *BackBuffer, loaded_bitmap Bitmap, v2 Origin, v2 XAxis, v2 YAxis,
              v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f), s32 OffsetX = 0, s32 OffsetY = 0)
 {
     // TODO(chris): This should probably be called ColorModulation?
@@ -198,10 +200,10 @@ RenderBitmap(loaded_bitmap *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAx
     __m128 Inv255 = _mm_set_ps1(1.0f / 255.0f);
     __m128 InvXAxisLengthSq = _mm_set_ps1(1.0f / LengthSq(XAxis));
     __m128 InvYAxisLengthSq = _mm_set_ps1(1.0f / LengthSq(YAxis));
-    __m128 BitmapInternalWidth = _mm_set_ps1((r32)(Bitmap->Width - 2));
-    __m128 BitmapInternalHeight = _mm_set_ps1((r32)(Bitmap->Height - 2));
-    __m128 BitmapWidth = _mm_set_ps1((r32)Bitmap->Width);
-    __m128i BitmapHeight = _mm_set1_epi32(Bitmap->Height);
+    __m128 BitmapInternalWidth = _mm_set_ps1((r32)(Bitmap.Width - 2));
+    __m128 BitmapInternalHeight = _mm_set_ps1((r32)(Bitmap.Height - 2));
+    __m128 BitmapWidth = _mm_set_ps1((r32)Bitmap.Width);
+    __m128i BitmapHeight = _mm_set1_epi32(Bitmap.Height);
     __m128 OriginX = _mm_set_ps1(Origin.x);
     __m128 OriginY = _mm_set_ps1(Origin.y);
     __m128 XAxisX = _mm_set_ps1(XAxis.x);
@@ -268,22 +270,22 @@ RenderBitmap(loaded_bitmap *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAx
             u__m128i RoundedOffsetB = {_mm_cvtps_epi32(OffsetB)};
             u__m128i RoundedOffsetC = {_mm_cvtps_epi32(OffsetC)};
             u__m128i RoundedOffsetD = {_mm_cvtps_epi32(OffsetD)};
-            __m128i TexelA = _mm_set_epi32(*((u32 *)Bitmap->Memory + RoundedOffsetA.a[3]),
-                                           *((u32 *)Bitmap->Memory + RoundedOffsetA.a[2]),
-                                           *((u32 *)Bitmap->Memory + RoundedOffsetA.a[1]),
-                                           *((u32 *)Bitmap->Memory + RoundedOffsetA.a[0]));
-            __m128i TexelB = _mm_set_epi32(*((u32 *)Bitmap->Memory + RoundedOffsetB.a[3]),
-                                           *((u32 *)Bitmap->Memory + RoundedOffsetB.a[2]),
-                                           *((u32 *)Bitmap->Memory + RoundedOffsetB.a[1]),
-                                           *((u32 *)Bitmap->Memory + RoundedOffsetB.a[0]));
-            __m128i TexelC = _mm_set_epi32(*((u32 *)Bitmap->Memory + RoundedOffsetC.a[3]),
-                                           *((u32 *)Bitmap->Memory + RoundedOffsetC.a[2]),
-                                           *((u32 *)Bitmap->Memory + RoundedOffsetC.a[1]),
-                                           *((u32 *)Bitmap->Memory + RoundedOffsetC.a[0]));
-            __m128i TexelD = _mm_set_epi32(*((u32 *)Bitmap->Memory + RoundedOffsetD.a[3]),
-                                           *((u32 *)Bitmap->Memory + RoundedOffsetD.a[2]),
-                                           *((u32 *)Bitmap->Memory + RoundedOffsetD.a[1]),
-                                           *((u32 *)Bitmap->Memory + RoundedOffsetD.a[0]));
+            __m128i TexelA = _mm_set_epi32(*((u32 *)Bitmap.Memory + RoundedOffsetA.a[3]),
+                                           *((u32 *)Bitmap.Memory + RoundedOffsetA.a[2]),
+                                           *((u32 *)Bitmap.Memory + RoundedOffsetA.a[1]),
+                                           *((u32 *)Bitmap.Memory + RoundedOffsetA.a[0]));
+            __m128i TexelB = _mm_set_epi32(*((u32 *)Bitmap.Memory + RoundedOffsetB.a[3]),
+                                           *((u32 *)Bitmap.Memory + RoundedOffsetB.a[2]),
+                                           *((u32 *)Bitmap.Memory + RoundedOffsetB.a[1]),
+                                           *((u32 *)Bitmap.Memory + RoundedOffsetB.a[0]));
+            __m128i TexelC = _mm_set_epi32(*((u32 *)Bitmap.Memory + RoundedOffsetC.a[3]),
+                                           *((u32 *)Bitmap.Memory + RoundedOffsetC.a[2]),
+                                           *((u32 *)Bitmap.Memory + RoundedOffsetC.a[1]),
+                                           *((u32 *)Bitmap.Memory + RoundedOffsetC.a[0]));
+            __m128i TexelD = _mm_set_epi32(*((u32 *)Bitmap.Memory + RoundedOffsetD.a[3]),
+                                           *((u32 *)Bitmap.Memory + RoundedOffsetD.a[2]),
+                                           *((u32 *)Bitmap.Memory + RoundedOffsetD.a[1]),
+                                           *((u32 *)Bitmap.Memory + RoundedOffsetD.a[0]));
 
 
             __m128 TexelAR = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelA, 16), ColorMask));
@@ -392,7 +394,7 @@ RenderBitmap(loaded_bitmap *BackBuffer, loaded_bitmap *Bitmap, v2 Origin, v2 XAx
 }
 // TODO(chris): Further optimization
 internal void
-RenderBitmap(render_chunk *RenderChunk, loaded_bitmap *Bitmap, v2 Origin, v2 XAxis, v2 YAxis,
+RenderBitmap(render_chunk *RenderChunk, loaded_bitmap Bitmap, v2 Origin, v2 XAxis, v2 YAxis,
              v4 Color = V4(1.0f, 1.0f, 1.0f, 1.0f), s32 OffsetX = 0, s32 OffsetY = 0)
 {
     // TODO(chris): This should probably be called ColorModulation?
@@ -425,10 +427,10 @@ RenderBitmap(render_chunk *RenderChunk, loaded_bitmap *Bitmap, v2 Origin, v2 XAx
     __m128 Inv255 = _mm_set_ps1(1.0f / 255.0f);
     __m128 InvXAxisLengthSq = _mm_set_ps1(1.0f / LengthSq(XAxis));
     __m128 InvYAxisLengthSq = _mm_set_ps1(1.0f / LengthSq(YAxis));
-    __m128 BitmapInternalWidth = _mm_set_ps1((r32)(Bitmap->Width - 2));
-    __m128 BitmapInternalHeight = _mm_set_ps1((r32)(Bitmap->Height - 2));
-    __m128 BitmapWidth = _mm_set_ps1((r32)Bitmap->Width);
-    __m128i BitmapHeight = _mm_set1_epi32(Bitmap->Height);
+    __m128 BitmapInternalWidth = _mm_set_ps1((r32)(Bitmap.Width - 2));
+    __m128 BitmapInternalHeight = _mm_set_ps1((r32)(Bitmap.Height - 2));
+    __m128 BitmapWidth = _mm_set_ps1((r32)Bitmap.Width);
+    __m128i BitmapHeight = _mm_set1_epi32(Bitmap.Height);
     __m128 OriginX = _mm_set_ps1(Origin.x);
     __m128 OriginY = _mm_set_ps1(Origin.y);
     __m128 XAxisX = _mm_set_ps1(XAxis.x);
@@ -502,22 +504,22 @@ RenderBitmap(render_chunk *RenderChunk, loaded_bitmap *Bitmap, v2 Origin, v2 XAx
             u__m128i RoundedOffsetB = {_mm_cvtps_epi32(OffsetB)};
             u__m128i RoundedOffsetC = {_mm_cvtps_epi32(OffsetC)};
             u__m128i RoundedOffsetD = {_mm_cvtps_epi32(OffsetD)};
-            __m128i TexelA = _mm_set_epi32(*((u32 *)Bitmap->Memory + RoundedOffsetA.a[3]),
-                                           *((u32 *)Bitmap->Memory + RoundedOffsetA.a[2]),
-                                           *((u32 *)Bitmap->Memory + RoundedOffsetA.a[1]),
-                                           *((u32 *)Bitmap->Memory + RoundedOffsetA.a[0]));
-            __m128i TexelB = _mm_set_epi32(*((u32 *)Bitmap->Memory + RoundedOffsetB.a[3]),
-                                           *((u32 *)Bitmap->Memory + RoundedOffsetB.a[2]),
-                                           *((u32 *)Bitmap->Memory + RoundedOffsetB.a[1]),
-                                           *((u32 *)Bitmap->Memory + RoundedOffsetB.a[0]));
-            __m128i TexelC = _mm_set_epi32(*((u32 *)Bitmap->Memory + RoundedOffsetC.a[3]),
-                                           *((u32 *)Bitmap->Memory + RoundedOffsetC.a[2]),
-                                           *((u32 *)Bitmap->Memory + RoundedOffsetC.a[1]),
-                                           *((u32 *)Bitmap->Memory + RoundedOffsetC.a[0]));
-            __m128i TexelD = _mm_set_epi32(*((u32 *)Bitmap->Memory + RoundedOffsetD.a[3]),
-                                           *((u32 *)Bitmap->Memory + RoundedOffsetD.a[2]),
-                                           *((u32 *)Bitmap->Memory + RoundedOffsetD.a[1]),
-                                           *((u32 *)Bitmap->Memory + RoundedOffsetD.a[0]));
+            __m128i TexelA = _mm_set_epi32(*((u32 *)Bitmap.Memory + RoundedOffsetA.a[3]),
+                                           *((u32 *)Bitmap.Memory + RoundedOffsetA.a[2]),
+                                           *((u32 *)Bitmap.Memory + RoundedOffsetA.a[1]),
+                                           *((u32 *)Bitmap.Memory + RoundedOffsetA.a[0]));
+            __m128i TexelB = _mm_set_epi32(*((u32 *)Bitmap.Memory + RoundedOffsetB.a[3]),
+                                           *((u32 *)Bitmap.Memory + RoundedOffsetB.a[2]),
+                                           *((u32 *)Bitmap.Memory + RoundedOffsetB.a[1]),
+                                           *((u32 *)Bitmap.Memory + RoundedOffsetB.a[0]));
+            __m128i TexelC = _mm_set_epi32(*((u32 *)Bitmap.Memory + RoundedOffsetC.a[3]),
+                                           *((u32 *)Bitmap.Memory + RoundedOffsetC.a[2]),
+                                           *((u32 *)Bitmap.Memory + RoundedOffsetC.a[1]),
+                                           *((u32 *)Bitmap.Memory + RoundedOffsetC.a[0]));
+            __m128i TexelD = _mm_set_epi32(*((u32 *)Bitmap.Memory + RoundedOffsetD.a[3]),
+                                           *((u32 *)Bitmap.Memory + RoundedOffsetD.a[2]),
+                                           *((u32 *)Bitmap.Memory + RoundedOffsetD.a[1]),
+                                           *((u32 *)Bitmap.Memory + RoundedOffsetD.a[0]));
 
             __m128 TexelAR = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelA, 16), ColorMask));
             __m128 TexelBR = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(TexelB, 16), ColorMask));
