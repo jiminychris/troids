@@ -299,7 +299,7 @@ RoundU32(r32 A)
 
 
 #if TROIDS_SLOW
-#define Assert(Expr) {if(!(Expr)) int A = *((int *)0);}
+#define Assert(Expr) {if(!(Expr)) int __AssertInt = *((int *)0);}
 #else
 #define Assert(Expr)
 #endif

@@ -1084,7 +1084,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                                                             if(RecordFile)
                                                             {
                                                                 DWORD BytesWritten;
-                                                                OVERLAPPED Overlapped = {};
+                                                                Overlapped = {};
                                                                 BOOL Result = WriteFile(RecordFile, GameMemory.PermanentMemory,
                                                                                         (u32)GameMemory.PermanentMemorySize,
                                                                                         &BytesWritten, &Overlapped);
@@ -1098,7 +1098,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                                                             if(RecordFile)
                                                             {
                                                                 DWORD BytesRead;
-                                                                OVERLAPPED Overlapped = {};
+                                                                Overlapped = {};
                                                                 BOOL Result = ReadFile(RecordFile, GameMemory.PermanentMemory,
                                                                                        (u32)GameMemory.PermanentMemorySize,
                                                                                        &BytesRead, &Overlapped);
@@ -1258,7 +1258,7 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                                                    &BytesRead, 0);
                             if(Result && (BytesRead == 0))
                             {
-                                OVERLAPPED Overlapped = {};
+                                Overlapped = {};
                                 Result = ReadFile(RecordFile, GameMemory.PermanentMemory,
                                                   (u32)GameMemory.PermanentMemorySize,
                                                   &BytesRead, &Overlapped);
@@ -1362,7 +1362,6 @@ int WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int S
                     {
                         case RecordingState_Recording:
                         {
-                            u32 RecordIconRadius = 10;
                             u8 *PixelRow = ((u8 *)GameBackBuffer->Memory +
                                             GameBackBuffer->Pitch*(GameBackBuffer->Height -
                                                                   (RecordIconMargin + 1)));

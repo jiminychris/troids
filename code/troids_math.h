@@ -230,7 +230,7 @@ Cube(r32 A)
 inline r32
 AbsoluteValue(r32 A)
 {
-    r32 Result = fabs(A);
+    r32 Result = (r32)fabs(A);
     return(Result);
 }
 

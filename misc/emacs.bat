@@ -1,7 +1,7 @@
 @echo off
 
 if not defined EMACS_LOCATION (
-   echo Emacs location not set.
+   echo EMACS_LOCATION not set.
    exit /B
 )
 

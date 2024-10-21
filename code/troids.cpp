@@ -307,6 +307,10 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             DEBUG_VALUE("Thread 6 String Arena", GlobalDebugState->ThreadStorage[6].StringArena);
             DEBUG_VALUE("Thread 7 String Arena", GlobalDebugState->ThreadStorage[7].StringArena);
         }
+        {DEBUG_GROUP("Monitor");
+            v2i Dimensions{RendererState->BackBuffer.Width, RendererState->BackBuffer.Height};
+            DEBUG_VALUE("Dimensions", Dimensions);
+        }
     }
 
     if(State->Mode != State->NextMode)

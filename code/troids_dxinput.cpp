@@ -158,8 +158,8 @@ global_variable xinput_get_state *XInputGetState_ = 0;
 global_variable xinput_set_state *XInputSetState_ = 0;
 global_variable LPDIRECTINPUT8 GlobalDirectInput = 0;
 
-inline XINPUT_GET_STATE(XInputGetState){return XInputGetState_(dwUserIndex, pState);}
-inline XINPUT_SET_STATE(XInputSetState){return XInputSetState_(dwUserIndex, pVibration);}
+inline XINPUT_GET_STATE(XInputGetState) WIN_NOEXCEPT {return XInputGetState_(dwUserIndex, pState);}
+inline XINPUT_SET_STATE(XInputSetState) WIN_NOEXCEPT {return XInputSetState_(dwUserIndex, pVibration);}
 
 internal void
 InitializeInput(HINSTANCE Instance)
@@ -203,7 +203,7 @@ InitializeInput(HINSTANCE Instance)
     HMODULE XInputCode = LoadLibrary("xinput1_4.dll");
     if(!XInputCode)
     {
-        HMODULE XInputCode = LoadLibrary("xinput1_3.dll");
+        XInputCode = LoadLibrary("xinput1_3.dll");
     }
 
     if(XInputCode)

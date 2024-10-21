@@ -6,8 +6,9 @@
    $Notice: $
    ======================================================================== */
 
-#include "troids_platform.h"
 #include <stdio.h>
+#undef snprintf
+#include "troids_platform.h"
 
 #define OUT_PATH "w:\\build\\troids.exe"
 #define EXE_PATH "w:\\build\\win32_troids.exe"

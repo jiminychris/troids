@@ -1,9 +1,9 @@
 @echo off
 
-if not defined VS_LOCATION (
-   echo Visual Studio location not set.
+if not defined VCVARSALL (
+   echo VCVARSALL not set.
    exit /B
 )
 
-call "%VS_LOCATION%\VC\vcvarsall" x64
+call "%VCVARSALL%" x64
 set path=W:\troids\misc;%PATH%

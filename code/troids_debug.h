@@ -36,6 +36,7 @@ enum debug_event_type
     DebugEventType_r32,
     DebugEventType_r64,
     DebugEventType_v2,
+    DebugEventType_v2i,
     DebugEventType_memory_arena,
 };
 
@@ -64,6 +65,7 @@ struct debug_event
         r32 Value_r32;
         r64 Value_r64;
         v2 Value_v2;
+        v2i Value_v2i;
         memory_arena Value_memory_arena;
     };
     char *GUID;
@@ -102,6 +104,7 @@ struct debug_node
         r32 Value_r32;
         r64 Value_r64;
         v2 Value_v2;
+        v2i Value_v2i;
         memory_arena Value_memory_arena;
     };
     union
@@ -399,6 +402,13 @@ global_variable char GlobalDebugGUID[256];
     Event->Type = DebugEventType_Name;
      
 #define DEBUG_VALUE(Name, Value) LogDebugValue(DEBUG_GUID(Name), Value);
+#define DEBUG_BOOL(Name, Value)                                         \
+    {                                                                   \
+        debug_event *Event = NextDebugEvent(DEBUG_GUID(Name));          \
+        Event->Type = DebugEventType_b32;                               \
+        Event->Value_b32 = Value;                                       \
+    }
+
 #define DEBUG_FILL_BAR(NameInit, Used, Max)         \
     {                                               \
         debug_event *Event = NextDebugEvent(DEBUG_GUID(NameInit));  \
@@ -444,13 +454,16 @@ global_variable char GlobalDebugGUID[256];
     }
 #define COLLATE_VALUE_TYPES(Frame, Event, Prev, GroupBeginStackCount, GroupBeginStack) \
     COLLATE_VALUE_TYPE(v2, Frame, Event, Prev, GroupBeginStackCount, GroupBeginStack) \
+    COLLATE_VALUE_TYPE(v2i, Frame, Event, Prev, GroupBeginStackCount, GroupBeginStack) \
     COLLATE_VALUE_TYPE(r32, Frame, Event, Prev, GroupBeginStackCount, GroupBeginStack) \
     COLLATE_VALUE_TYPE(b32, Frame, Event, Prev, GroupBeginStackCount, GroupBeginStack) \
+    COLLATE_VALUE_TYPE(s32, Frame, Event, Prev, GroupBeginStackCount, GroupBeginStack) \
     COLLATE_VALUE_TYPE(u32, Frame, Event, Prev, GroupBeginStackCount, GroupBeginStack) \
     COLLATE_VALUE_TYPE(memory_arena, Frame, Event, Prev, GroupBeginStackCount, GroupBeginStack)
+LOG_DEBUG_TYPE(v2i)
 LOG_DEBUG_TYPE(v2)
 LOG_DEBUG_TYPE(r32)
-LOG_DEBUG_TYPE(b32)
+LOG_DEBUG_TYPE(s32)
 LOG_DEBUG_TYPE(u32)
 LOG_DEBUG_TYPE(memory_arena)
 
@@ -460,20 +473,20 @@ LOG_DEBUG_TYPE(memory_arena)
         DEBUG_VALUE("RightStick", (Controller)->RightStick);            \
         DEBUG_VALUE("LeftTrigger", (Controller)->LeftTrigger);          \
         DEBUG_VALUE("RightTrigger", (Controller)->RightTrigger);        \
-        DEBUG_VALUE("ActionUp", (Controller)->ActionUp.EndedDown);      \
-        DEBUG_VALUE("ActionLeft", (Controller)->ActionLeft.EndedDown);  \
-        DEBUG_VALUE("ActionDown", (Controller)->ActionDown.EndedDown);  \
-        DEBUG_VALUE("ActionRight", (Controller)->ActionRight.EndedDown); \
-        DEBUG_VALUE("LeftShoulder1", (Controller)->LeftShoulder1.EndedDown); \
-        DEBUG_VALUE("RightShoulder1", (Controller)->RightShoulder1.EndedDown); \
-        DEBUG_VALUE("LeftShoulder2", (Controller)->LeftShoulder2.EndedDown); \
-        DEBUG_VALUE("RightShoulder2", (Controller)->RightShoulder2.EndedDown); \
-        DEBUG_VALUE("Select", (Controller)->Select.EndedDown);          \
-        DEBUG_VALUE("Start", (Controller)->Start.EndedDown);            \
-        DEBUG_VALUE("LeftClick", (Controller)->LeftClick.EndedDown);    \
-        DEBUG_VALUE("RightClick", (Controller)->RightClick.EndedDown);  \
-        DEBUG_VALUE("Power", (Controller)->Power.EndedDown);            \
-        DEBUG_VALUE("CenterClick", (Controller)->CenterClick.EndedDown); \
+        DEBUG_BOOL("ActionUp", (Controller)->ActionUp.EndedDown);      \
+        DEBUG_BOOL("ActionLeft", (Controller)->ActionLeft.EndedDown);  \
+        DEBUG_BOOL("ActionDown", (Controller)->ActionDown.EndedDown);  \
+        DEBUG_BOOL("ActionRight", (Controller)->ActionRight.EndedDown); \
+        DEBUG_BOOL("LeftShoulder1", (Controller)->LeftShoulder1.EndedDown); \
+        DEBUG_BOOL("RightShoulder1", (Controller)->RightShoulder1.EndedDown); \
+        DEBUG_BOOL("LeftShoulder2", (Controller)->LeftShoulder2.EndedDown); \
+        DEBUG_BOOL("RightShoulder2", (Controller)->RightShoulder2.EndedDown); \
+        DEBUG_BOOL("Select", (Controller)->Select.EndedDown);          \
+        DEBUG_BOOL("Start", (Controller)->Start.EndedDown);            \
+        DEBUG_BOOL("LeftClick", (Controller)->LeftClick.EndedDown);    \
+        DEBUG_BOOL("RightClick", (Controller)->RightClick.EndedDown);  \
+        DEBUG_BOOL("Power", (Controller)->Power.EndedDown);            \
+        DEBUG_BOOL("CenterClick", (Controller)->CenterClick.EndedDown); \
     }
 
 
@@ -488,6 +501,7 @@ LOG_DEBUG_TYPE(memory_arena)
 #define DEBUG_GROUP(...)
 #define DEBUG_NAME(...)
 #define DEBUG_VALUE(...)
+#define DEBUG_BOOL(...)
 #define DEBUG_PROFILER(...)
 #define DEBUG_FRAME_TIMELINE(...)
 #define DEBUG_SUMMARY(...)

@@ -1422,7 +1422,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
                 EntityIndex = NextIndex;
             }
         
-            BEGIN_TIMED_BLOCK(Collision, "Collision");
+            BEGIN_TIMED_BLOCK(CollisionBlock, "Collision");
             // NOTE(chris): Collision pass
             for(u32 EntityIndex = 1;
                 EntityIndex < State->EntityCount;
@@ -2224,7 +2224,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
                     }
                 }
             }
-            END_TIMED_BLOCK(Collision);
+            END_TIMED_BLOCK(CollisionBlock);
         }
         
         // NOTE(chris): Post collision pass
@@ -2757,7 +2757,7 @@ PlayMode(game_memory *GameMemory, game_input *Input, renderer_state *RendererSta
         DEBUG_FILL_BAR("Entities", State->EntityCount, ArrayCount(State->Entities));
         DEBUG_FILL_BAR("Particles", State->ParticleCount, ArrayCount(State->Particles));
         DEBUG_VALUE("Shape Arena", State->PhysicsState.ShapeArena);
-        DEBUG_VALUE("Shape Freelist", (b32)(memory_size)State->PhysicsState.FirstFreeShape);
+        DEBUG_BOOL("Shape Freelist", 0 != State->PhysicsState.FirstFreeShape);
         DEBUG_VALUE("Render Arena", TranState->RenderBuffer.Arena);
     }
     EndTemporaryMemory(RenderMemory);
